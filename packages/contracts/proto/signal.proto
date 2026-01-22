@@ -1,0 +1,154 @@
+syntax = "proto3";
+
+package signal;
+
+import "google/protobuf/timestamp.proto";
+
+// 信号类型
+enum SignalType {
+  SIGNAL_TYPE_UNSPECIFIED = 0;
+  SIGNAL_TYPE_ENTRY_LONG = 1;      // 开多
+  SIGNAL_TYPE_ENTRY_SHORT = 2;     // 开空
+  SIGNAL_TYPE_EXIT_LONG = 3;       // 平多
+  SIGNAL_TYPE_EXIT_SHORT = 4;      // 平空
+  SIGNAL_TYPE_STOP_LOSS = 5;       // 止损
+  SIGNAL_TYPE_TAKE_PROFIT = 6;     // 止盈
+  SIGNAL_TYPE_REBALANCE = 7;       // 再平衡
+}
+
+// 信号来源
+enum SignalSource {
+  SIGNAL_SOURCE_UNSPECIFIED = 0;
+  SIGNAL_SOURCE_STRATEGY = 1;      // 策略引擎
+  SIGNAL_SOURCE_RISK = 2;          // 风控引擎
+  SIGNAL_SOURCE_USER = 3;          // 用户手动
+  SIGNAL_SOURCE_ADMIN = 4;         // 管理员
+}
+
+// 信号状态
+enum SignalStatus {
+  SIGNAL_STATUS_UNSPECIFIED = 0;
+  SIGNAL_STATUS_PENDING = 1;       // 待处理
+  SIGNAL_STATUS_PROCESSING = 2;    // 处理中
+  SIGNAL_STATUS_COMPLETED = 3;     // 已完成
+  SIGNAL_STATUS_REJECTED = 4;      // 已拒绝
+  SIGNAL_STATUS_CANCELLED = 5;     // 已取消
+}
+
+// 信号元数据
+message SignalMetadata {
+  string strategy_id = 1;
+  string symbol = 2;
+  string exchange = 3;
+  map<string, string> tags = 4;
+  string notes = 5;
+}
+
+// 信号
+message Signal {
+  string id = 1;
+  SignalType type = 2;
+  SignalSource source = 3;
+  SignalStatus status = 4;
+
+  // 交易参数
+  string symbol = 5;
+  string exchange = 6;
+  double quantity = 7;
+  double price = 8;
+  double stop_loss = 9;
+  double take_profit = 10;
+
+  // 时间戳
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+  google.protobuf.Timestamp executed_at = 13;
+
+  // 元数据
+  SignalMetadata metadata = 14;
+
+  // 原始数据（JSON字符串）
+  string raw_data = 15;
+
+  // 错误信息
+  string error_message = 16;
+}
+
+// 信号列表
+message SignalList {
+  repeated Signal signals = 1;
+  uint32 total = 2;
+  uint32 page = 3;
+  uint32 page_size = 4;
+}
+
+// 信号查询请求
+message SignalQueryRequest {
+  repeated SignalType types = 1;
+  repeated SignalSource sources = 2;
+  repeated SignalStatus statuses = 3;
+  string symbol = 4;
+  string exchange = 5;
+  google.protobuf.Timestamp start_time = 6;
+  google.protobuf.Timestamp end_time = 7;
+  uint32 page = 8;
+  uint32 page_size = 9;
+}
+
+// 信号查询响应
+message SignalQueryResponse {
+  SignalList signals = 1;
+  bool has_more = 2;
+}
+
+// 信号创建请求
+message SignalCreateRequest {
+  SignalType type = 1;
+  SignalSource source = 2;
+  string symbol = 3;
+  string exchange = 4;
+  double quantity = 5;
+  double price = 6;
+  double stop_loss = 7;
+  double take_profit = 8;
+  SignalMetadata metadata = 9;
+  string raw_data = 10;
+}
+
+// 信号创建响应
+message SignalCreateResponse {
+  Signal signal = 1;
+  bool success = 2;
+  string error_message = 3;
+}
+
+// 信号更新请求
+message SignalUpdateRequest {
+  string id = 1;
+  SignalStatus status = 2;
+  string error_message = 3;
+  double executed_price = 4;
+  double executed_quantity = 5;
+  google.protobuf.Timestamp executed_at = 6;
+}
+
+// 信号更新响应
+message SignalUpdateResponse {
+  Signal signal = 1;
+  bool success = 2;
+  string error_message = 3;
+}
+
+// 信号批量处理请求
+message SignalBatchProcessRequest {
+  repeated string signal_ids = 1;
+  SignalStatus new_status = 2;
+  string reason = 3;
+}
+
+// 信号批量处理响应
+message SignalBatchProcessResponse {
+  uint32 processed_count = 1;
+  uint32 failed_count = 2;
+  repeated string failed_ids = 3;
+}
