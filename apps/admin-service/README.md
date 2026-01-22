@@ -1040,7 +1040,7 @@ export const dashboardWidgets = {
 - **UI 库**: Ant Design 5
 - **状态管理**: Zustand
 - **路由**: React Router 6
-- **图表**: ECharts
+- **图表**: klinecharts（封装成 `@klinecharts/pro` 风格的 K 线专业组件；不使用 ECharts）
 - **构建**: Vite
 
 ### 2. 页面结构
@@ -1721,7 +1721,8 @@ export class ExportService {
 - [NestJS 文档](https://docs.nestjs.com/)
 - [React 文档](https://react.dev/)
 - [Ant Design 文档](https://ant.design/)
-- [ECharts 文档](https://echarts.apache.org/)
+- [klinecharts](https://github.com/klinecharts/KLineChart)
+- [`@klinecharts/pro`](https://pro.klinecharts.com/)
 
 ---
 

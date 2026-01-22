@@ -6,6 +6,8 @@
 
 Auto Trader 是一个企业级量化交易平台，采用微服务架构设计，支持多策略、多交易所、多币种的量化交易。系统提供完整的策略开发、回测、实盘交易、风险控制和用户管理功能。
 
+> 当前仓库以“架构设计 + 技术文档 + 协议定义”为主，服务代码与目录会按 `docs/PROJECT_STRUCTURE.md` 的目标结构逐步实现与落地。
+
 ## 架构概览
 
 ```
@@ -90,7 +92,7 @@ auto-trader/
 - **React**: React 18
 - **UI 库**: Ant Design 5
 - **状态管理**: Zustand
-- **图表**: ECharts
+- **图表**: klinecharts（封装成 `@klinecharts/pro` 风格的 K 线专业组件；不使用 ECharts）
 
 ### 基础设施
 - **容器**: Docker, Docker Compose
