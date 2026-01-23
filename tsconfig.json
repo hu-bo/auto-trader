@@ -1,9 +1,11 @@
 {
   "extends": "./tsconfig.node.json",
   "compilerOptions": {
-    "lib":["es2018"],
+    "lib":["es2020", "DOM"],
     "strictNullChecks": false,
     "moduleResolution": "node",
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
     "baseUrl": "./",
     "types": ["node"],
     "typeRoots": ["./typings", "./node_modules/@types"],
