@@ -1,36 +1,33 @@
 {
-  "name": "@hquant/core-js",
+  "name": "@hquant/js",
   "version": "0.1.10",
-  "description": "indicators and strategies",
+  "description": "High-performance quantitative trading engine powered by Rust",
   "keywords": [
     "quant",
     "indicator",
-    "strategy"
+    "strategy",
+    "trading",
+    "rust",
+    "napi"
   ],
   "author": "hubo <hubo9@qq.com>",
   "license": "GPL-3.0-or-later",
   "main": "lib/index.js",
+  "types": "lib/index.d.ts",
   "directories": {
     "lib": "lib",
     "test": "__tests__"
   },
   "files": [
-    "lib"
+    "lib",
+    "native"
   ],
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/H-jx/jx-quant.git"
-  },
   "scripts": {
-    "lib": "tsc",
-    "build": "tsup-node ./src/**/*.ts",
+    "build": "tsup src/index.ts --format cjs,esm --dts",
     "test": "jest --colors --onlyChanged"
-  },
-  "bugs": {
-    "url": "https://github.com/H-jx/jx-quant/issues"
   },
   "devDependencies": {
     "@swc/core": "^1.6.3",
@@ -40,10 +37,6 @@
     "esbuild": "^0.25.9",
     "ts-jest": "^29.4.1",
     "tsup": "^8.5.0",
-    "tsup-node": "^0.1.0",
     "typescript": "^4.9.5"
-  },
-  "dependencies": {
-    "dayjs": "^1.11.13"
   }
 }

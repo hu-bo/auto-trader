@@ -1,13 +1,19 @@
-export { Quant } from './Quant'
-export { CircularQueue } from './common/CircularQueue'
-export { AverageQueue } from './common/AverageQueue'
-export { GoldenRatioCalculator } from './common/GoldenRatioCalculator'
-export { SharedObjectRingBuffer } from './common/SharedObjectRingBuffer'
-export { RingDataFrame } from './common/RingDataFrame'
-export { TypedRingBuffer } from './common/TypedRingBuffer'
-export * from './interface'
-export * from './indicator/boll'
-export * from './indicator/ma'
-export * from './indicator/rsi'
-export * from './indicator/atr'
-export * from './indicator/vri'
+import { join } from 'path';
+import type { BarInput, SignalOutput, MAType, IEngine } from './types';
+
+// 加载原生模块
+const nativeModule = require(join(__dirname, '..', 'native', 'hquant.node'));
+
+/** 原生 Engine 类 */
+const NativeEngine: new (capacity: number) => IEngine = nativeModule.Engine;
+
+/** 创建量化引擎实例 */
+export function createEngine(capacity: number = 1000): IEngine {
+  return new NativeEngine(capacity);
+}
+
+/** 导出 Engine 类供直接使用 */
+export const Engine = NativeEngine;
+
+/** 导出类型 */
+export type { BarInput, SignalOutput, MAType, IEngine };
