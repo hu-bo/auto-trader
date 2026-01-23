@@ -13,7 +13,7 @@
 ## 技术栈
 
 - **语言**: Node.js 20+
-- **框架**: NestJS + TypeScript
+- **框架**: Midway.js 3.x + TypeScript
 - **数据库**: PostgreSQL (订单/仓位), Redis (缓存/状态)
 - **消息队列**: NATS (信号订阅, 订单发布)
 - **交易所连接**: CCXT, WebSocket
@@ -27,53 +27,102 @@
 ```
 trading-engine/
 ├── src/
-│   ├── api/                    # REST API 层
+│   ├── configuration.ts        # Midway 应用配置入口
+│   ├── controller/             # 控制器层
 │   │   ├── v1/
 │   │   │   ├── orders.controller.ts
 │   │   │   ├── positions.controller.ts
 │   │   │   ├── accounts.controller.ts
 │   │   │   └── trades.controller.ts
 │   │   └── dto/                # DTO 定义
-│   ├── core/                   # 核心逻辑
-│   │   ├── order-manager.ts    # 订单管理器
-│   │   ├── position-manager.ts # 仓位管理器
-│   │   ├── risk-checker.ts     # 风控检查器
-│   │   └── signal-processor.ts # 信号处理器
+│   ├── service/                # 业务服务
+│   │   ├── order.service.ts    # 订单服务
+│   │   ├── position.service.ts # 仓位服务
+│   │   ├── account.service.ts  # 账户服务
+│   │   ├── trade.service.ts    # 成交服务
+│   │   ├── risk.service.ts     # 风控服务
+│   │   └── signal.service.ts   # 信号服务
+│   ├── manager/                # 核心管理器
+│   │   ├── order.manager.ts    # 订单管理器
+│   │   ├── position.manager.ts # 仓位管理器
+│   │   ├── risk.checker.ts     # 风控检查器
+│   │   └── signal.processor.ts # 信号处理器
 │   ├── exchange/               # 交易所适配
-│   │   ├── adapters/           # 交易所适配器
+│   │   ├── adapter/            # 交易所适配器
 │   │   │   ├── binance.adapter.ts
 │   │   │   ├── okx.adapter.ts
 │   │   │   └── bybit.adapter.ts
-│   │   ├── websocket.ts        # WebSocket 管理
-│   │   └── rest-client.ts      # REST 客户端
-│   ├── models/                 # 数据模型
-│   │   ├── order.model.ts
-│   │   ├── position.model.ts
-│   │   ├── account.model.ts
-│   │   └── trade.model.ts
-│   ├── services/               # 业务服务
-│   │   ├── order-service.ts
-│   │   ├── position-service.ts
-│   │   ├── account-service.ts
-│   │   └── trade-service.ts
-│   ├── subscribers/            # NATS 订阅者
-│   │   ├── signal-subscriber.ts
-│   │   └── order-subscriber.ts
-│   ├── tasks/                  # 定时任务
-│   │   ├── sync-tasks.ts       # 同步任务
-│   │   └── cleanup-tasks.ts    # 清理任务
-│   └── utils/                  # 工具类
+│   │   ├── websocket.manager.ts # WebSocket 管理
+│   │   └── rest.client.ts      # REST 客户端
+│   ├── entity/                 # 数据实体 (TypeORM)
+│   │   ├── order.entity.ts
+│   │   ├── position.entity.ts
+│   │   ├── account.entity.ts
+│   │   └── trade.entity.ts
+│   ├── middleware/             # 中间件
+│   │   └── auth.middleware.ts
+│   ├── filter/                 # 异常过滤器
+│   │   └── default.filter.ts
+│   ├── subscriber/             # NATS 订阅者
+│   │   ├── signal.subscriber.ts
+│   │   └── order.subscriber.ts
+│   ├── task/                   # 定时任务
+│   │   ├── sync.task.ts        # 同步任务
+│   │   └── cleanup.task.ts     # 清理任务
+│   └── util/                   # 工具类
 │       ├── logger.ts
-│       ├── config.ts
 │       ├── metrics.ts
 │       └── validator.ts
-├── tests/                      # 测试
-├── config/                     # 配置文件
+├── src/config/                 # Midway 配置文件
+│   ├── config.default.ts       # 默认配置
+│   ├── config.local.ts         # 本地开发配置
+│   └── config.prod.ts          # 生产环境配置
+├── test/                       # 测试
 ├── scripts/                    # 脚本
+├── bootstrap.js                # Midway 启动文件
 ├── Dockerfile
 ├── docker-compose.yml
 ├── package.json
 └── tsconfig.json
+```
+
+### 2. 核心依赖 (package.json)
+
+```json
+{
+  "name": "trading-engine",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "cross-env NODE_ENV=local midway-bin dev --ts",
+    "build": "midway-bin build -c",
+    "start": "NODE_ENV=production node bootstrap.js",
+    "test": "midway-bin test --ts"
+  },
+  "dependencies": {
+    "@midwayjs/bootstrap": "^3.14.0",
+    "@midwayjs/core": "^3.14.0",
+    "@midwayjs/decorator": "^3.14.0",
+    "@midwayjs/koa": "^3.14.0",
+    "@midwayjs/typeorm": "^3.14.0",
+    "@midwayjs/redis": "^3.14.0",
+    "@midwayjs/task": "^3.14.0",
+    "@midwayjs/validate": "^3.14.0",
+    "typeorm": "^0.3.17",
+    "pg": "^8.11.3",
+    "ioredis": "^5.3.2",
+    "ccxt": "^4.2.0",
+    "nats": "^2.18.0",
+    "prom-client": "^15.1.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@midwayjs/cli": "^2.1.0",
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.10",
+    "cross-env": "^7.0.3",
+    "typescript": "~5.3.0"
+  }
+}
 ```
 
 ### 2. 订单管理流程
@@ -817,63 +866,118 @@ CREATE TABLE trades (
 
 ### 1. 环境配置
 
-```yaml
-# config/config.yaml
-app:
-  name: "trading-engine"
-  env: "production"
-  debug: false
-  port: 3000
+```typescript
+// src/config/config.default.ts
+import { MidwayConfig } from '@midwayjs/core';
 
-database:
-  postgres:
-    host: "postgres"
-    port: 5432
-    database: "trading_db"
-    user: "trading_user"
-    password: "${DB_PASSWORD}"
+export default {
+  keys: 'trading-engine-secret-key',
+  koa: {
+    port: 3000,
+  },
 
-redis:
-  host: "redis"
-  port: 6379
-  db: 0
+  // TypeORM 数据库配置
+  typeorm: {
+    dataSource: {
+      default: {
+        type: 'postgres',
+        host: process.env.DB_HOST || 'postgres',
+        port: 5432,
+        database: 'trading_db',
+        username: 'trading_user',
+        password: process.env.DB_PASSWORD,
+        synchronize: false,
+        logging: false,
+        entities: ['**/entity/**/*.entity{.ts,.js}'],
+      },
+    },
+  },
 
-nats:
-  url: "nats://nats:4222"
-  subjects:
-    signals: "strategy.signals.>"
-    orders: "trading.orders.>"
-    trades: "trading.trades.>"
+  // Redis 配置
+  redis: {
+    client: {
+      host: process.env.REDIS_HOST || 'redis',
+      port: 6379,
+      db: 0,
+    },
+  },
 
-exchanges:
-  binance:
-    enabled: true
-    apiKey: "${BINANCE_API_KEY}"
-    secret: "${BINANCE_SECRET}"
-    sandbox: false
-    rate_limit: 1000
-  okx:
-    enabled: false
-    apiKey: "${OKX_API_KEY}"
-    secret: "${OKX_SECRET}"
-    passphrase: "${OKX_PASSPHRASE}"
+  // NATS 配置
+  nats: {
+    servers: [process.env.NATS_URL || 'nats://nats:4222'],
+    subjects: {
+      signals: 'strategy.signals.>',
+      orders: 'trading.orders.>',
+      trades: 'trading.trades.>',
+    },
+  },
 
-risk:
-  max_position_pct: 0.3
-  max_daily_volume: 1000000
-  max_drawdown: 0.2
-  max_orders_per_minute: 100
+  // 交易所配置
+  exchanges: {
+    binance: {
+      enabled: true,
+      apiKey: process.env.BINANCE_API_KEY,
+      secret: process.env.BINANCE_SECRET,
+      sandbox: false,
+      rateLimit: 1000,
+    },
+    okx: {
+      enabled: false,
+      apiKey: process.env.OKX_API_KEY,
+      secret: process.env.OKX_SECRET,
+      passphrase: process.env.OKX_PASSPHRASE,
+    },
+  },
 
-order:
-  default_type: "limit"
-  timeout: 30000
-  retry_count: 3
-  retry_delay: 1000
+  // 风控配置
+  risk: {
+    maxPositionPct: 0.3,
+    maxDailyVolume: 1000000,
+    maxDrawdown: 0.2,
+    maxOrdersPerMinute: 100,
+  },
 
-websocket:
-  reconnect_interval: 5000
-  ping_interval: 30000
-  timeout: 60000
+  // 订单配置
+  order: {
+    defaultType: 'limit',
+    timeout: 30000,
+    retryCount: 3,
+    retryDelay: 1000,
+  },
+
+  // WebSocket 配置
+  websocket: {
+    reconnectInterval: 5000,
+    pingInterval: 30000,
+    timeout: 60000,
+  },
+} as MidwayConfig;
+```
+
+```typescript
+// src/config/config.local.ts (本地开发配置)
+import { MidwayConfig } from '@midwayjs/core';
+
+export default {
+  typeorm: {
+    dataSource: {
+      default: {
+        host: 'localhost',
+        logging: true,
+      },
+    },
+  },
+  redis: {
+    client: {
+      host: 'localhost',
+    },
+  },
+  exchanges: {
+    binance: {
+      sandbox: true,
+    },
+  },
+} as MidwayConfig;
 ```
 
 ### 2. 交易所配置
@@ -908,14 +1012,14 @@ export const exchangeConfigs = {
 ### 1. Docker 部署
 
 ```dockerfile
-# Dockerfile
-FROM node:20-alpine
+# Dockerfile (Midway.js)
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 # 安装依赖
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # 复制源代码
 COPY . .
@@ -923,11 +1027,31 @@ COPY . .
 # 构建
 RUN npm run build
 
+# 生产镜像
+FROM node:20-alpine
+
+WORKDIR /app
+
+# 只安装生产依赖
+COPY package*.json ./
+RUN npm ci --only=production
+
+# 复制构建产物
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/bootstrap.js ./
+
 # 暴露端口
 EXPOSE 3000
 
-# 启动
-CMD ["node", "dist/main.js"]
+# 启动 Midway 应用
+CMD ["node", "bootstrap.js"]
+```
+
+```javascript
+// bootstrap.js - Midway 启动文件
+const { Bootstrap } = require('@midwayjs/bootstrap');
+
+Bootstrap.run();
 ```
 
 ### 2. Docker Compose
@@ -1217,7 +1341,8 @@ export const adapters = {
 
 ## 参考文档
 
-- [NestJS 文档](https://docs.nestjs.com/)
+- [Midway.js 文档](https://midwayjs.org/)
+- [Midway.js GitHub](https://github.com/midwayjs/midway)
 - [CCXT 文档](https://docs.ccxt.com/)
 - [NATS 文档](https://docs.nats.io/)
 - [TypeScript 文档](https://www.typescriptlang.org/docs/)

@@ -13,7 +13,7 @@
 ## 技术栈
 
 - **语言**: Node.js 20+
-- **框架**: NestJS + TypeScript
+- **框架**: Midway.js 3.x + TypeScript
 - **数据库**: PostgreSQL (用户数据), Redis (会话/缓存)
 - **认证**: JWT + OAuth2
 - **加密**: bcrypt, crypto
@@ -27,7 +27,8 @@
 ```
 user-service/
 ├── src/
-│   ├── api/                    # REST API 层
+│   ├── configuration.ts        # Midway 应用配置入口
+│   ├── controller/             # 控制器层
 │   │   ├── v1/
 │   │   │   ├── auth.controller.ts      # 认证
 │   │   │   ├── users.controller.ts     # 用户管理
@@ -35,55 +36,90 @@ user-service/
 │   │   │   ├── api-keys.controller.ts  # API 密钥
 │   │   │   └── notifications.controller.ts  # 通知
 │   │   └── dto/                # DTO 定义
-│   ├── core/                   # 核心逻辑
-│   │   ├── auth/               # 认证模块
-│   │   │   ├── jwt.strategy.ts
-│   │   │   ├── oauth.strategy.ts
-│   │   │   └── guard/
-│   │   ├── user/               # 用户模块
-│   │   │   ├── user.service.ts
-│   │   │   ├── user.repository.ts
-│   │   │   └── user.validator.ts
-│   │   ├── config/             # 配置模块
-│   │   │   ├── config.service.ts
-│   │   │   ├── config.repository.ts
-│   │   │   └── config.validator.ts
-│   │   └── api-key/           # API 密钥模块
-│   │       ├── api-key.service.ts
-│   │       ├── api-key.repository.ts
-│   │       └── api-key.generator.ts
-│   ├── entities/               # 数据实体
+│   ├── service/                # 业务服务
+│   │   ├── auth.service.ts     # 认证服务
+│   │   ├── user.service.ts     # 用户服务
+│   │   ├── config.service.ts   # 配置服务
+│   │   ├── api-key.service.ts  # API 密钥服务
+│   │   ├── notification.service.ts  # 通知服务
+│   │   └── email.service.ts    # 邮件服务
+│   ├── entity/                 # 数据实体 (TypeORM)
 │   │   ├── user.entity.ts
 │   │   ├── config.entity.ts
 │   │   ├── api-key.entity.ts
 │   │   ├── notification.entity.ts
 │   │   └── preference.entity.ts
-│   ├── services/               # 业务服务
-│   │   ├── auth.service.ts
-│   │   ├── user.service.ts
-│   │   ├── config.service.ts
-│   │   ├── api-key.service.ts
-│   │   ├── notification.service.ts
-│   │   └── email.service.ts
-│   ├── subscribers/            # 事件订阅
-│   │   ├── user.subscriber.ts
-│   │   └── config.subscriber.ts
-│   ├── tasks/                  # 定时任务
-│   │   ├── cleanup-tasks.ts
-│   │   └── notification-tasks.ts
-│   └── utils/                  # 工具类
-│       ├── logger.ts
-│       ├── config.ts
-│       ├── validator.ts
+│   ├── middleware/             # 中间件
+│   │   ├── auth.middleware.ts
+│   │   └── jwt.middleware.ts
+│   ├── guard/                  # 守卫
+│   │   ├── auth.guard.ts
+│   │   └── permission.guard.ts
+│   ├── filter/                 # 异常过滤器
+│   │   └── default.filter.ts
+│   ├── decorator/              # 自定义装饰器
+│   │   ├── user.decorator.ts
+│   │   └── permission.decorator.ts
+│   ├── task/                   # 定时任务
+│   │   ├── cleanup.task.ts
+│   │   └── notification.task.ts
+│   └── util/                   # 工具类
 │       ├── crypto.ts
+│       ├── validator.ts
 │       └── email.ts
-├── tests/                      # 测试
-├── config/                     # 配置文件
+├── src/config/                 # Midway 配置文件
+│   ├── config.default.ts       # 默认配置
+│   ├── config.local.ts         # 本地开发配置
+│   └── config.prod.ts          # 生产环境配置
+├── test/                       # 测试
 ├── scripts/                    # 脚本
+├── bootstrap.js                # Midway 启动文件
 ├── Dockerfile
 ├── docker-compose.yml
 ├── package.json
 └── tsconfig.json
+```
+
+### 2. 核心依赖 (package.json)
+
+```json
+{
+  "name": "user-service",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "cross-env NODE_ENV=local midway-bin dev --ts",
+    "build": "midway-bin build -c",
+    "start": "NODE_ENV=production node bootstrap.js",
+    "test": "midway-bin test --ts"
+  },
+  "dependencies": {
+    "@midwayjs/bootstrap": "^3.14.0",
+    "@midwayjs/core": "^3.14.0",
+    "@midwayjs/decorator": "^3.14.0",
+    "@midwayjs/koa": "^3.14.0",
+    "@midwayjs/typeorm": "^3.14.0",
+    "@midwayjs/redis": "^3.14.0",
+    "@midwayjs/jwt": "^3.14.0",
+    "@midwayjs/passport": "^3.14.0",
+    "@midwayjs/task": "^3.14.0",
+    "@midwayjs/validate": "^3.14.0",
+    "typeorm": "^0.3.17",
+    "pg": "^8.11.3",
+    "ioredis": "^5.3.2",
+    "bcrypt": "^5.1.1",
+    "nodemailer": "^6.9.8",
+    "@sendgrid/mail": "^8.1.0",
+    "prom-client": "^15.1.0"
+  },
+  "devDependencies": {
+    "@midwayjs/cli": "^2.1.0",
+    "@types/node": "^20.10.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/nodemailer": "^6.4.14",
+    "cross-env": "^7.0.3",
+    "typescript": "~5.3.0"
+  }
+}
 ```
 
 ### 2. 数据模型
@@ -860,71 +896,114 @@ CREATE TABLE notification_history (
 
 ### 1. 环境配置
 
-```yaml
-# config/config.yaml
-app:
-  name: "user-service"
-  env: "production"
-  debug: false
-  port: 3001
+```typescript
+// src/config/config.default.ts
+import { MidwayConfig } from '@midwayjs/core';
 
-database:
-  postgres:
-    host: "postgres"
-    port: 5432
-    database: "user_db"
-    user: "user_user"
-    password: "${DB_PASSWORD}"
+export default {
+  keys: 'user-service-secret-key',
+  koa: {
+    port: 3001,
+  },
 
-redis:
-  host: "redis"
-  port: 6379
-  db: 0
+  // TypeORM 数据库配置
+  typeorm: {
+    dataSource: {
+      default: {
+        type: 'postgres',
+        host: process.env.DB_HOST || 'postgres',
+        port: 5432,
+        database: 'user_db',
+        username: 'user_user',
+        password: process.env.DB_PASSWORD,
+        synchronize: false,
+        logging: false,
+        entities: ['**/entity/**/*.entity{.ts,.js}'],
+      },
+    },
+  },
 
-jwt:
-  secret: "${JWT_SECRET}"
-  access_token_expires_in: "1h"
-  refresh_token_expires_in: "7d"
+  // Redis 配置
+  redis: {
+    client: {
+      host: process.env.REDIS_HOST || 'redis',
+      port: 6379,
+      db: 0,
+    },
+  },
 
-oauth:
-  google:
-    client_id: "${GOOGLE_CLIENT_ID}"
-    client_secret: "${GOOGLE_CLIENT_SECRET}"
-    callback_url: "${GOOGLE_CALLBACK_URL}"
-  github:
-    client_id: "${GITHUB_CLIENT_ID}"
-    client_secret: "${GITHUB_CLIENT_SECRET}"
-    callback_url: "${GITHUB_CALLBACK_URL}"
+  // JWT 配置
+  jwt: {
+    secret: process.env.JWT_SECRET,
+    expiresIn: '1h',
+    refreshExpiresIn: '7d',
+  },
 
-email:
-  provider: "sendgrid"  # sendgrid, smtp
-  sendgrid_api_key: "${SENDGRID_API_KEY}"
-  from_email: "noreply@autotrader.com"
-  from_name: "Auto Trader"
-  smtp:
-    host: "${SMTP_HOST}"
-    port: 587
-    user: "${SMTP_USER}"
-    pass: "${SMTP_PASS}"
+  // Passport 配置 (OAuth)
+  passport: {
+    session: false,
+  },
 
-password:
-  min_length: 8
-  require_uppercase: true
-  require_lowercase: true
-  require_numbers: true
-  require_special: true
+  // 邮件配置
+  email: {
+    provider: 'sendgrid',
+    sendgridApiKey: process.env.SENDGRID_API_KEY,
+    fromEmail: 'noreply@autotrader.com',
+    fromName: 'Auto Trader',
+    smtp: {
+      host: process.env.SMTP_HOST,
+      port: 587,
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  },
 
-rate_limit:
-  login: 5  # 5次/分钟
-  register: 3  # 3次/小时
-  reset_password: 3  # 3次/小时
+  // 密码配置
+  password: {
+    minLength: 8,
+    requireUppercase: true,
+    requireLowercase: true,
+    requireNumbers: true,
+    requireSpecial: true,
+    hashRounds: 12,
+  },
 
-security:
-  password_hash_rounds: 12
-  api_key_length: 32
-  api_secret_length: 64
-  email_verification_token_expires_in: "24h"
-  password_reset_token_expires_in: "1h"
+  // 速率限制
+  rateLimit: {
+    login: 5,           // 5次/分钟
+    register: 3,        // 3次/小时
+    resetPassword: 3,   // 3次/小时
+  },
+
+  // 安全配置
+  security: {
+    apiKeyLength: 32,
+    apiSecretLength: 64,
+    emailVerificationTokenExpiresIn: '24h',
+    passwordResetTokenExpiresIn: '1h',
+  },
+} as MidwayConfig;
+```
+
+```typescript
+// src/config/config.local.ts (本地开发配置)
+import { MidwayConfig } from '@midwayjs/core';
+
+export default {
+  typeorm: {
+    dataSource: {
+      default: {
+        host: 'localhost',
+        logging: true,
+      },
+    },
+  },
+  redis: {
+    client: {
+      host: 'localhost',
+    },
+  },
+} as MidwayConfig;
 ```
 
 ### 2. 配置类型定义
@@ -1092,14 +1171,14 @@ export class EmailService {
 ### 1. Docker 部署
 
 ```dockerfile
-# Dockerfile
-FROM node:20-alpine
+# Dockerfile (Midway.js)
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 # 安装依赖
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # 复制源代码
 COPY . .
@@ -1107,11 +1186,31 @@ COPY . .
 # 构建
 RUN npm run build
 
+# 生产镜像
+FROM node:20-alpine
+
+WORKDIR /app
+
+# 只安装生产依赖
+COPY package*.json ./
+RUN npm ci --only=production
+
+# 复制构建产物
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/bootstrap.js ./
+
 # 暴露端口
 EXPOSE 3001
 
-# 启动
-CMD ["node", "dist/main.js"]
+# 启动 Midway 应用
+CMD ["node", "bootstrap.js"]
+```
+
+```javascript
+// bootstrap.js - Midway 启动文件
+const { Bootstrap } = require('@midwayjs/bootstrap');
+
+Bootstrap.run();
 ```
 
 ### 2. Docker Compose
@@ -1417,7 +1516,8 @@ export class NotificationService {
 
 ## 参考文档
 
-- [NestJS 文档](https://docs.nestjs.com/)
+- [Midway.js 文档](https://midwayjs.org/)
+- [Midway.js GitHub](https://github.com/midwayjs/midway)
 - [TypeScript 文档](https://www.typescriptlang.org/docs/)
 - [PostgreSQL 文档](https://www.postgresql.org/docs/)
 - [JWT 文档](https://jwt.io/)

@@ -13,7 +13,7 @@
 ## 技术栈
 
 - **语言**: Node.js 20+
-- **框架**: NestJS + TypeScript
+- **框架**: Midway.js 3.x + TypeScript
 - **前端**: React 18 + Ant Design
 - **数据库**: PostgreSQL (管理数据), Redis (缓存)
 - **消息队列**: NATS (系统事件)
@@ -28,7 +28,8 @@
 ```
 admin-service/
 ├── src/
-│   ├── api/                    # REST API 层
+│   ├── configuration.ts        # Midway 应用配置入口
+│   ├── controller/             # 控制器层
 │   │   ├── v1/
 │   │   │   ├── system/         # 系统管理
 │   │   │   │   ├── monitor.controller.ts
@@ -55,7 +56,7 @@ admin-service/
 │   │   │       ├── analytics.controller.ts
 │   │   │       └── export.controller.ts
 │   │   └── dto/                # DTO 定义
-│   ├── core/                   # 核心逻辑
+│   ├── service/                # 服务层
 │   │   ├── system/             # 系统模块
 │   │   │   ├── monitor.service.ts
 │   │   │   ├── config.service.ts
@@ -80,7 +81,7 @@ admin-service/
 │   │       ├── dashboard.service.ts
 │   │       ├── analytics.service.ts
 │   │       └── export.service.ts
-│   ├── entities/               # 数据实体
+│   ├── entity/                 # 数据实体 (TypeORM)
 │   │   ├── system/
 │   │   │   ├── system-config.entity.ts
 │   │   │   ├── system-log.entity.ts
@@ -98,28 +99,33 @@ admin-service/
 │   │   └── report/
 │   │       ├── dashboard-widget.entity.ts
 │   │       └── report-template.entity.ts
-│   ├── services/               # 业务服务
-│   │   ├── system.service.ts
-│   │   ├── user.service.ts
-│   │   ├── strategy.service.ts
-│   │   ├── risk.service.ts
-│   │   ├── trading.service.ts
-│   │   ├── report.service.ts
-│   │   └── notification.service.ts
-│   ├── subscribers/            # 事件订阅
-│   │   ├── system.subscriber.ts
-│   │   ├── user.subscriber.ts
-│   │   └── trading.subscriber.ts
-│   ├── tasks/                  # 定时任务
-│   │   ├── system-tasks.ts
-│   │   ├── report-tasks.ts
-│   │   └── cleanup-tasks.ts
-│   └── utils/                  # 工具类
+│   ├── middleware/             # 中间件
+│   │   ├── auth.middleware.ts
+│   │   ├── logger.middleware.ts
+│   │   └── permission.middleware.ts
+│   ├── filter/                 # 异常过滤器
+│   │   └── default.filter.ts
+│   ├── decorator/              # 自定义装饰器
+│   │   ├── permission.decorator.ts
+│   │   └── roles.decorator.ts
+│   ├── queue/                  # 队列任务
+│   │   ├── system.queue.ts
+│   │   ├── report.queue.ts
+│   │   └── cleanup.queue.ts
+│   ├── task/                   # 定时任务
+│   │   ├── system.task.ts
+│   │   ├── report.task.ts
+│   │   └── cleanup.task.ts
+│   └── util/                   # 工具类
 │       ├── logger.ts
-│       ├── config.ts
 │       ├── validator.ts
 │       ├── export.ts
 │       └── chart.ts
+├── src/config/                 # Midway 配置文件
+│   ├── config.default.ts       # 默认配置
+│   ├── config.local.ts         # 本地开发配置
+│   ├── config.prod.ts          # 生产环境配置
+│   └── config.unittest.ts      # 单元测试配置
 ├── web/                        # 前端应用
 │   ├── src/
 │   │   ├── components/         # 组件
@@ -131,16 +137,55 @@ admin-service/
 │   │   └── styles/             # 样式
 │   ├── public/                 # 静态资源
 │   └── package.json
-├── tests/                      # 测试
-├── config/                     # 配置文件
+├── test/                       # 测试
 ├── scripts/                    # 脚本
+├── bootstrap.js                # Midway 启动文件
 ├── Dockerfile
 ├── docker-compose.yml
 ├── package.json
 └── tsconfig.json
 ```
 
-### 2. 权限架构
+### 2. 核心依赖 (package.json)
+
+```json
+{
+  "name": "admin-service",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "cross-env NODE_ENV=local midway-bin dev --ts",
+    "build": "midway-bin build -c",
+    "start": "NODE_ENV=production node bootstrap.js",
+    "test": "midway-bin test --ts",
+    "lint": "eslint --ext .ts src/"
+  },
+  "dependencies": {
+    "@midwayjs/bootstrap": "^3.14.0",
+    "@midwayjs/core": "^3.14.0",
+    "@midwayjs/decorator": "^3.14.0",
+    "@midwayjs/koa": "^3.14.0",
+    "@midwayjs/typeorm": "^3.14.0",
+    "@midwayjs/redis": "^3.14.0",
+    "@midwayjs/jwt": "^3.14.0",
+    "@midwayjs/task": "^3.14.0",
+    "@midwayjs/validate": "^3.14.0",
+    "@midwayjs/logger": "^3.14.0",
+    "typeorm": "^0.3.17",
+    "pg": "^8.11.3",
+    "ioredis": "^5.3.2",
+    "prom-client": "^15.1.0",
+    "exceljs": "^4.4.0"
+  },
+  "devDependencies": {
+    "@midwayjs/cli": "^2.1.0",
+    "@types/node": "^20.10.0",
+    "cross-env": "^7.0.3",
+    "typescript": "~5.3.0"
+  }
+}
+```
+
+### 3. 权限架构
 
 #### 角色定义
 ```typescript
@@ -888,62 +933,118 @@ CREATE TABLE risk_violations (
 
 ### 1. 环境配置
 
-```yaml
-# config/config.yaml
-app:
-  name: "admin-service"
-  env: "production"
-  debug: false
-  port: 3002
-  web_port: 8080
+```typescript
+// src/config/config.default.ts
+import { MidwayConfig } from '@midwayjs/core';
 
-database:
-  postgres:
-    host: "postgres"
-    port: 5432
-    database: "admin_db"
-    user: "admin_user"
-    password: "${DB_PASSWORD}"
+export default {
+  // 应用配置
+  keys: 'admin-service-secret-key',
+  koa: {
+    port: 3002,
+  },
 
-redis:
-  host: "redis"
-  port: 6379
-  db: 0
+  // TypeORM 数据库配置
+  typeorm: {
+    dataSource: {
+      default: {
+        type: 'postgres',
+        host: process.env.DB_HOST || 'postgres',
+        port: 5432,
+        database: 'admin_db',
+        username: 'admin_user',
+        password: process.env.DB_PASSWORD,
+        synchronize: false,
+        logging: false,
+        entities: ['**/entity/**/*.entity{.ts,.js}'],
+      },
+    },
+  },
 
-nats:
-  url: "nats://nats:4222"
+  // Redis 配置
+  redis: {
+    client: {
+      host: process.env.REDIS_HOST || 'redis',
+      port: 6379,
+      db: 0,
+    },
+  },
 
-jwt:
-  secret: "${JWT_SECRET}"
-  access_token_expires_in: "1h"
+  // JWT 配置
+  jwt: {
+    secret: process.env.JWT_SECRET,
+    expiresIn: '1h',
+  },
 
-auth:
-  admin_users:
-    - email: "admin@autotrader.com"
-      password: "${ADMIN_PASSWORD}"
-      role: "super_admin"
-      name: "Super Admin"
+  // 定时任务配置
+  task: {
+    prefix: 'admin-task',
+    defaultJobOptions: {
+      repeat: {
+        tz: 'Asia/Shanghai',
+      },
+    },
+  },
 
-elasticsearch:
-  host: "elasticsearch"
-  port: 9200
+  // 导出配置
+  export: {
+    tempDir: '/tmp/exports',
+    maxFileSize: '100MB',
+    retentionDays: 30,
+  },
 
-prometheus:
-  host: "prometheus"
-  port: 9090
+  // 速率限制
+  rateLimit: {
+    api: 100,     // 100次/分钟
+    export: 10,   // 10次/小时
+  },
+} as MidwayConfig;
+```
 
-grafana:
-  host: "grafana"
-  port: 3000
+```typescript
+// src/config/config.local.ts (本地开发配置)
+import { MidwayConfig } from '@midwayjs/core';
 
-export:
-  temp_dir: "/tmp/exports"
-  max_file_size: "100MB"
-  retention_days: 30
+export default {
+  typeorm: {
+    dataSource: {
+      default: {
+        host: 'localhost',
+        logging: true,
+      },
+    },
+  },
+  redis: {
+    client: {
+      host: 'localhost',
+    },
+  },
+} as MidwayConfig;
+```
 
-rate_limit:
-  api: 100  # 100次/分钟
-  export: 10  # 10次/小时
+```typescript
+// src/config/config.prod.ts (生产环境配置)
+import { MidwayConfig } from '@midwayjs/core';
+
+export default {
+  koa: {
+    port: 3002,
+  },
+  typeorm: {
+    dataSource: {
+      default: {
+        host: process.env.DB_HOST || 'postgres',
+        password: process.env.DB_PASSWORD,
+      },
+    },
+  },
+  elasticsearch: {
+    node: process.env.ES_HOST || 'http://elasticsearch:9200',
+  },
+  nats: {
+    servers: [process.env.NATS_URL || 'nats://nats:4222'],
+  },
+} as MidwayConfig;
 ```
 
 ### 2. 仪表板配置
@@ -1295,14 +1396,14 @@ export default UserList;
 ### 1. Docker 部署
 
 ```dockerfile
-# Dockerfile (后端)
-FROM node:20-alpine
+# Dockerfile (后端 - Midway.js)
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 # 安装依赖
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # 复制源代码
 COPY . .
@@ -1310,11 +1411,31 @@ COPY . .
 # 构建
 RUN npm run build
 
+# 生产镜像
+FROM node:20-alpine
+
+WORKDIR /app
+
+# 只安装生产依赖
+COPY package*.json ./
+RUN npm ci --only=production
+
+# 复制构建产物
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/bootstrap.js ./
+
 # 暴露端口
 EXPOSE 3002
 
-# 启动
-CMD ["node", "dist/main.js"]
+# 启动 Midway 应用
+CMD ["node", "bootstrap.js"]
+```
+
+```javascript
+// bootstrap.js - Midway 启动文件
+const { Bootstrap } = require('@midwayjs/bootstrap');
+
+Bootstrap.run();
 ```
 
 ```dockerfile
@@ -1435,112 +1556,157 @@ volumes:
 ### 1. 日志配置
 
 ```typescript
-// src/utils/logger.ts
-import winston from 'winston';
-import ElasticsearchTransport from 'winston-elasticsearch';
-
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    // 文件日志
-    new winston.transports.File({
-      filename: '/app/logs/admin-error.log',
-      level: 'error'
-    }),
-    new winston.transports.File({
-      filename: '/app/logs/admin-combined.log'
-    }),
-    // Elasticsearch 日志
-    new ElasticsearchTransport({
+// src/config/config.default.ts 中的日志配置
+export default {
+  midwayLogger: {
+    default: {
       level: 'info',
-      clientOpts: { node: 'http://elasticsearch:9200' },
-      index: 'admin-logs'
-    })
-  ]
-});
+      consoleLevel: 'info',
+    },
+    clients: {
+      coreLogger: {
+        level: 'warn',
+      },
+      appLogger: {
+        level: 'info',
+        fileLogName: 'admin-app.log',
+      },
+    },
+  },
+} as MidwayConfig;
+```
 
-// 开发环境添加控制台输出
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple()
-    )
-  }));
+```typescript
+// src/middleware/logger.middleware.ts
+import { Middleware, IMiddleware, Inject } from '@midwayjs/core';
+import { Context, NextFunction } from '@midwayjs/koa';
+import { ILogger } from '@midwayjs/logger';
+
+@Middleware()
+export class LoggerMiddleware implements IMiddleware<Context, NextFunction> {
+  @Inject()
+  logger: ILogger;
+
+  resolve() {
+    return async (ctx: Context, next: NextFunction) => {
+      const startTime = Date.now();
+
+      await next();
+
+      const responseTime = Date.now() - startTime;
+      this.logger.info(`${ctx.method} ${ctx.url} ${ctx.status} - ${responseTime}ms`);
+    };
+  }
+
+  static getName() {
+    return 'logger';
+  }
 }
-
-export default logger;
 ```
 
 ### 2. 指标监控
 
 ```typescript
-// src/utils/metrics.ts
-import promClient from 'prom-client';
+// src/service/system/metrics.service.ts
+import { Provide, Init, Scope, ScopeEnum } from '@midwayjs/core';
+import * as promClient from 'prom-client';
 
-export const metrics = {
+@Provide()
+@Scope(ScopeEnum.Singleton)
+export class MetricsService {
+  private registry: promClient.Registry;
+
   // 系统指标
-  systemCpuUsage: new promClient.Gauge({
-    name: 'admin_system_cpu_usage',
-    help: 'System CPU usage percentage'
-  }),
-
-  systemMemoryUsage: new promClient.Gauge({
-    name: 'admin_system_memory_usage',
-    help: 'System memory usage percentage'
-  }),
-
-  systemDiskUsage: new promClient.Gauge({
-    name: 'admin_system_disk_usage',
-    help: 'System disk usage percentage'
-  }),
+  systemCpuUsage: promClient.Gauge<string>;
+  systemMemoryUsage: promClient.Gauge<string>;
+  systemDiskUsage: promClient.Gauge<string>;
 
   // 业务指标
-  adminUsers: new promClient.Gauge({
-    name: 'admin_users_total',
-    help: 'Total number of admin users'
-  }),
-
-  adminLogins: new promClient.Counter({
-    name: 'admin_logins_total',
-    help: 'Total number of admin logins'
-  }),
+  adminUsers: promClient.Gauge<string>;
+  adminLogins: promClient.Counter<string>;
 
   // API 指标
-  apiRequests: new promClient.Counter({
-    name: 'admin_api_requests_total',
-    help: 'Total number of API requests',
-    labelNames: ['method', 'path', 'status']
-  }),
-
-  apiResponseTime: new promClient.Histogram({
-    name: 'admin_api_response_time_seconds',
-    help: 'API response time in seconds',
-    labelNames: ['method', 'path'],
-    buckets: [0.01, 0.05, 0.1, 0.5, 1, 5]
-  }),
+  apiRequests: promClient.Counter<string>;
+  apiResponseTime: promClient.Histogram<string>;
 
   // 导出指标
-  exportsCreated: new promClient.Counter({
-    name: 'admin_exports_created_total',
-    help: 'Total number of exports created'
-  }),
+  exportsCreated: promClient.Counter<string>;
+  exportsCompleted: promClient.Counter<string>;
+  exportsFailed: promClient.Counter<string>;
 
-  exportsCompleted: new promClient.Counter({
-    name: 'admin_exports_completed_total',
-    help: 'Total number of exports completed'
-  }),
+  @Init()
+  async init() {
+    this.registry = new promClient.Registry();
+    promClient.collectDefaultMetrics({ register: this.registry });
 
-  exportsFailed: new promClient.Counter({
-    name: 'admin_exports_failed_total',
-    help: 'Total number of exports failed'
-  })
-};
+    this.systemCpuUsage = new promClient.Gauge({
+      name: 'admin_system_cpu_usage',
+      help: 'System CPU usage percentage',
+      registers: [this.registry],
+    });
+
+    this.systemMemoryUsage = new promClient.Gauge({
+      name: 'admin_system_memory_usage',
+      help: 'System memory usage percentage',
+      registers: [this.registry],
+    });
+
+    this.apiRequests = new promClient.Counter({
+      name: 'admin_api_requests_total',
+      help: 'Total number of API requests',
+      labelNames: ['method', 'path', 'status'],
+      registers: [this.registry],
+    });
+
+    this.apiResponseTime = new promClient.Histogram({
+      name: 'admin_api_response_time_seconds',
+      help: 'API response time in seconds',
+      labelNames: ['method', 'path'],
+      buckets: [0.01, 0.05, 0.1, 0.5, 1, 5],
+      registers: [this.registry],
+    });
+
+    this.adminLogins = new promClient.Counter({
+      name: 'admin_logins_total',
+      help: 'Total number of admin logins',
+      registers: [this.registry],
+    });
+
+    this.exportsCreated = new promClient.Counter({
+      name: 'admin_exports_created_total',
+      help: 'Total number of exports created',
+      registers: [this.registry],
+    });
+
+    this.exportsCompleted = new promClient.Counter({
+      name: 'admin_exports_completed_total',
+      help: 'Total number of exports completed',
+      registers: [this.registry],
+    });
+  }
+
+  async getMetrics(): Promise<string> {
+    return this.registry.metrics();
+  }
+}
+```
+
+```typescript
+// src/controller/metrics.controller.ts
+import { Controller, Get, Inject, ContentType } from '@midwayjs/core';
+import { MetricsService } from '../service/system/metrics.service';
+
+@Controller('/metrics')
+export class MetricsController {
+  @Inject()
+  metricsService: MetricsService;
+
+  @Get('/')
+  @ContentType('text/plain')
+  async getMetrics(): Promise<string> {
+    return await this.metricsService.getMetrics();
+  }
+}
 ```
 
 ## 测试
@@ -1565,11 +1731,64 @@ npm run test:e2e
 
 ## 开发指南
 
-### 1. 添加新仪表板组件
+### 1. 应用配置入口
 
 ```typescript
-// src/core/report/dashboard.service.ts
+// src/configuration.ts
+import { Configuration, App } from '@midwayjs/core';
+import * as koa from '@midwayjs/koa';
+import * as typeorm from '@midwayjs/typeorm';
+import * as redis from '@midwayjs/redis';
+import * as jwt from '@midwayjs/jwt';
+import * as task from '@midwayjs/task';
+import * as validate from '@midwayjs/validate';
+import { join } from 'path';
+import { DefaultErrorFilter } from './filter/default.filter';
+import { AuthMiddleware } from './middleware/auth.middleware';
+import { LoggerMiddleware } from './middleware/logger.middleware';
+
+@Configuration({
+  imports: [
+    koa,
+    typeorm,
+    redis,
+    jwt,
+    task,
+    validate,
+  ],
+  importConfigs: [join(__dirname, './config')],
+})
+export class MainConfiguration {
+  @App('koa')
+  app: koa.Application;
+
+  async onReady() {
+    // 添加中间件
+    this.app.useMiddleware([LoggerMiddleware, AuthMiddleware]);
+    // 添加异常过滤器
+    this.app.useFilter([DefaultErrorFilter]);
+  }
+}
+```
+
+### 2. 添加新仪表板组件
+
+```typescript
+// src/service/report/dashboard.service.ts
+import { Provide, Inject } from '@midwayjs/core';
+import { InjectEntityModel } from '@midwayjs/typeorm';
+import { Repository } from 'typeorm';
+import { AdminUser } from '../../entity/user/admin-user.entity';
+import { StrategyTemplate } from '../../entity/strategy/strategy-template.entity';
+
+@Provide()
 export class DashboardService {
+  @InjectEntityModel(AdminUser)
+  userRepository: Repository<AdminUser>;
+
+  @InjectEntityModel(StrategyTemplate)
+  strategyRepository: Repository<StrategyTemplate>;
+
   async getWidgetData(widgetId: string, params: any): Promise<any> {
     switch (widgetId) {
       case 'system_overview':
@@ -1613,11 +1832,18 @@ export class DashboardService {
 }
 ```
 
-### 2. 添加新导出格式
+### 3. 添加新导出格式
 
 ```typescript
-// src/utils/export.ts
+// src/service/report/export.service.ts
+import { Provide, Config } from '@midwayjs/core';
+import * as ExcelJS from 'exceljs';
+
+@Provide()
 export class ExportService {
+  @Config('export')
+  exportConfig: { tempDir: string; maxFileSize: string; retentionDays: number };
+
   async exportData(format: string, data: any, config: any): Promise<string> {
     switch (format) {
       case 'excel':
@@ -1634,7 +1860,6 @@ export class ExportService {
   }
 
   private async exportToExcel(data: any, config: any): Promise<string> {
-    const ExcelJS = require('exceljs');
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Data');
 
@@ -1648,10 +1873,67 @@ export class ExportService {
 
     // 保存文件
     const filename = `export_${Date.now()}.xlsx`;
-    const filepath = `/app/exports/${filename}`;
+    const filepath = `${this.exportConfig.tempDir}/${filename}`;
     await workbook.xlsx.writeFile(filepath);
 
     return filename;
+  }
+}
+```
+
+### 4. 控制器示例
+
+```typescript
+// src/controller/v1/system/health.controller.ts
+import { Controller, Get, Inject } from '@midwayjs/core';
+import { Context } from '@midwayjs/koa';
+import { HealthService } from '../../../service/system/health.service';
+
+@Controller('/api/v1/system')
+export class HealthController {
+  @Inject()
+  ctx: Context;
+
+  @Inject()
+  healthService: HealthService;
+
+  @Get('/health')
+  async getHealth() {
+    return await this.healthService.checkHealth();
+  }
+
+  @Get('/metrics')
+  async getMetrics() {
+    return await this.healthService.getMetrics();
+  }
+}
+```
+
+### 5. 定时任务示例
+
+```typescript
+// src/task/cleanup.task.ts
+import { Provide, Task, TaskLocal } from '@midwayjs/task';
+import { Inject } from '@midwayjs/core';
+import { ILogger } from '@midwayjs/logger';
+
+@Provide()
+export class CleanupTask {
+  @Inject()
+  logger: ILogger;
+
+  // 每天凌晨 3 点执行
+  @Task('0 0 3 * * *')
+  async cleanExpiredExports() {
+    this.logger.info('开始清理过期导出文件...');
+    // 清理逻辑
+  }
+
+  // 每小时执行一次
+  @Task('0 0 * * * *')
+  async cleanExpiredSessions() {
+    this.logger.info('开始清理过期会话...');
+    // 清理逻辑
   }
 }
 ```
@@ -1718,7 +2000,8 @@ export class ExportService {
 
 ## 参考文档
 
-- [NestJS 文档](https://docs.nestjs.com/)
+- [Midway.js 文档](https://midwayjs.org/)
+- [Midway.js GitHub](https://github.com/midwayjs/midway)
 - [React 文档](https://react.dev/)
 - [Ant Design 文档](https://ant.design/)
 - [klinecharts](https://github.com/klinecharts/KLineChart)
