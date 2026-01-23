@@ -1,0 +1,54 @@
+{
+  "name": "auto-trader",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Virtual currency quantitative trading server",
+  "keywords": [
+    "quant",
+    "indicator",
+    "strategy",
+    "trader"
+  ],
+  "author": "hubo9@qq.com",
+  "homepage": "https://github.com/H-jx/auto-trader.git",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/H-jx/auto-trader.git"
+  },
+  "license": "GPL-3.0-or-later",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+   "scripts": {
+    "publish": "pnpm -r publish",
+    "publish:canary": "pnpm -r publish --tag canary",
+    "add": "pnpm --filter <scope> add <package>",
+    "clean": "rm -rf node_modules && pnpm -r exec -- rm -rf node_modules",
+    "lint": "pnpm -r run lint",
+    "test": "pnpm -r run test",
+    "build": "pnpm -r run build",
+    "version": "pnpm -r version",
+    "version:patch": "pnpm -r version patch",
+    "version:minor": "pnpm -r version minor",
+    "version:major": "pnpm -r version major",
+    "diff": "git diff",
+    "exec": "pnpm -r exec -- <command>"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.13.3",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "babel-jest": "^29.7.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.2",
+    "eslint-plugin-jest": "^28.14.0",
+    "eslint-plugin-prettier": "^5.5.4",
+    "jest": "^29.7.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.9.3",
+    "ts-jest": "^29.4.1",
+    "ts-node": "^10.9.2",
+    "turbo": "^2.5.5"
+  }
+}
