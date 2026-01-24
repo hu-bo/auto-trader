@@ -10,6 +10,7 @@ import type {
   KLineData,
   ChartActionType,
   ChartActionCallback,
+  TradeMarker,
 } from '../types'
 import { DEFAULT_PERIODS, getDefaultMainIndicators, getDefaultSubIndicators } from './defaults'
 import { darkTheme, lightTheme } from '../themes'
@@ -30,6 +31,7 @@ export class KLineChartPro {
   private subPaneIds: Map<string, string> = new Map()
   private isLoading = false
   private actionCallbacks: Map<ChartActionType, Set<ChartActionCallback>> = new Map()
+  private markerGroupId = 'trade_markers'
 
   constructor(options: KLineChartProOptions) {
     const containerElement =
@@ -297,6 +299,55 @@ export class KLineChartPro {
 
   removeOverlay(overlayId?: string | { id?: string; groupId?: string; name?: string }): void {
     this.chart?.removeOverlay(overlayId)
+  }
+
+  setMarkers(markers: TradeMarker[]): void {
+    if (!this.chart) return
+
+    this.clearMarkers()
+
+    markers.forEach((marker) => {
+      const defaultColor = marker.color || '#1677FF'
+      const position = marker.position || 'above'
+
+      this.chart?.createOverlay({
+        name: 'simpleAnnotation',
+        groupId: this.markerGroupId,
+        points: [{ timestamp: marker.timestamp }],
+        extendData: marker.text,
+        styles: {
+          point: {
+            color: defaultColor,
+            borderColor: defaultColor,
+            borderSize: 1,
+            radius: 3,
+            activeColor: defaultColor,
+            activeBorderColor: defaultColor,
+            activeBorderSize: 1,
+            activeRadius: 4,
+          },
+          line: {
+            color: defaultColor,
+          },
+          text: {
+            color: defaultColor,
+            size: 12,
+            weight: 'normal',
+            paddingLeft: 4,
+            paddingRight: 4,
+            paddingTop: 2,
+            paddingBottom: 2,
+            borderRadius: 2,
+            backgroundColor: 'transparent',
+          },
+          ...(position === 'below' ? { position: 'bottom' } : {}),
+        },
+      } as OverlayCreate)
+    })
+  }
+
+  clearMarkers(): void {
+    this.chart?.removeOverlay({ groupId: this.markerGroupId })
   }
 
   subscribeAction(type: ChartActionType, callback: ChartActionCallback): void {

@@ -14,6 +14,13 @@ export interface KLineData extends BaseKLineData {
   turnover?: number
 }
 
+export interface TradeMarker {
+  timestamp: number
+  text: string
+  color?: string
+  position?: 'above' | 'below'
+}
+
 export interface SymbolInfo {
   ticker: string
   name?: string
@@ -128,6 +135,8 @@ export interface KLineChartInstance {
   removeIndicator: (paneId: string, name?: string) => void
   createOverlay: (overlay: string | OverlayCreate, paneId?: string) => string | null
   removeOverlay: (overlayId?: string | { id?: string; groupId?: string; name?: string }) => void
+  setMarkers: (markers: TradeMarker[]) => void
+  clearMarkers: () => void
   subscribeAction: (type: ChartActionType, callback: ChartActionCallback) => void
   unsubscribeAction: (type: ChartActionType, callback?: ChartActionCallback) => void
   searchSymbols: (search: string) => Promise<SymbolInfo[]>

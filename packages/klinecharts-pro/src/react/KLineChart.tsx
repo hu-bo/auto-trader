@@ -8,12 +8,14 @@ import type {
   Period,
   KLineChartInstance,
   ChartActionCallback,
+  TradeMarker,
 } from '../types'
 import type { DeepPartial, Styles } from 'klinecharts'
 
 export interface KLineChartProps extends Omit<KLineChartProOptions, 'container'> {
   className?: string
   style?: React.CSSProperties
+  markers?: TradeMarker[]
   onReady?: (chart: KLineChartPro) => void
   onSymbolChange?: (data: { oldSymbol: SymbolInfo; newSymbol: SymbolInfo }) => void
   onPeriodChange?: (data: { oldPeriod: Period; newPeriod: Period }) => void
@@ -29,6 +31,7 @@ function KLineChartInner(
   const {
     className,
     style,
+    markers,
     onReady,
     onSymbolChange,
     onPeriodChange,
@@ -141,6 +144,16 @@ function KLineChartInner(
       chartRef.current.setStyles(options.styles as DeepPartial<Styles>)
     }
   }, [options.styles])
+
+  useEffect(() => {
+    if (!chartRef.current) return
+
+    if (markers && markers.length > 0) {
+      chartRef.current.setMarkers(markers)
+    } else {
+      chartRef.current.clearMarkers()
+    }
+  }, [markers])
 
   useEffect(() => {
     const handleResize = () => {

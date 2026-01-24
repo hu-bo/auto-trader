@@ -6,6 +6,7 @@ import type {
   ThemeType,
   LocaleType,
   KLineData,
+  TradeMarker,
 } from '../types'
 import type { DeepPartial, Styles } from 'klinecharts'
 
@@ -33,6 +34,8 @@ export function createChartInstance(
     removeIndicator: (paneId, name) => getChart()?.removeIndicator(paneId, name),
     createOverlay: (overlay, paneId) => getChart()?.createOverlay(overlay, paneId) || null,
     removeOverlay: (overlayId) => getChart()?.removeOverlay(overlayId),
+    setMarkers: (markers: TradeMarker[]) => getChart()?.setMarkers(markers),
+    clearMarkers: () => getChart()?.clearMarkers(),
     subscribeAction: (type, callback) => getChart()?.subscribeAction(type, callback),
     unsubscribeAction: (type, callback) => getChart()?.unsubscribeAction(type, callback),
     searchSymbols: (search) => getChart()?.searchSymbols(search) || Promise.resolve([]),

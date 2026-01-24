@@ -50,6 +50,11 @@ function TradingChart() {
       symbol={{ ticker: 'AAPL', name: 'Apple Inc.' }}
       period={{ multiplier: 1, timespan: 'day', text: '1D' }}
       datafeed={datafeed}
+      markers={[
+        { timestamp: 1605052800000, text: 'BUY:2020-11-11', color: '#26A69A' },
+        { timestamp: 1606003200000, text: 'SELL:2020-11-22', color: '#EF5350' },
+        { timestamp: 1606608000000, text: 'HOLD', color: '#FFA500' },
+      ]}
       theme="dark"
       locale="en-US"
       onSymbolChange={(data) => console.log('Symbol changed:', data)}
