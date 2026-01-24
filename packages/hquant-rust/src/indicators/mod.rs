@@ -5,6 +5,7 @@ pub mod atr;
 pub mod boll;
 pub mod vri;
 pub mod dynamic;
+pub mod builder;
 
 pub use ma::{MA, MAType};
 pub use rsi::RSI;
@@ -13,6 +14,11 @@ pub use atr::ATR;
 pub use boll::BOLL;
 pub use vri::VRI;
 pub use dynamic::{DynamicIndicator, DynamicIndicatorFn, vwap, obv, mfi, williams_r, cci, roc};
+pub use builder::{
+    IndicatorBuilder,
+    MABuilder, RSIBuilder, MACDBuilder, ATRBuilder, BOLLBuilder, VRIBuilder,
+    ma, sma, ema, rsi, macd, atr, boll, vri,
+};
 
 use crate::kline::Bar;
 

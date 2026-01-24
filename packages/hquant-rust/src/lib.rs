@@ -21,12 +21,16 @@ compile_error!("ffi-python cannot be built together with ffi-go. Build one FFI t
 #[cfg(any(feature = "ffi-node", feature = "ffi-python", feature = "ffi-go"))]
 pub mod ffi;
 
-pub use common::{RingBuffer, F64RingBuffer};
+pub use common::{RingBuffer, F64RingBuffer, Float64RingBuffer, Int32RingBuffer};
 pub use kline::{Bar, KlineSeries};
 pub use indicators::{
     Indicator, IndicatorValue, PriceType,
     MA, MAType, RSI, MACD, ATR, BOLL, VRI,
     DynamicIndicator, vwap, obv, mfi, williams_r, cci, roc,
+    // Builder pattern exports
+    IndicatorBuilder,
+    MABuilder, RSIBuilder, MACDBuilder, ATRBuilder, BOLLBuilder, VRIBuilder,
+    ma, sma, ema, rsi, macd, atr, boll, vri,
 };
 pub use aggregator::{TimeFrame, Aggregator, MultiTimeFrameAggregator};
 pub use strategy::{Signal, Side, Strategy, StrategyContext, IndicatorSnapshot};
@@ -63,39 +67,62 @@ impl QuantEngine {
         }
     }
 
-    /// 添加指标
-    pub fn add_indicator(&mut self, name: impl Into<String>, indicator: Box<dyn Indicator>) {
+    /// 添加指标（使用 Builder 模式）
+    ///
+    /// # Example
+    /// ```ignore
+    /// use hquant_rust::{QuantEngine, macd, rsi, sma};
+    ///
+    /// let mut engine = QuantEngine::new(1000);
+    ///
+    /// // 使用 builder 模式添加指标
+    /// engine.add_indicator("macd", macd().fast(12).slow(26).signal(9));
+    /// engine.add_indicator("rsi", rsi().period(14));
+    /// engine.add_indicator("sma20", sma(20));
+    /// ```
+    pub fn add_indicator<B: IndicatorBuilder>(&mut self, name: impl Into<String>, builder: B) {
+        self.indicators.insert(name.into(), builder.build());
+    }
+
+    /// 添加已构建的指标（Box<dyn Indicator>）
+    pub fn add_indicator_boxed(&mut self, name: impl Into<String>, indicator: Box<dyn Indicator>) {
         self.indicators.insert(name.into(), indicator);
     }
 
     /// 添加 MA 指标
+    #[deprecated(since = "0.2.0", note = "Use add_indicator with MABuilder instead: engine.add_indicator(\"ma\", ma().period(20).ema())")]
     pub fn add_ma(&mut self, name: impl Into<String>, period: usize, ma_type: MAType) {
-        self.add_indicator(name, Box::new(MA::new(period, ma_type)));
+        self.add_indicator_boxed(name, Box::new(MA::new(period, ma_type)));
     }
 
     /// 添加 RSI 指标
+    #[deprecated(since = "0.2.0", note = "Use add_indicator with RSIBuilder instead: engine.add_indicator(\"rsi\", rsi().period(14))")]
     pub fn add_rsi(&mut self, name: impl Into<String>, period: usize) {
-        self.add_indicator(name, Box::new(RSI::new(period)));
+        self.add_indicator_boxed(name, Box::new(RSI::new(period)));
     }
 
     /// 添加 MACD 指标
+    #[deprecated(since = "0.2.0", note = "Use add_indicator with MACDBuilder instead: engine.add_indicator(\"macd\", macd().fast(12).slow(26).signal(9))")]
     pub fn add_macd(&mut self, name: impl Into<String>, fast: usize, slow: usize, signal: usize) {
-        self.add_indicator(name, Box::new(MACD::new(fast, slow, signal)));
+        self.add_indicator_boxed(name, Box::new(MACD::new(fast, slow, signal)));
     }
 
     /// 添加 ATR 指标
+    #[deprecated(since = "0.2.0", note = "Use add_indicator with ATRBuilder instead: engine.add_indicator(\"atr\", atr().period(14))")]
     pub fn add_atr(&mut self, name: impl Into<String>, period: usize) {
-        self.add_indicator(name, Box::new(ATR::new(period)));
+        self.add_indicator_boxed(name, Box::new(ATR::new(period)));
     }
 
     /// 添加 BOLL 指标
+    #[deprecated(since = "0.2.0", note = "Use add_indicator with BOLLBuilder instead: engine.add_indicator(\"boll\", boll().period(20).std_dev(2.0))")]
     pub fn add_boll(&mut self, name: impl Into<String>, period: usize, std_dev_factor: f64) {
-        self.add_indicator(name, Box::new(BOLL::new(period, std_dev_factor)));
+        self.add_indicator_boxed(name, Box::new(BOLL::new(period, std_dev_factor)));
     }
 
     /// 添加 VRI 指标
+    #[deprecated(since = "0.2.0", note = "Use add_indicator with VRIBuilder instead: engine.add_indicator(\"vri\", vri().period(14))")]
     pub fn add_vri(&mut self, name: impl Into<String>, period: usize) {
-        self.add_indicator(name, Box::new(VRI::new(period)));
+        self.add_indicator_boxed(name, Box::new(VRI::new(period)));
     }
 
     /// 添加动态指标（运行时自定义计算函数）
@@ -117,7 +144,7 @@ impl QuantEngine {
     {
         let name_str = name.into();
         let capacity = self.klines.capacity();
-        self.add_indicator(
+        self.add_indicator_boxed(
             name_str.clone(),
             Box::new(DynamicIndicator::new(name_str, min_periods, capacity, calc_fn)),
         );
@@ -126,37 +153,37 @@ impl QuantEngine {
     /// 添加预定义的 VWAP 指标
     pub fn add_vwap(&mut self, name: impl Into<String>) {
         let capacity = self.klines.capacity();
-        self.add_indicator(name, Box::new(vwap(capacity)));
+        self.add_indicator_boxed(name, Box::new(vwap(capacity)));
     }
 
     /// 添加预定义的 OBV 指标
     pub fn add_obv(&mut self, name: impl Into<String>) {
         let capacity = self.klines.capacity();
-        self.add_indicator(name, Box::new(obv(capacity)));
+        self.add_indicator_boxed(name, Box::new(obv(capacity)));
     }
 
     /// 添加预定义的 MFI 指标
     pub fn add_mfi(&mut self, name: impl Into<String>, period: usize) {
         let capacity = self.klines.capacity();
-        self.add_indicator(name, Box::new(mfi(period, capacity)));
+        self.add_indicator_boxed(name, Box::new(mfi(period, capacity)));
     }
 
     /// 添加预定义的 Williams %R 指标
     pub fn add_williams_r(&mut self, name: impl Into<String>, period: usize) {
         let capacity = self.klines.capacity();
-        self.add_indicator(name, Box::new(williams_r(period, capacity)));
+        self.add_indicator_boxed(name, Box::new(williams_r(period, capacity)));
     }
 
     /// 添加预定义的 CCI 指标
     pub fn add_cci(&mut self, name: impl Into<String>, period: usize) {
         let capacity = self.klines.capacity();
-        self.add_indicator(name, Box::new(cci(period, capacity)));
+        self.add_indicator_boxed(name, Box::new(cci(period, capacity)));
     }
 
     /// 添加预定义的 ROC 指标
     pub fn add_roc(&mut self, name: impl Into<String>, period: usize) {
         let capacity = self.klines.capacity();
-        self.add_indicator(name, Box::new(roc(period, capacity)));
+        self.add_indicator_boxed(name, Box::new(roc(period, capacity)));
     }
 
     /// 添加策略

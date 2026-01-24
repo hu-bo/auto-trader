@@ -2,7 +2,10 @@ use std::sync::Mutex;
 
 use pyo3::prelude::*;
 
-use crate::{Bar, MAType, QuantEngine, Signal, Side};
+use crate::{
+    Bar, QuantEngine, Signal, Side,
+    MABuilder, RSIBuilder, MACDBuilder, ATRBuilder, BOLLBuilder, VRIBuilder,
+};
 
 fn to_bar(bar: &PyBar) -> Bar {
     Bar {
@@ -12,18 +15,6 @@ fn to_bar(bar: &PyBar) -> Bar {
         low: bar.low,
         close: bar.close,
         volume: bar.volume,
-    }
-}
-
-fn parse_ma_type(ma_type: &str) -> PyResult<MAType> {
-    match ma_type.to_uppercase().as_str() {
-        "SMA" => Ok(MAType::SMA),
-        "EMA" => Ok(MAType::EMA),
-        "WMA" => Ok(MAType::WMA),
-        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
-            "Unknown MA type: {}",
-            other
-        ))),
     }
 }
 
@@ -85,6 +76,170 @@ pub struct PySignal {
     pub timestamp: i64,
 }
 
+// ============================================================================
+// Indicator Builders
+// ============================================================================
+
+#[pyclass]
+#[derive(Clone)]
+pub struct PyMAIndicator {
+    inner: MABuilder,
+}
+
+#[pymethods]
+impl PyMAIndicator {
+    #[new]
+    pub fn new() -> Self {
+        Self {
+            inner: MABuilder::new(),
+        }
+    }
+
+    pub fn period(&mut self, period: usize) -> Self {
+        self.inner = self.inner.clone().period(period);
+        self.clone()
+    }
+
+    pub fn sma(&mut self) -> Self {
+        self.inner = self.inner.clone().sma();
+        self.clone()
+    }
+
+    pub fn ema(&mut self) -> Self {
+        self.inner = self.inner.clone().ema();
+        self.clone()
+    }
+
+    pub fn wma(&mut self) -> Self {
+        self.inner = self.inner.clone().wma();
+        self.clone()
+    }
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct PyRSIIndicator {
+    inner: RSIBuilder,
+}
+
+#[pymethods]
+impl PyRSIIndicator {
+    #[new]
+    pub fn new() -> Self {
+        Self {
+            inner: RSIBuilder::new(),
+        }
+    }
+
+    pub fn period(&mut self, period: usize) -> Self {
+        self.inner = self.inner.clone().period(period);
+        self.clone()
+    }
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct PyMACDIndicator {
+    inner: MACDBuilder,
+}
+
+#[pymethods]
+impl PyMACDIndicator {
+    #[new]
+    pub fn new() -> Self {
+        Self {
+            inner: MACDBuilder::new(),
+        }
+    }
+
+    pub fn fast(&mut self, period: usize) -> Self {
+        self.inner = self.inner.clone().fast(period);
+        self.clone()
+    }
+
+    pub fn slow(&mut self, period: usize) -> Self {
+        self.inner = self.inner.clone().slow(period);
+        self.clone()
+    }
+
+    pub fn signal(&mut self, period: usize) -> Self {
+        self.inner = self.inner.clone().signal(period);
+        self.clone()
+    }
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct PyATRIndicator {
+    inner: ATRBuilder,
+}
+
+#[pymethods]
+impl PyATRIndicator {
+    #[new]
+    pub fn new() -> Self {
+        Self {
+            inner: ATRBuilder::new(),
+        }
+    }
+
+    pub fn period(&mut self, period: usize) -> Self {
+        self.inner = self.inner.clone().period(period);
+        self.clone()
+    }
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct PyBOLLIndicator {
+    inner: BOLLBuilder,
+}
+
+#[pymethods]
+impl PyBOLLIndicator {
+    #[new]
+    pub fn new() -> Self {
+        Self {
+            inner: BOLLBuilder::new(),
+        }
+    }
+
+    pub fn period(&mut self, period: usize) -> Self {
+        self.inner = self.inner.clone().period(period);
+        self.clone()
+    }
+
+    pub fn std_dev(&mut self, factor: f64) -> Self {
+        self.inner = self.inner.clone().std_dev(factor);
+        self.clone()
+    }
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct PyVRIIndicator {
+    inner: VRIBuilder,
+}
+
+#[pymethods]
+impl PyVRIIndicator {
+    #[new]
+    pub fn new() -> Self {
+        Self {
+            inner: VRIBuilder::new(),
+        }
+    }
+
+    pub fn period(&mut self, period: usize) -> Self {
+        self.inner = self.inner.clone().period(period);
+        self.clone()
+    }
+}
+
+// ============================================================================
+// Engine
+// ============================================================================
+
 #[pyclass]
 pub struct PyEngine {
     inner: Mutex<QuantEngine>,
@@ -99,10 +254,39 @@ impl PyEngine {
         }
     }
 
-    pub fn add_ma(&self, name: String, period: usize, ma_type: String) -> PyResult<()> {
+    pub fn add_ma_indicator(&self, name: String, indicator: &PyMAIndicator) -> PyResult<()> {
         let mut engine = self.inner.lock().unwrap();
-        let ty = parse_ma_type(&ma_type)?;
-        engine.add_ma(name, period, ty);
+        engine.add_indicator(name, indicator.inner.clone());
+        Ok(())
+    }
+
+    pub fn add_rsi_indicator(&self, name: String, indicator: &PyRSIIndicator) -> PyResult<()> {
+        let mut engine = self.inner.lock().unwrap();
+        engine.add_indicator(name, indicator.inner.clone());
+        Ok(())
+    }
+
+    pub fn add_macd_indicator(&self, name: String, indicator: &PyMACDIndicator) -> PyResult<()> {
+        let mut engine = self.inner.lock().unwrap();
+        engine.add_indicator(name, indicator.inner.clone());
+        Ok(())
+    }
+
+    pub fn add_atr_indicator(&self, name: String, indicator: &PyATRIndicator) -> PyResult<()> {
+        let mut engine = self.inner.lock().unwrap();
+        engine.add_indicator(name, indicator.inner.clone());
+        Ok(())
+    }
+
+    pub fn add_boll_indicator(&self, name: String, indicator: &PyBOLLIndicator) -> PyResult<()> {
+        let mut engine = self.inner.lock().unwrap();
+        engine.add_indicator(name, indicator.inner.clone());
+        Ok(())
+    }
+
+    pub fn add_vri_indicator(&self, name: String, indicator: &PyVRIIndicator) -> PyResult<()> {
+        let mut engine = self.inner.lock().unwrap();
+        engine.add_indicator(name, indicator.inner.clone());
         Ok(())
     }
 
@@ -150,5 +334,11 @@ pub fn hquant_py(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyEngine>()?;
     m.add_class::<PyBar>()?;
     m.add_class::<PySignal>()?;
+    m.add_class::<PyMAIndicator>()?;
+    m.add_class::<PyRSIIndicator>()?;
+    m.add_class::<PyMACDIndicator>()?;
+    m.add_class::<PyATRIndicator>()?;
+    m.add_class::<PyBOLLIndicator>()?;
+    m.add_class::<PyVRIIndicator>()?;
     Ok(())
 }

@@ -1,5 +1,5 @@
 {
-  "name": "@hquant/logger",
+  "name": "@hquant/logger-js",
   "version": "0.0.2",
   "private": true,
   "main": "./dist/index.cjs",
