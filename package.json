@@ -38,10 +38,10 @@
   "devDependencies": {
     "@swc/core": "^1.13.3",
     "@types/node": "^25.0.10",
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^7.18.0",
+    "@typescript-eslint/eslint-plugin": "^8.53.0",
+    "@typescript-eslint/parser": "^8.53.1",
     "babel-jest": "^29.7.0",
-    "eslint": "^8.57.1",
+    "eslint": "^9.39.1",
     "eslint-config-prettier": "^9.1.2",
     "eslint-plugin-jest": "^28.14.0",
     "eslint-plugin-prettier": "^5.5.4",
@@ -51,5 +51,6 @@
     "ts-node": "^10.9.2",
     "turbo": "^2.5.5",
     "typescript": "^5.9.3"
-  }
+  },
+  "packageManager": "pnpm@9.15.9+sha512.68046141893c66fad01c079231128e9afb89ef87e2691d69e4d40eee228988295fd4682181bae55b58418c3a253bde65a505ec7c5f9403ece5cc3cd37dcf2531"
 }

@@ -8,7 +8,6 @@
 - 交易所订单路由与执行
 - 订单状态同步
 - 仓位与资金管理
-- 实时行情数据分发
 
 ## 技术栈
 
@@ -17,10 +16,8 @@
 | 语言 | Node.js 20+ | 运行环境 |
 | 框架 | Midway.js 3.x | 企业级 Node.js 框架 |
 | 数据库 | PostgreSQL | 订单/仓位数据存储 |
-| 缓存 | Redis | 状态缓存/限流 |
-| 消息队列 | NATS | 信号订阅/事件发布 |
 | 交易所 | hquant-adapters | 交易所统一适配层 |
-| 认证 | Casdoor SDK | openAPI |
+
 
 ## 目录结构
 
@@ -51,22 +48,11 @@ exchange-service/
 │   │   ├── position.manager.ts    # 仓位管理器
 │   │   ├── risk.checker.ts        # 风控检查器
 │   │   └── signal.processor.ts    # 信号处理器
-│   ├── exchange/                  # 交易所适配
-│   │   ├── adapter/               # 交易所适配器
-│   │   │   ├── base.adapter.ts    # 适配器基类
-│   │   │   ├── binance.adapter.ts # Binance 适配器
-│   │   │   ├── okx.adapter.ts     # OKX 适配器
-│   │   │   └── index.ts           # 适配器工厂
-│   │   ├── websocket.manager.ts   # WebSocket 管理
-│   │   └── rate-limiter.ts        # 限流器
 │   ├── entity/                    # 数据实体 (TypeORM)
 │   │   ├── order.entity.ts
 │   │   ├── trade.entity.ts
 │   │   ├── position.entity.ts
 │   │   └── account.entity.ts
-│   ├── subscriber/                # NATS 订阅者
-│   │   ├── signal.subscriber.ts   # 信号订阅
-│   │   └── market.subscriber.ts   # 行情订阅
 │   ├── middleware/                # 中间件
 │   │   ├── auth.middleware.ts     # 认证中间件
 │   │   └── logger.middleware.ts   # 日志中间件
@@ -76,9 +62,7 @@ exchange-service/
 │   │   ├── sync.task.ts           # 同步任务
 │   │   └── cleanup.task.ts        # 清理任务
 │   └── util/                      # 工具类
-│       ├── logger.ts
-│       ├── crypto.ts              # 加密工具
-│       └── validator.ts
+│       └── logger.ts              # 复用 packages\logger
 ├── src/config/                    # Midway 配置文件
 │   ├── config.default.ts
 │   ├── config.local.ts
