@@ -1,61 +1,82 @@
 import { z } from 'zod';
+import { createRequire } from 'module';
 
-const envSchema = z.object({
-  // Server
-  PORT: z.coerce.number().default(9008),
-  HOST: z.string().default('0.0.0.0'),
-  GRPC_PORT: z.coerce.number().default(50051),
+const require = createRequire(import.meta.url);
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+const nodeConfig = require('config');
 
-  // Database
-  DB_HOST: z.string().default('localhost'),
-  DB_PORT: z.coerce.number().default(5432),
-  DB_NAME: z.string().default('trader'),
-  DB_USER: z.string().default('trader_user'),
-  DB_PASSWORD: z.string().default('123456'),
-  DB_POOL_SIZE: z.coerce.number().default(10),
+const emptyToUndefined = (v: unknown) => {
+  if (v === null || v === undefined) return undefined;
+  if (typeof v === 'string' && v.trim() === '') return undefined;
+  return v;
+};
 
-  // Redis
-  REDIS_HOST: z.string().default('localhost'),
-  REDIS_PORT: z.coerce.number().default(6379),
-  REDIS_PASSWORD: z.string().optional(),
-  REDIS_DB: z.coerce.number().default(0),
+const coerceBoolean = z.preprocess((v) => {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v !== 0;
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y', 'on'].includes(s)) return true;
+    if (['false', '0', 'no', 'n', 'off'].includes(s)) return false;
+  }
+  return v;
+}, z.boolean());
 
-  // Exchange
-  DEMONET: z
-    .string()
-    .transform((v) => v === 'true')
-    .default('true'),
-  PROXY: z.string().optional(),
-  SOCKS_PROXY: z.string().optional(),
+const optionalString = z.preprocess(emptyToUndefined, z.string().optional());
 
-  // Risk Control
-  RISK_ENABLED: z
-    .string()
-    .transform((v) => v === 'true')
-    .default('true'),
-  RISK_MAX_DAILY_LOSS: z.coerce.number().default(500),
-  RISK_MAX_MARGIN_USAGE_PCT: z.coerce.number().default(0.8),
-  RISK_DEFAULT_STOP_LOSS_PCT: z.coerce.number().default(0.05),
-  RISK_DEFAULT_STOP_PROFIT_PCT: z.coerce.number().default(0.1),
-
-  // Logging
-  LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
-  LOG_PRETTY: z
-    .string()
-    .transform((v) => v === 'true')
-    .default('true'),
-
-  // Token
-  TOKEN_SECRET: z.string().default('exchange-service-secret-key'),
-  TOKEN_EXPIRE_HOURS: z.coerce.number().default(24),
+const configSchema = z.object({
+  server: z.object({
+    port: z.coerce.number().default(9008),
+    host: z.string().default('0.0.0.0'),
+    grpcPort: z.coerce.number().default(50051),
+  }),
+  database: z.object({
+    host: z.string().default('localhost'),
+    port: z.coerce.number().default(5432),
+    name: z.string().default('trader'),
+    user: z.string().default('trader_user'),
+    password: z.string().default('123456'),
+    poolSize: z.coerce.number().default(10),
+  }),
+  redis: z.object({
+    host: z.string().default('localhost'),
+    port: z.coerce.number().default(6379),
+    password: optionalString,
+    db: z.coerce.number().default(0),
+  }),
+  exchange: z.object({
+    demonet: coerceBoolean.default(true),
+    proxy: optionalString,
+    socksProxy: optionalString,
+  }),
+  risk: z.object({
+    enabled: coerceBoolean.default(true),
+    maxDailyLoss: z.coerce.number().default(500),
+    maxMarginUsagePct: z.coerce.number().default(0.8),
+    defaultStopLossPct: z.coerce.number().default(0.05),
+    defaultStopProfitPct: z.coerce.number().default(0.1),
+  }),
+  log: z.object({
+    level: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
+    pretty: coerceBoolean.default(true),
+    dir: z.string().default('logs'),
+  }),
+  token: z.object({
+    secret: z.string().default('exchange-service-secret-key'),
+    expireHours: z.coerce.number().default(24),
+  }),
 });
 
-type EnvConfig = z.infer<typeof envSchema>;
+type ServiceConfig = z.infer<typeof configSchema>;
 
-function loadConfig(): EnvConfig {
-  const result = envSchema.safeParse(process.env);
+function loadConfig(): ServiceConfig {
+  // node-config object -> plain JS object
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  const raw = nodeConfig.util.toObject(nodeConfig) as unknown;
+
+  const result = configSchema.safeParse(raw);
   if (!result.success) {
-    console.error('Invalid environment variables:', result.error.flatten().fieldErrors);
+    console.error('Invalid configuration:', result.error.flatten().fieldErrors);
     process.exit(1);
   }
   return result.data;
@@ -64,47 +85,49 @@ function loadConfig(): EnvConfig {
 export const config = loadConfig();
 
 export const dbConfig = {
-  host: config.DB_HOST,
-  port: config.DB_PORT,
-  database: config.DB_NAME,
-  username: config.DB_USER,
-  password: config.DB_PASSWORD,
-  poolSize: config.DB_POOL_SIZE,
+  host: config.database.host,
+  port: config.database.port,
+  database: config.database.name,
+  username: config.database.user,
+  password: config.database.password,
+  poolSize: config.database.poolSize,
 };
 
 export const redisConfig = {
-  host: config.REDIS_HOST,
-  port: config.REDIS_PORT,
-  password: config.REDIS_PASSWORD,
-  db: config.REDIS_DB,
+  host: config.redis.host,
+  port: config.redis.port,
+  password: config.redis.password,
+  db: config.redis.db,
 };
 
 export const exchangeConfig = {
-  demonet: config.DEMONET,
-  httpsProxy: config.PROXY || undefined,
-  socksProxy: config.SOCKS_PROXY || undefined,
+  demonet: config.exchange.demonet,
+  httpsProxy: config.exchange.proxy || undefined,
+  socksProxy: config.exchange.socksProxy || undefined,
 };
 
 export const riskConfig = {
-  enabled: config.RISK_ENABLED,
-  maxDailyLoss: config.RISK_MAX_DAILY_LOSS,
-  maxMarginUsagePct: config.RISK_MAX_MARGIN_USAGE_PCT,
-  defaultStopLossPct: config.RISK_DEFAULT_STOP_LOSS_PCT,
-  defaultStopProfitPct: config.RISK_DEFAULT_STOP_PROFIT_PCT,
+  enabled: config.risk.enabled,
+  maxDailyLoss: config.risk.maxDailyLoss,
+  maxMarginUsagePct: config.risk.maxMarginUsagePct,
+  defaultStopLossPct: config.risk.defaultStopLossPct,
+  defaultStopProfitPct: config.risk.defaultStopProfitPct,
 };
 
 export const serverConfig = {
-  port: config.PORT,
-  host: config.HOST,
-  grpcPort: config.GRPC_PORT,
+  port: config.server.port,
+  host: config.server.host,
+  grpcPort: config.server.grpcPort,
 };
 
 export const logConfig = {
-  level: config.LOG_LEVEL,
-  pretty: config.LOG_PRETTY,
+  level: config.log.level,
+  pretty: config.log.pretty,
+  dir: config.log.dir,
 };
 
 export const tokenConfig = {
-  secret: config.TOKEN_SECRET,
-  expireHours: config.TOKEN_EXPIRE_HOURS,
+  secret: config.token.secret,
+  expireHours: config.token.expireHours,
 };
+

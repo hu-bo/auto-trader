@@ -54,7 +54,9 @@ src/
 cp .env.example .env
 ```
 
-编辑 `.env` 文件配置数据库和 Redis 连接信息。
+本服务使用 `config` 包进行配置管理（见 `config/` 目录），并通过环境变量覆盖。
+
+本地开发时仍可使用 `.env` / `.env.local` 来提供环境变量（入口会加载它们）。
 
 ### 2. 安装依赖
 
@@ -195,6 +197,8 @@ client.initAccount({
 ```
 
 ## 环境变量
+
+> 这些环境变量会通过 `config/custom-environment-variables.yaml` 映射到配置树。
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
