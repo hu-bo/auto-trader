@@ -1,4 +1,4 @@
-# HQuant Rust 技术文档（无代码版）
+# HQuant Rust 技术文档
 
 本文档描述 `hquant`（`packages/hquant-rust`）的设计目标、模块划分、核心数据结构、公共 API 语义、错误模型、FFI 绑定约束与已知限制。文档刻意不包含代码片段；但会以标识符形式描述类型/结构体/函数语义。
 
