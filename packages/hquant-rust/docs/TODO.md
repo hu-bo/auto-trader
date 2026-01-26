@@ -1,6 +1,19 @@
 
+# 高性能量化框架：指标、策略、回测
 
-## 数据结构
+## 目标
+
+## features
+- 循环缓冲区：固定窗口滑动，O(1) 更新 
+- 组合循环缓冲区：循环缓冲区基础扩展多列(类似: {close: [1.0,2.0], open: [1.0,2.0]})
+- 列式内存布局：缓存局部性好，缓存高效 (参考Arrow)
+- 零拷贝 Python 交互：通过 PyO3 + ndarray 零拷贝传递 NumPy 数组
+- 低成本拷贝Nodejs 交互: Nodejs可得到一个列式的结构：类似：(类似: {close: Float64Array, open: Float64Array})
+- 支持常见指标：SMA、EMA、RSI、MACD、Boll、平均真实波幅ATR、VRI 量比指标 等（参考TA-Lib）
+- 历史数据回测: 支持导入NumPy、json回测 虚拟货币U本位合约回测
+- 
+
+## 数据结构（OHLCV 但多了buy_volume）
 pub struct Bar {
     pub timestamp: i64,
     pub open: f64,
@@ -10,6 +23,8 @@ pub struct Bar {
     pub volume: f64,
     pub buy_volume: f64,
 }
+
+指标可参考 TA-Lib/TradingView/Pandas
 
 - 正确性与一致性（最重要）
       - 为每个指标建立“权威参考”对照：与 TA-Lib/TradingView/Pandas 实现做逐点比对（尤其是初始化窗口、边界

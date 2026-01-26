@@ -14,19 +14,11 @@ scripts/build-ffi.sh node
 ```javascript
 const {
   // 核心引擎
-  Engine,
-
+  QuantEngine,
   // 指标 Builders
   Indicators,
-  MAIndicator,
-  RSIIndicator,
-  MACDIndicator,
-  ATRIndicator,
-  BOLLIndicator,
-  VRIIndicator,
 
   // K线聚合
-  KlineAggregator,
   MultiTimeFrameKlineAggregator,
 
   // 回测
@@ -135,59 +127,49 @@ engine.reset();
 
 ## 2. K 线聚合器
 
-### 单周期聚合
-
-```javascript
-// 将 M1 聚合为 H1
-const agg = new KlineAggregator('M1', 'H1', 100);
-
-// 推送 M1 K 线
-const hasNewBar = agg.push(m1Bar);
-
-if (hasNewBar) {
-  // 获取最后完成的 H1 K 线
-  const h1Bar = agg.lastCompleted();
-  console.log('新 H1 K 线:', h1Bar);
-}
-
-// 获取当前正在聚合的 K 线 (未完成)
-const current = agg.current();
-
-// 更新实时数据
-agg.updateLast(m1Bar);
-
-// 强制完成当前聚合
-const flushedBar = agg.flush();
-
-// 重置
-agg.reset();
-```
-
 ### 多周期聚合
 
 ```javascript
 // 同时聚合多个周期
-const mtf = new MultiTimeFrameKlineAggregator('M1', ['M5', 'M15', 'H1'], 100);
+const mtf = new MultiTimeFrameKlineAggregator('15m', ['4h', '1d']);
 
-// 推送基础周期 K 线，返回产生新 K 线的周期列表
-const completedTFs = mtf.push(m1Bar);
-// 例如: ['M5', 'H1'] 表示 M5 和 H1 产生了新 K 线
+// 高频 5m/15m基础周期
+const bar = {
+  openTime: Date.now(),
+  open: 100.0,
+  high: 102.0,
+  low: 99.0,
+  close: 101.5,
+  volume: 1000.0,
+  buy_volume: 100, // 可能不存在(如何判断是否存在，如果条数据不存在则假设后续的数据都没有buy_volume)
+};
 
+mtf.push(bar);
+// 例如: ['4h', '1d'] 表示 4h 和 1d 产生了新 K 线
 // 获取指定周期的当前 K 线
-const m5Current = mtf.current('M5');
-const h1Current = mtf.current('H1');
+const m5Current = mtf.current('4h');
+const h1Current = mtf.current('1d');
 
-// 更新所有周期
-mtf.updateLast(m1Bar);
+// 更新所有周期，数据还是当前周期
+const bar2 = {
+  openTime: Date.now() + 1000,
+  open: 100.0,
+  high: 102.0,
+  low: 99.0,
+  close: 101.5,
+  volume: 1000.0,
+  buy_volume: 100, // 可能不存在，
+};
+mtf.updateLast(bar2);
 
-// 强制完成所有聚合
+// 强制完成所有聚合(数据没有更多了，结束)
 mtf.flushAll();
 
 // 重置
 mtf.reset();
 ```
 
-**支持的周期：** M1, M5, M15, M30, H1, H4, D1, W1
+**支持的周期：** 5m, 4h, 1d (后续在扩展30m等)
 
 ---
 
