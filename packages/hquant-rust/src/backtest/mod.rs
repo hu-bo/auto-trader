@@ -225,7 +225,11 @@ impl BacktestEngine {
     pub fn process_signal(&mut self, signal: &Signal, bar: &Bar) {
         // 先检查爆仓
         if let Some(pos) = &self.position {
-            if pos.is_liquidated(bar.low) {
+            let liquidation_check_price = match pos.side {
+                PositionSide::Long => bar.low,
+                PositionSide::Short => bar.high,
+            };
+            if pos.is_liquidated(liquidation_check_price) {
                 self.liquidate(bar);
                 return;
             }

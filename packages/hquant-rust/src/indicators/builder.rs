@@ -10,6 +10,7 @@
 /// ```
 
 use super::{Indicator, MA, MAType, RSI, MACD, ATR, BOLL, VRI, PriceType};
+use crate::HQuantResult;
 
 /// Trait for building indicators with a fluent API
 pub trait IndicatorBuilder: Send + Sync {
@@ -17,10 +18,10 @@ pub trait IndicatorBuilder: Send + Sync {
     fn default_name(&self) -> String;
 
     /// Build the indicator
-    fn build(self) -> Box<dyn Indicator>;
+    fn build(self) -> HQuantResult<Box<dyn Indicator>>;
 
     /// Build the indicator with a custom name
-    fn build_named(self, name: String) -> (String, Box<dyn Indicator>);
+    fn build_named(self, name: String) -> HQuantResult<(String, Box<dyn Indicator>)>;
 }
 
 // ============================================================================
@@ -105,13 +106,17 @@ impl IndicatorBuilder for MABuilder {
         format!("{}_{}", type_name, self.period)
     }
 
-    fn build(self) -> Box<dyn Indicator> {
-        Box::new(MA::with_price_type(self.period, self.ma_type, self.price_type))
+    fn build(self) -> HQuantResult<Box<dyn Indicator>> {
+        Ok(Box::new(MA::with_price_type(
+            self.period,
+            self.ma_type,
+            self.price_type,
+        )?))
     }
 
-    fn build_named(self, name: String) -> (String, Box<dyn Indicator>) {
-        let indicator = MA::with_price_type(self.period, self.ma_type, self.price_type);
-        (name, Box::new(indicator))
+    fn build_named(self, name: String) -> HQuantResult<(String, Box<dyn Indicator>)> {
+        let indicator = MA::with_price_type(self.period, self.ma_type, self.price_type)?;
+        Ok((name, Box::new(indicator)))
     }
 }
 
@@ -166,13 +171,13 @@ impl IndicatorBuilder for RSIBuilder {
         format!("RSI_{}", self.period)
     }
 
-    fn build(self) -> Box<dyn Indicator> {
-        Box::new(RSI::with_price_type(self.period, self.price_type))
+    fn build(self) -> HQuantResult<Box<dyn Indicator>> {
+        Ok(Box::new(RSI::with_price_type(self.period, self.price_type)?))
     }
 
-    fn build_named(self, name: String) -> (String, Box<dyn Indicator>) {
-        let indicator = RSI::with_price_type(self.period, self.price_type);
-        (name, Box::new(indicator))
+    fn build_named(self, name: String) -> HQuantResult<(String, Box<dyn Indicator>)> {
+        let indicator = RSI::with_price_type(self.period, self.price_type)?;
+        Ok((name, Box::new(indicator)))
     }
 }
 
@@ -248,23 +253,23 @@ impl IndicatorBuilder for MACDBuilder {
         format!("MACD_{}_{}", self.fast_period, self.slow_period)
     }
 
-    fn build(self) -> Box<dyn Indicator> {
-        Box::new(MACD::with_price_type(
+    fn build(self) -> HQuantResult<Box<dyn Indicator>> {
+        Ok(Box::new(MACD::with_price_type(
             self.fast_period,
             self.slow_period,
             self.signal_period,
             self.price_type,
-        ))
+        )?))
     }
 
-    fn build_named(self, name: String) -> (String, Box<dyn Indicator>) {
+    fn build_named(self, name: String) -> HQuantResult<(String, Box<dyn Indicator>)> {
         let indicator = MACD::with_price_type(
             self.fast_period,
             self.slow_period,
             self.signal_period,
             self.price_type,
-        );
-        (name, Box::new(indicator))
+        )?;
+        Ok((name, Box::new(indicator)))
     }
 }
 
@@ -311,13 +316,13 @@ impl IndicatorBuilder for ATRBuilder {
         format!("ATR_{}", self.period)
     }
 
-    fn build(self) -> Box<dyn Indicator> {
-        Box::new(ATR::new(self.period))
+    fn build(self) -> HQuantResult<Box<dyn Indicator>> {
+        Ok(Box::new(ATR::new(self.period)?))
     }
 
-    fn build_named(self, name: String) -> (String, Box<dyn Indicator>) {
-        let indicator = ATR::new(self.period);
-        (name, Box::new(indicator))
+    fn build_named(self, name: String) -> HQuantResult<(String, Box<dyn Indicator>)> {
+        let indicator = ATR::new(self.period)?;
+        Ok((name, Box::new(indicator)))
     }
 }
 
@@ -377,13 +382,13 @@ impl IndicatorBuilder for BOLLBuilder {
         format!("BOLL_{}", self.period)
     }
 
-    fn build(self) -> Box<dyn Indicator> {
-        Box::new(BOLL::new(self.period, self.std_dev_factor))
+    fn build(self) -> HQuantResult<Box<dyn Indicator>> {
+        Ok(Box::new(BOLL::new(self.period, self.std_dev_factor)?))
     }
 
-    fn build_named(self, name: String) -> (String, Box<dyn Indicator>) {
-        let indicator = BOLL::new(self.period, self.std_dev_factor);
-        (name, Box::new(indicator))
+    fn build_named(self, name: String) -> HQuantResult<(String, Box<dyn Indicator>)> {
+        let indicator = BOLL::new(self.period, self.std_dev_factor)?;
+        Ok((name, Box::new(indicator)))
     }
 }
 
@@ -430,13 +435,13 @@ impl IndicatorBuilder for VRIBuilder {
         format!("VRI_{}", self.period)
     }
 
-    fn build(self) -> Box<dyn Indicator> {
-        Box::new(VRI::new(self.period))
+    fn build(self) -> HQuantResult<Box<dyn Indicator>> {
+        Ok(Box::new(VRI::new(self.period)?))
     }
 
-    fn build_named(self, name: String) -> (String, Box<dyn Indicator>) {
-        let indicator = VRI::new(self.period);
-        (name, Box::new(indicator))
+    fn build_named(self, name: String) -> HQuantResult<(String, Box<dyn Indicator>)> {
+        let indicator = VRI::new(self.period)?;
+        Ok((name, Box::new(indicator)))
     }
 }
 
@@ -503,7 +508,8 @@ mod tests {
         let ma = MABuilder::new()
             .period(20)
             .ema()
-            .build();
+            .build()
+            .unwrap();
 
         assert_eq!(ma.min_periods(), 20);
     }
@@ -514,7 +520,8 @@ mod tests {
             .fast(12)
             .slow(26)
             .signal(9)
-            .build();
+            .build()
+            .unwrap();
 
         assert_eq!(macd.min_periods(), 26 + 9 - 1);
     }
@@ -523,7 +530,8 @@ mod tests {
     fn test_rsi_builder() {
         let rsi = RSIBuilder::new()
             .period(14)
-            .build();
+            .build()
+            .unwrap();
 
         assert_eq!(rsi.min_periods(), 15);
     }
@@ -532,7 +540,8 @@ mod tests {
     fn test_atr_builder() {
         let atr = ATRBuilder::new()
             .period(14)
-            .build();
+            .build()
+            .unwrap();
 
         assert_eq!(atr.min_periods(), 14);
     }
@@ -542,7 +551,8 @@ mod tests {
         let boll = BOLLBuilder::new()
             .period(20)
             .std_dev(2.0)
-            .build();
+            .build()
+            .unwrap();
 
         assert_eq!(boll.min_periods(), 20);
     }
@@ -551,7 +561,8 @@ mod tests {
     fn test_vri_builder() {
         let vri = VRIBuilder::new()
             .period(14)
-            .build();
+            .build()
+            .unwrap();
 
         // VRI requires period + 1 (like RSI, needs one extra for prev_volume initialization)
         assert_eq!(vri.min_periods(), 15);
@@ -559,12 +570,12 @@ mod tests {
 
     #[test]
     fn test_factory_functions() {
-        let _ma = ma().period(10).ema().build();
-        let _rsi = rsi().period(14).build();
-        let _macd = macd().fast(12).slow(26).signal(9).build();
-        let _atr = atr().period(14).build();
-        let _boll = boll().period(20).std_dev(2.0).build();
-        let _vri = vri().period(14).build();
+        let _ma = ma().period(10).ema().build().unwrap();
+        let _rsi = rsi().period(14).build().unwrap();
+        let _macd = macd().fast(12).slow(26).signal(9).build().unwrap();
+        let _atr = atr().period(14).build().unwrap();
+        let _boll = boll().period(20).std_dev(2.0).build().unwrap();
+        let _vri = vri().period(14).build().unwrap();
     }
 
     #[test]
@@ -575,7 +586,8 @@ mod tests {
             .fast(12)
             .slow(26)
             .signal(9)
-            .build();
+            .build()
+            .unwrap();
 
         for bar in &bars {
             indicator.push(bar);

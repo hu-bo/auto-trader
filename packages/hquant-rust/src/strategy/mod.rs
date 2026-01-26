@@ -87,7 +87,7 @@ pub struct StrategyContext<'a> {
 /// 策略 trait
 pub trait Strategy: Send + Sync {
     fn name(&self) -> &str;
-    fn evaluate(&self, ctx: &StrategyContext) -> Option<Signal>;
+    fn evaluate(&mut self, ctx: &StrategyContext) -> Option<Signal>;
 }
 
 /// 基于闭包的策略实现
@@ -119,7 +119,7 @@ where
         &self.name
     }
 
-    fn evaluate(&self, ctx: &StrategyContext) -> Option<Signal> {
+    fn evaluate(&mut self, ctx: &StrategyContext) -> Option<Signal> {
         (self.func)(ctx)
     }
 }
@@ -148,7 +148,7 @@ impl Strategy for MACrossStrategy {
         "ma_cross"
     }
 
-    fn evaluate(&self, ctx: &StrategyContext) -> Option<Signal> {
+    fn evaluate(&mut self, ctx: &StrategyContext) -> Option<Signal> {
         let fast = ctx.indicators.value(&self.fast_ma)?;
         let slow = ctx.indicators.value(&self.slow_ma)?;
 
@@ -165,6 +165,9 @@ impl Strategy for MACrossStrategy {
         } else {
             None
         };
+
+        self.prev_fast = Some(fast);
+        self.prev_slow = Some(slow);
 
         signal
     }
@@ -196,7 +199,7 @@ impl Strategy for RSIStrategy {
         "rsi_strategy"
     }
 
-    fn evaluate(&self, ctx: &StrategyContext) -> Option<Signal> {
+    fn evaluate(&mut self, ctx: &StrategyContext) -> Option<Signal> {
         let rsi = ctx.indicators.value(&self.rsi_name)?;
 
         if rsi < self.oversold {
@@ -235,7 +238,7 @@ impl Strategy for BOLLStrategy {
         "boll_strategy"
     }
 
-    fn evaluate(&self, ctx: &StrategyContext) -> Option<Signal> {
+    fn evaluate(&mut self, ctx: &StrategyContext) -> Option<Signal> {
         let result = ctx.indicators.result(&self.boll_name)?;
         let extra = result.extra?;
         if extra.len() < 2 {

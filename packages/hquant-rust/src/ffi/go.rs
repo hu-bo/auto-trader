@@ -29,7 +29,10 @@ fn bar_from_ffi(bar: &FfiBar) -> Bar {
 /// 创建引擎实例，需配合 `hquant_engine_free` 释放
 #[no_mangle]
 pub extern "C" fn hquant_engine_new(capacity: usize) -> *mut QuantEngine {
-    Box::into_raw(Box::new(QuantEngine::new(capacity)))
+    match QuantEngine::new(capacity) {
+        Ok(engine) => Box::into_raw(Box::new(engine)),
+        Err(_) => std::ptr::null_mut(),
+    }
 }
 
 /// 释放引擎实例

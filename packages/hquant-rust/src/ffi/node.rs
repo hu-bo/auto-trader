@@ -12,6 +12,10 @@ use crate::{
     MABuilder, RSIBuilder, MACDBuilder, ATRBuilder, BOLLBuilder, VRIBuilder,
 };
 
+fn lock_poisoned_error() -> Error {
+    Error::from_reason("lock poisoned".to_string())
+}
+
 fn to_bar(input: &BarInput) -> Bar {
     Bar {
         timestamp: input.timestamp,
@@ -340,70 +344,84 @@ pub struct Engine {
 #[napi]
 impl Engine {
     #[napi(constructor)]
-    pub fn new(capacity: u32) -> Self {
-        Self {
-            inner: Mutex::new(QuantEngine::new(capacity as usize)),
-        }
+    pub fn new(capacity: u32) -> napi::Result<Self> {
+        Ok(Self {
+            inner: Mutex::new(
+                QuantEngine::new(capacity as usize).map_err(|e| Error::from_reason(e.to_string()))?,
+            ),
+        })
     }
 
     /// 添加 MA 指标 (使用 builder)
     #[napi]
     pub fn add_ma_indicator(&self, name: String, indicator: &MAIndicator) -> napi::Result<()> {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let builder = indicator.inner.clone();
-        engine.add_indicator(name, builder);
+        engine
+            .add_indicator(name, builder)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
         Ok(())
     }
 
     /// 添加 RSI 指标 (使用 builder)
     #[napi]
     pub fn add_rsi_indicator(&self, name: String, indicator: &RSIIndicator) -> napi::Result<()> {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let builder = indicator.inner.clone();
-        engine.add_indicator(name, builder);
+        engine
+            .add_indicator(name, builder)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
         Ok(())
     }
 
     /// 添加 MACD 指标 (使用 builder)
     #[napi]
     pub fn add_macd_indicator(&self, name: String, indicator: &MACDIndicator) -> napi::Result<()> {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let builder = indicator.inner.clone();
-        engine.add_indicator(name, builder);
+        engine
+            .add_indicator(name, builder)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
         Ok(())
     }
 
     /// 添加 ATR 指标 (使用 builder)
     #[napi]
     pub fn add_atr_indicator(&self, name: String, indicator: &ATRIndicator) -> napi::Result<()> {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let builder = indicator.inner.clone();
-        engine.add_indicator(name, builder);
+        engine
+            .add_indicator(name, builder)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
         Ok(())
     }
 
     /// 添加 BOLL 指标 (使用 builder)
     #[napi]
     pub fn add_boll_indicator(&self, name: String, indicator: &BOLLIndicator) -> napi::Result<()> {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let builder = indicator.inner.clone();
-        engine.add_indicator(name, builder);
+        engine
+            .add_indicator(name, builder)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
         Ok(())
     }
 
     /// 添加 VRI 指标 (使用 builder)
     #[napi]
     pub fn add_vri_indicator(&self, name: String, indicator: &VRIIndicator) -> napi::Result<()> {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let builder = indicator.inner.clone();
-        engine.add_indicator(name, builder);
+        engine
+            .add_indicator(name, builder)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
         Ok(())
     }
 
     /// 追加一根 K 线并返回可能的信号
     #[napi]
     pub fn append_bar(&self, bar: BarInput) -> napi::Result<Vec<SignalOutput>> {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let signals: Vec<SignalOutput> = engine
             .append_bar(&to_bar(&bar))
             .iter()
@@ -415,7 +433,7 @@ impl Engine {
     /// 更新最后一根 K 线
     #[napi]
     pub fn update_last_bar(&self, bar: BarInput) -> napi::Result<()> {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         engine.update_last_bar(&to_bar(&bar));
         Ok(())
     }
@@ -423,7 +441,7 @@ impl Engine {
     /// 批量加载历史数据
     #[napi]
     pub fn load_history(&self, bars: Vec<BarInput>) -> napi::Result<()> {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let rust_bars: Vec<Bar> = bars.iter().map(to_bar).collect();
         engine.load_history(&rust_bars);
         Ok(())
@@ -432,21 +450,27 @@ impl Engine {
     /// 获取指标数值
     #[napi]
     pub fn indicator_value(&self, name: String) -> Option<f64> {
-        let engine = self.inner.lock().unwrap();
+        let engine = self.inner.lock().ok()?;
         engine.indicator_value(&name)
     }
 
     /// 检查指标是否就绪
     #[napi]
     pub fn indicator_ready(&self, name: String) -> bool {
-        let engine = self.inner.lock().unwrap();
+        let engine = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return false,
+        };
         engine.indicator_ready(&name)
     }
 
     /// 重置引擎
     #[napi]
     pub fn reset(&self) {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
         engine.reset();
     }
 }
@@ -493,56 +517,71 @@ impl KlineAggregator {
         let source = parse_timeframe(&source_tf)?;
         let target = parse_timeframe(&target_tf)?;
         Ok(Self {
-            inner: Mutex::new(Aggregator::new(source, target, capacity as usize)),
+            inner: Mutex::new(
+                Aggregator::new(source, target, capacity as usize)
+                    .map_err(|e| Error::from_reason(e.to_string()))?,
+            ),
         })
     }
 
     /// 输入一根 K 线，返回是否产生了新的聚合 K 线
     #[napi]
     pub fn push(&self, bar: BarInput) -> bool {
-        let mut agg = self.inner.lock().unwrap();
+        let mut agg = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return false,
+        };
         agg.push(&to_bar(&bar))
     }
 
     /// 更新当前正在聚合的 K 线
     #[napi]
     pub fn update_last(&self, bar: BarInput) {
-        let mut agg = self.inner.lock().unwrap();
+        let mut agg = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
         agg.update_last(&to_bar(&bar));
     }
 
     /// 获取当前正在聚合的 K 线（未完成）
     #[napi]
     pub fn current(&self) -> Option<AggregatorBarOutput> {
-        let agg = self.inner.lock().unwrap();
+        let agg = self.inner.lock().ok()?;
         agg.current().map(bar_to_output)
     }
 
     /// 获取最后一根已完成的聚合 K 线
     #[napi]
     pub fn last_completed(&self) -> Option<AggregatorBarOutput> {
-        let agg = self.inner.lock().unwrap();
+        let agg = self.inner.lock().ok()?;
         agg.last_completed().map(|b| bar_to_output(&b))
     }
 
     /// 强制完成当前聚合
     #[napi]
     pub fn flush(&self) -> Option<AggregatorBarOutput> {
-        let mut agg = self.inner.lock().unwrap();
+        let mut agg = self.inner.lock().ok()?;
         agg.flush().map(|b| bar_to_output(&b))
     }
 
     /// 获取已完成的聚合 K 线数量
     #[napi]
     pub fn output_len(&self) -> u32 {
-        let agg = self.inner.lock().unwrap();
+        let agg = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return 0,
+        };
         agg.output().len() as u32
     }
 
     /// 重置聚合器
     #[napi]
     pub fn reset(&self) {
-        let mut agg = self.inner.lock().unwrap();
+        let mut agg = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
         agg.reset();
     }
 }
@@ -565,14 +604,20 @@ impl MultiTimeFrameKlineAggregator {
         let targets: Result<Vec<TimeFrame>, _> = target_tfs.iter().map(|s| parse_timeframe(s)).collect();
         let targets = targets?;
         Ok(Self {
-            inner: Mutex::new(MultiTimeFrameAggregator::new(base, &targets, capacity as usize)),
+            inner: Mutex::new(
+                MultiTimeFrameAggregator::new(base, &targets, capacity as usize)
+                    .map_err(|e| Error::from_reason(e.to_string()))?,
+            ),
         })
     }
 
     /// 输入一根基础周期 K 线，返回产生了新 K 线的周期列表
     #[napi]
     pub fn push(&self, bar: BarInput) -> Vec<String> {
-        let mut mtf = self.inner.lock().unwrap();
+        let mut mtf = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return Vec::new(),
+        };
         mtf.push(&to_bar(&bar))
             .into_iter()
             .map(timeframe_to_string)
@@ -582,14 +627,17 @@ impl MultiTimeFrameKlineAggregator {
     /// 更新所有聚合器的最后一根 K 线
     #[napi]
     pub fn update_last(&self, bar: BarInput) {
-        let mut mtf = self.inner.lock().unwrap();
+        let mut mtf = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
         mtf.update_last(&to_bar(&bar));
     }
 
     /// 获取指定周期的当前 K 线
     #[napi]
     pub fn current(&self, tf: String) -> napi::Result<Option<AggregatorBarOutput>> {
-        let mtf = self.inner.lock().unwrap();
+        let mtf = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let tf = parse_timeframe(&tf)?;
         Ok(mtf.current(tf).map(bar_to_output))
     }
@@ -597,14 +645,20 @@ impl MultiTimeFrameKlineAggregator {
     /// 强制完成所有聚合
     #[napi]
     pub fn flush_all(&self) {
-        let mut mtf = self.inner.lock().unwrap();
+        let mut mtf = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
         mtf.flush_all();
     }
 
     /// 重置所有聚合器
     #[napi]
     pub fn reset(&self) {
-        let mut mtf = self.inner.lock().unwrap();
+        let mut mtf = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
         mtf.reset();
     }
 }
@@ -765,76 +819,80 @@ impl Backtest {
 
     /// 处理买入信号
     #[napi]
-    pub fn buy(&self, bar: BarInput, strength: Option<f64>, reason: Option<String>) {
-        let mut bt = self.inner.lock().unwrap();
+    pub fn buy(&self, bar: BarInput, strength: Option<f64>, reason: Option<String>) -> napi::Result<()> {
+        let mut bt = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let signal = Signal::buy(
             strength.unwrap_or(1.0),
             reason.unwrap_or_else(|| "buy".to_string()),
             bar.timestamp,
         );
         bt.process_signal(&signal, &to_bar(&bar));
+        Ok(())
     }
 
     /// 处理卖出信号
     #[napi]
-    pub fn sell(&self, bar: BarInput, strength: Option<f64>, reason: Option<String>) {
-        let mut bt = self.inner.lock().unwrap();
+    pub fn sell(&self, bar: BarInput, strength: Option<f64>, reason: Option<String>) -> napi::Result<()> {
+        let mut bt = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let signal = Signal::sell(
             strength.unwrap_or(1.0),
             reason.unwrap_or_else(|| "sell".to_string()),
             bar.timestamp,
         );
         bt.process_signal(&signal, &to_bar(&bar));
+        Ok(())
     }
 
     /// 处理持有（更新价格）
     #[napi]
-    pub fn hold(&self, bar: BarInput) {
-        let mut bt = self.inner.lock().unwrap();
+    pub fn hold(&self, bar: BarInput) -> napi::Result<()> {
+        let mut bt = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let signal = Signal::hold(bar.timestamp);
         bt.process_signal(&signal, &to_bar(&bar));
+        Ok(())
     }
 
     /// 获取回测结果
     #[napi]
-    pub fn result(&self) -> BacktestStatsOutput {
-        let mut bt = self.inner.lock().unwrap();
-        stats_to_output(bt.result())
+    pub fn result(&self) -> napi::Result<BacktestStatsOutput> {
+        let mut bt = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(stats_to_output(bt.result()))
     }
 
     /// 获取交易记录
     #[napi]
-    pub fn trades(&self) -> Vec<TradeOutput> {
-        let bt = self.inner.lock().unwrap();
-        bt.trades().iter().map(trade_to_output).collect()
+    pub fn trades(&self) -> napi::Result<Vec<TradeOutput>> {
+        let bt = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(bt.trades().iter().map(trade_to_output).collect())
     }
 
     /// 获取权益曲线
     #[napi]
-    pub fn equity_curve(&self) -> Vec<f64> {
-        let bt = self.inner.lock().unwrap();
-        bt.equity_curve().to_vec()
+    pub fn equity_curve(&self) -> napi::Result<Vec<f64>> {
+        let bt = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(bt.equity_curve().to_vec())
     }
 
     /// 获取当前持仓
     #[napi]
-    pub fn position(&self) -> Option<PositionOutput> {
-        let bt = self.inner.lock().unwrap();
-        bt.position().map(position_to_output)
+    pub fn position(&self) -> napi::Result<Option<PositionOutput>> {
+        let bt = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(bt.position().map(position_to_output))
     }
 
     /// 获取当前权益
     #[napi]
-    pub fn equity(&self) -> f64 {
-        let bt = self.inner.lock().unwrap();
-        bt.equity()
+    pub fn equity(&self) -> napi::Result<f64> {
+        let bt = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(bt.equity())
     }
 
     /// 重置引擎
     #[napi]
-    pub fn reset(&self) {
-        let mut bt = self.inner.lock().unwrap();
+    pub fn reset(&self) -> napi::Result<()> {
+        let mut bt = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         bt.reset();
+        Ok(())
     }
 }
 
@@ -851,108 +909,113 @@ pub struct Float64Buffer {
 #[napi]
 impl Float64Buffer {
     #[napi(constructor)]
-    pub fn new(capacity: u32) -> Self {
-        Self {
-            inner: Mutex::new(Float64RingBuffer::new(capacity as usize)),
-        }
+    pub fn new(capacity: u32) -> napi::Result<Self> {
+        Ok(Self {
+            inner: Mutex::new(
+                Float64RingBuffer::new(capacity as usize)
+                    .map_err(|e| Error::from_reason(e.to_string()))?,
+            ),
+        })
     }
 
     /// 追加元素，队列满时覆盖最旧数据
     #[napi]
-    pub fn push(&self, value: f64) {
-        let mut rb = self.inner.lock().unwrap();
+    pub fn push(&self, value: f64) -> napi::Result<()> {
+        let mut rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         rb.push(value);
+        Ok(())
     }
 
     /// 从队首移除并返回元素
     #[napi]
-    pub fn shift(&self) -> Option<f64> {
-        let mut rb = self.inner.lock().unwrap();
-        rb.shift()
+    pub fn shift(&self) -> napi::Result<Option<f64>> {
+        let mut rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.shift())
     }
 
     /// 从队尾移除并返回元素
     #[napi]
-    pub fn pop(&self) -> Option<f64> {
-        let mut rb = self.inner.lock().unwrap();
-        rb.pop()
+    pub fn pop(&self) -> napi::Result<Option<f64>> {
+        let mut rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.pop())
     }
 
     /// 更新指定索引的值
     #[napi]
-    pub fn update(&self, index: u32, value: f64) -> bool {
-        let mut rb = self.inner.lock().unwrap();
-        rb.update(index as usize, value)
+    pub fn update(&self, index: u32, value: f64) -> napi::Result<bool> {
+        let mut rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.update(index as usize, value))
     }
 
     /// 更新最后一个元素
     #[napi]
-    pub fn update_last(&self, value: f64) -> bool {
-        let mut rb = self.inner.lock().unwrap();
-        rb.update_last(value)
+    pub fn update_last(&self, value: f64) -> napi::Result<bool> {
+        let mut rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.update_last(value))
     }
 
     /// 获取指定索引的值
     #[napi]
-    pub fn get(&self, index: u32) -> Option<f64> {
-        let rb = self.inner.lock().unwrap();
-        rb.get(index as usize)
+    pub fn get(&self, index: u32) -> napi::Result<Option<f64>> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.get(index as usize))
     }
 
     /// 获取最后一个元素
     #[napi]
-    pub fn last(&self) -> Option<f64> {
-        let rb = self.inner.lock().unwrap();
-        rb.last()
+    pub fn last(&self) -> napi::Result<Option<f64>> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.last())
     }
 
     /// 获取倒数第 n 个元素 (1 = 最后一个)
     #[napi]
-    pub fn get_from_end(&self, n: u32) -> Option<f64> {
-        let rb = self.inner.lock().unwrap();
-        rb.get_from_end(n as usize)
+    pub fn get_from_end(&self, n: u32) -> napi::Result<Option<f64>> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.get_from_end(n as usize))
     }
 
     /// 当前元素数量
     #[napi]
-    pub fn len(&self) -> u32 {
-        let rb = self.inner.lock().unwrap();
-        rb.len() as u32
+    pub fn len(&self) -> napi::Result<u32> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.len() as u32)
     }
 
     /// 是否为空
     #[napi]
-    pub fn is_empty(&self) -> bool {
-        let rb = self.inner.lock().unwrap();
-        rb.is_empty()
+    pub fn is_empty(&self) -> napi::Result<bool> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.is_empty())
     }
 
     /// 是否已满
     #[napi]
-    pub fn is_full(&self) -> bool {
-        let rb = self.inner.lock().unwrap();
-        rb.is_full()
+    pub fn is_full(&self) -> napi::Result<bool> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.is_full())
     }
 
     /// 容量
     #[napi]
-    pub fn capacity(&self) -> u32 {
-        let rb = self.inner.lock().unwrap();
-        rb.capacity() as u32
+    pub fn capacity(&self) -> napi::Result<u32> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.capacity() as u32)
     }
 
     /// 清空
     #[napi]
-    pub fn clear(&self) {
-        let mut rb = self.inner.lock().unwrap();
+    pub fn clear(&self) -> napi::Result<()> {
+        let mut rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         rb.clear();
+        Ok(())
     }
 
     /// 转换为数组
     #[napi]
-    pub fn to_array(&self) -> Vec<f64> {
-        let rb = self.inner.lock().unwrap();
-        rb.to_vec()
+    pub fn to_array(&self) -> napi::Result<Vec<f64>> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.to_vec())
     }
 }
 
@@ -969,107 +1032,112 @@ pub struct Int32Buffer {
 #[napi]
 impl Int32Buffer {
     #[napi(constructor)]
-    pub fn new(capacity: u32) -> Self {
-        Self {
-            inner: Mutex::new(Int32RingBuffer::new(capacity as usize)),
-        }
+    pub fn new(capacity: u32) -> napi::Result<Self> {
+        Ok(Self {
+            inner: Mutex::new(
+                Int32RingBuffer::new(capacity as usize)
+                    .map_err(|e| Error::from_reason(e.to_string()))?,
+            ),
+        })
     }
 
     /// 追加元素，队列满时覆盖最旧数据
     #[napi]
-    pub fn push(&self, value: i32) {
-        let mut rb = self.inner.lock().unwrap();
+    pub fn push(&self, value: i32) -> napi::Result<()> {
+        let mut rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         rb.push(value);
+        Ok(())
     }
 
     /// 从队首移除并返回元素
     #[napi]
-    pub fn shift(&self) -> Option<i32> {
-        let mut rb = self.inner.lock().unwrap();
-        rb.shift()
+    pub fn shift(&self) -> napi::Result<Option<i32>> {
+        let mut rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.shift())
     }
 
     /// 从队尾移除并返回元素
     #[napi]
-    pub fn pop(&self) -> Option<i32> {
-        let mut rb = self.inner.lock().unwrap();
-        rb.pop()
+    pub fn pop(&self) -> napi::Result<Option<i32>> {
+        let mut rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.pop())
     }
 
     /// 更新指定索引的值
     #[napi]
-    pub fn update(&self, index: u32, value: i32) -> bool {
-        let mut rb = self.inner.lock().unwrap();
-        rb.update(index as usize, value)
+    pub fn update(&self, index: u32, value: i32) -> napi::Result<bool> {
+        let mut rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.update(index as usize, value))
     }
 
     /// 更新最后一个元素
     #[napi]
-    pub fn update_last(&self, value: i32) -> bool {
-        let mut rb = self.inner.lock().unwrap();
-        rb.update_last(value)
+    pub fn update_last(&self, value: i32) -> napi::Result<bool> {
+        let mut rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.update_last(value))
     }
 
     /// 获取指定索引的值
     #[napi]
-    pub fn get(&self, index: u32) -> Option<i32> {
-        let rb = self.inner.lock().unwrap();
-        rb.get(index as usize)
+    pub fn get(&self, index: u32) -> napi::Result<Option<i32>> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.get(index as usize))
     }
 
     /// 获取最后一个元素
     #[napi]
-    pub fn last(&self) -> Option<i32> {
-        let rb = self.inner.lock().unwrap();
-        rb.last()
+    pub fn last(&self) -> napi::Result<Option<i32>> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.last())
     }
 
     /// 获取倒数第 n 个元素 (1 = 最后一个)
     #[napi]
-    pub fn get_from_end(&self, n: u32) -> Option<i32> {
-        let rb = self.inner.lock().unwrap();
-        rb.get_from_end(n as usize)
+    pub fn get_from_end(&self, n: u32) -> napi::Result<Option<i32>> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.get_from_end(n as usize))
     }
 
     /// 当前元素数量
     #[napi]
-    pub fn len(&self) -> u32 {
-        let rb = self.inner.lock().unwrap();
-        rb.len() as u32
+    pub fn len(&self) -> napi::Result<u32> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.len() as u32)
     }
 
     /// 是否为空
     #[napi]
-    pub fn is_empty(&self) -> bool {
-        let rb = self.inner.lock().unwrap();
-        rb.is_empty()
+    pub fn is_empty(&self) -> napi::Result<bool> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.is_empty())
     }
 
     /// 是否已满
     #[napi]
-    pub fn is_full(&self) -> bool {
-        let rb = self.inner.lock().unwrap();
-        rb.is_full()
+    pub fn is_full(&self) -> napi::Result<bool> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.is_full())
     }
 
     /// 容量
     #[napi]
-    pub fn capacity(&self) -> u32 {
-        let rb = self.inner.lock().unwrap();
-        rb.capacity() as u32
+    pub fn capacity(&self) -> napi::Result<u32> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.capacity() as u32)
     }
 
     /// 清空
     #[napi]
-    pub fn clear(&self) {
-        let mut rb = self.inner.lock().unwrap();
+    pub fn clear(&self) -> napi::Result<()> {
+        let mut rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         rb.clear();
+        Ok(())
     }
 
     /// 转换为数组
     #[napi]
-    pub fn to_array(&self) -> Vec<i32> {
-        let rb = self.inner.lock().unwrap();
-        rb.to_vec()
+    pub fn to_array(&self) -> napi::Result<Vec<i32>> {
+        let rb = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(rb.to_vec())
     }
 }

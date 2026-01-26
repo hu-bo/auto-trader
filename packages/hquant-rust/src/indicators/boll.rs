@@ -6,6 +6,7 @@
 use crate::common::F64RingBuffer;
 use crate::kline::Bar;
 use super::{Indicator, IndicatorValue, PriceType};
+use crate::{HQuantError, HQuantResult};
 
 #[derive(Debug)]
 pub struct BOLL {
@@ -25,27 +26,39 @@ pub struct BOLL {
 }
 
 impl BOLL {
-    pub fn new(period: usize, std_dev_factor: f64) -> Self {
+    pub fn new(period: usize, std_dev_factor: f64) -> HQuantResult<Self> {
         Self::with_price_type(period, std_dev_factor, PriceType::Close)
     }
 
-    pub fn with_price_type(period: usize, std_dev_factor: f64, price_type: PriceType) -> Self {
-        Self {
+    pub fn with_price_type(
+        period: usize,
+        std_dev_factor: f64,
+        price_type: PriceType,
+    ) -> HQuantResult<Self> {
+        if period == 0 {
+            return Err(HQuantError::invalid_argument("BOLL period must be > 0"));
+        }
+        if !std_dev_factor.is_finite() || std_dev_factor <= 0.0 {
+            return Err(HQuantError::invalid_argument(
+                "BOLL std_dev_factor must be finite and > 0",
+            ));
+        }
+        Ok(Self {
             name: format!("BOLL_{}", period),
             period,
             std_dev_factor,
             price_type,
-            input_buffer: F64RingBuffer::new(period),
-            middle_values: F64RingBuffer::new(period * 2),
-            upper_values: F64RingBuffer::new(period * 2),
-            lower_values: F64RingBuffer::new(period * 2),
+            input_buffer: F64RingBuffer::new(period)?,
+            middle_values: F64RingBuffer::new(period * 2)?,
+            upper_values: F64RingBuffer::new(period * 2)?,
+            lower_values: F64RingBuffer::new(period * 2)?,
             count: 0,
             last_timestamp: 0,
-        }
+        })
     }
 
     /// 标准布林带 (20, 2.0)
-    pub fn standard() -> Self {
+    pub fn standard() -> HQuantResult<Self> {
         Self::new(20, 2.0)
     }
 
@@ -188,7 +201,7 @@ mod tests {
 
     #[test]
     fn test_boll_basic() {
-        let mut boll = BOLL::new(5, 2.0);
+        let mut boll = BOLL::new(5, 2.0).unwrap();
         let prices: Vec<f64> = vec![10.0, 11.0, 12.0, 11.0, 10.0, 11.0, 12.0];
         let bars = create_bars(&prices);
 
@@ -208,7 +221,7 @@ mod tests {
 
     #[test]
     fn test_boll_constant_price() {
-        let mut boll = BOLL::new(5, 2.0);
+        let mut boll = BOLL::new(5, 2.0).unwrap();
         // 恒定价格，标准差为0
         let bars = create_bars(&[100.0, 100.0, 100.0, 100.0, 100.0]);
 
@@ -224,7 +237,7 @@ mod tests {
 
     #[test]
     fn test_boll_bandwidth() {
-        let mut boll = BOLL::new(5, 2.0);
+        let mut boll = BOLL::new(5, 2.0).unwrap();
         let bars = create_bars(&[10.0, 12.0, 8.0, 14.0, 6.0]);
 
         for bar in &bars {
@@ -237,7 +250,7 @@ mod tests {
 
     #[test]
     fn test_boll_percent_b() {
-        let mut boll = BOLL::new(5, 2.0);
+        let mut boll = BOLL::new(5, 2.0).unwrap();
         let bars = create_bars(&[10.0, 11.0, 12.0, 11.0, 10.0]);
 
         for bar in &bars {
@@ -258,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_boll_update_last() {
-        let mut boll = BOLL::new(5, 2.0);
+        let mut boll = BOLL::new(5, 2.0).unwrap();
         let bars = create_bars(&[10.0, 11.0, 12.0, 11.0, 10.0]);
 
         for bar in &bars {
@@ -277,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_boll_not_ready() {
-        let mut boll = BOLL::standard();
+        let mut boll = BOLL::standard().unwrap();
         let bars = create_bars(&[100.0, 101.0, 102.0]);
 
         for bar in &bars {

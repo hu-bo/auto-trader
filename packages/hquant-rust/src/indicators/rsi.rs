@@ -5,6 +5,7 @@
 use crate::common::F64RingBuffer;
 use crate::kline::Bar;
 use super::{Indicator, IndicatorValue, PriceType};
+use crate::{HQuantError, HQuantResult};
 
 #[derive(Debug)]
 pub struct RSI {
@@ -24,16 +25,19 @@ pub struct RSI {
 }
 
 impl RSI {
-    pub fn new(period: usize) -> Self {
+    pub fn new(period: usize) -> HQuantResult<Self> {
         Self::with_price_type(period, PriceType::Close)
     }
 
-    pub fn with_price_type(period: usize, price_type: PriceType) -> Self {
-        Self {
+    pub fn with_price_type(period: usize, price_type: PriceType) -> HQuantResult<Self> {
+        if period == 0 {
+            return Err(HQuantError::invalid_argument("RSI period must be > 0"));
+        }
+        Ok(Self {
             name: format!("RSI_{}", period),
             period,
             price_type,
-            values: F64RingBuffer::new(period * 2),
+            values: F64RingBuffer::new(period * 2)?,
             avg_gain: 0.0,
             avg_loss: 0.0,
             prev_price: 0.0,
@@ -41,7 +45,7 @@ impl RSI {
             last_timestamp: 0,
             gains: Vec::with_capacity(period),
             losses: Vec::with_capacity(period),
-        }
+        })
     }
 
     fn calculate_rsi(&self) -> f64 {
@@ -212,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_rsi_basic() {
-        let mut rsi = RSI::new(14);
+        let mut rsi = RSI::new(14).unwrap();
         // 创建一个上涨趋势
         let prices: Vec<f64> = (0..20).map(|i| 100.0 + i as f64).collect();
         let bars = create_bars(&prices);
@@ -228,7 +232,7 @@ mod tests {
 
     #[test]
     fn test_rsi_downtrend() {
-        let mut rsi = RSI::new(14);
+        let mut rsi = RSI::new(14).unwrap();
         // 创建一个下跌趋势
         let prices: Vec<f64> = (0..20).map(|i| 200.0 - i as f64).collect();
         let bars = create_bars(&prices);
@@ -244,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_rsi_range() {
-        let mut rsi = RSI::new(14);
+        let mut rsi = RSI::new(14).unwrap();
         // 波动行情
         let mut prices = Vec::new();
         for i in 0..30 {
@@ -268,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_rsi_not_ready() {
-        let mut rsi = RSI::new(14);
+        let mut rsi = RSI::new(14).unwrap();
         let bars = create_bars(&[100.0, 101.0, 102.0]);
 
         for bar in &bars {

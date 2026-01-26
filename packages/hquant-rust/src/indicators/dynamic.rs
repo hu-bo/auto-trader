@@ -10,6 +10,7 @@
 use crate::common::F64RingBuffer;
 use crate::kline::{Bar, KlineSeries};
 use super::{Indicator, IndicatorValue};
+use crate::{HQuantResult};
 
 /// 动态指标计算函数类型
 /// 输入: K线序列引用
@@ -34,18 +35,23 @@ impl DynamicIndicator {
     /// - `min_periods`: 最小数据点数量
     /// - `capacity`: 数据缓存容量
     /// - `calc_fn`: 计算函数
-    pub fn new<F>(name: impl Into<String>, min_periods: usize, capacity: usize, calc_fn: F) -> Self
+    pub fn new<F>(
+        name: impl Into<String>,
+        min_periods: usize,
+        capacity: usize,
+        calc_fn: F,
+    ) -> HQuantResult<Self>
     where
         F: Fn(&KlineSeries) -> Option<f64> + Send + Sync + 'static,
     {
-        Self {
+        Ok(Self {
             name: name.into(),
             min_periods,
             calc_fn: Box::new(calc_fn),
-            klines: KlineSeries::new(capacity),
-            values: F64RingBuffer::new(capacity),
+            klines: KlineSeries::new(capacity)?,
+            values: F64RingBuffer::new(capacity)?,
             last_timestamp: 0,
-        }
+        })
     }
 }
 
@@ -124,7 +130,7 @@ impl Indicator for DynamicIndicator {
 /// 常用动态指标工厂函数
 
 /// VWAP (成交量加权平均价格)
-pub fn vwap(capacity: usize) -> DynamicIndicator {
+pub fn vwap(capacity: usize) -> HQuantResult<DynamicIndicator> {
     DynamicIndicator::new("VWAP", 1, capacity, |klines| {
         let mut sum_pv = 0.0;
         let mut sum_v = 0.0;
@@ -148,7 +154,7 @@ pub fn vwap(capacity: usize) -> DynamicIndicator {
 }
 
 /// OBV (能量潮指标)
-pub fn obv(capacity: usize) -> DynamicIndicator {
+pub fn obv(capacity: usize) -> HQuantResult<DynamicIndicator> {
     DynamicIndicator::new("OBV", 2, capacity, |klines| {
         let mut obv = 0.0;
 
@@ -167,7 +173,7 @@ pub fn obv(capacity: usize) -> DynamicIndicator {
 }
 
 /// MFI (资金流量指标)
-pub fn mfi(period: usize, capacity: usize) -> DynamicIndicator {
+pub fn mfi(period: usize, capacity: usize) -> HQuantResult<DynamicIndicator> {
     DynamicIndicator::new(format!("MFI_{}", period), period + 1, capacity, move |klines| {
         if klines.len() < period + 1 {
             return None;
@@ -202,7 +208,7 @@ pub fn mfi(period: usize, capacity: usize) -> DynamicIndicator {
 }
 
 /// Williams %R
-pub fn williams_r(period: usize, capacity: usize) -> DynamicIndicator {
+pub fn williams_r(period: usize, capacity: usize) -> HQuantResult<DynamicIndicator> {
     DynamicIndicator::new(format!("WR_{}", period), period, capacity, move |klines| {
         if klines.len() < period {
             return None;
@@ -233,7 +239,7 @@ pub fn williams_r(period: usize, capacity: usize) -> DynamicIndicator {
 }
 
 /// CCI (商品通道指数)
-pub fn cci(period: usize, capacity: usize) -> DynamicIndicator {
+pub fn cci(period: usize, capacity: usize) -> HQuantResult<DynamicIndicator> {
     DynamicIndicator::new(format!("CCI_{}", period), period, capacity, move |klines| {
         if klines.len() < period {
             return None;
@@ -268,7 +274,7 @@ pub fn cci(period: usize, capacity: usize) -> DynamicIndicator {
 }
 
 /// ROC (变动率)
-pub fn roc(period: usize, capacity: usize) -> DynamicIndicator {
+pub fn roc(period: usize, capacity: usize) -> HQuantResult<DynamicIndicator> {
     DynamicIndicator::new(format!("ROC_{}", period), period + 1, capacity, move |klines| {
         if klines.len() < period + 1 {
             return None;
@@ -311,7 +317,8 @@ mod tests {
                 }
             }
             Some(sum / count as f64)
-        });
+        })
+        .unwrap();
 
         let bars = create_bars();
         for bar in &bars {
@@ -324,7 +331,7 @@ mod tests {
 
     #[test]
     fn test_vwap() {
-        let mut indicator = vwap(100);
+        let mut indicator = vwap(100).unwrap();
         let bars = create_bars();
 
         for bar in &bars {
@@ -338,7 +345,7 @@ mod tests {
 
     #[test]
     fn test_obv() {
-        let mut indicator = obv(100);
+        let mut indicator = obv(100).unwrap();
         let bars = create_bars();
 
         for bar in &bars {
@@ -352,7 +359,7 @@ mod tests {
 
     #[test]
     fn test_williams_r() {
-        let mut indicator = williams_r(5, 100);
+        let mut indicator = williams_r(5, 100).unwrap();
         let bars = create_bars();
 
         for bar in &bars {
@@ -367,7 +374,7 @@ mod tests {
 
     #[test]
     fn test_cci() {
-        let mut indicator = cci(5, 100);
+        let mut indicator = cci(5, 100).unwrap();
         let bars = create_bars();
 
         for bar in &bars {
@@ -380,7 +387,7 @@ mod tests {
 
     #[test]
     fn test_roc() {
-        let mut indicator = roc(3, 100);
+        let mut indicator = roc(3, 100).unwrap();
         let bars = create_bars();
 
         for bar in &bars {
@@ -396,7 +403,8 @@ mod tests {
     fn test_dynamic_indicator_update_last() {
         let mut indicator = DynamicIndicator::new("last_close", 1, 100, |klines| {
             klines.last().map(|b| b.close)
-        });
+        })
+        .unwrap();
 
         let bars = create_bars();
         for bar in &bars {

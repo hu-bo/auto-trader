@@ -6,6 +6,7 @@
 use crate::common::F64RingBuffer;
 use crate::kline::Bar;
 use super::{Indicator, IndicatorValue, PriceType};
+use crate::{HQuantError, HQuantResult};
 
 #[derive(Debug)]
 pub struct MACD {
@@ -35,7 +36,7 @@ pub struct MACD {
 }
 
 impl MACD {
-    pub fn new(fast_period: usize, slow_period: usize, signal_period: usize) -> Self {
+    pub fn new(fast_period: usize, slow_period: usize, signal_period: usize) -> HQuantResult<Self> {
         Self::with_price_type(fast_period, slow_period, signal_period, PriceType::Close)
     }
 
@@ -44,8 +45,19 @@ impl MACD {
         slow_period: usize,
         signal_period: usize,
         price_type: PriceType,
-    ) -> Self {
-        Self {
+    ) -> HQuantResult<Self> {
+        if fast_period == 0 || slow_period == 0 || signal_period == 0 {
+            return Err(HQuantError::invalid_argument(
+                "MACD periods must be > 0",
+            ));
+        }
+        if fast_period >= slow_period {
+            return Err(HQuantError::invalid_argument(
+                "MACD fast_period must be < slow_period",
+            ));
+        }
+
+        Ok(Self {
             name: format!("MACD_{}_{}", fast_period, slow_period),
             fast_period,
             slow_period,
@@ -57,17 +69,17 @@ impl MACD {
             fast_mult: 2.0 / (fast_period as f64 + 1.0),
             slow_mult: 2.0 / (slow_period as f64 + 1.0),
             signal_mult: 2.0 / (signal_period as f64 + 1.0),
-            macd_values: F64RingBuffer::new(slow_period * 2),
-            signal_values: F64RingBuffer::new(slow_period * 2),
-            histogram_values: F64RingBuffer::new(slow_period * 2),
+            macd_values: F64RingBuffer::new(slow_period * 2)?,
+            signal_values: F64RingBuffer::new(slow_period * 2)?,
+            histogram_values: F64RingBuffer::new(slow_period * 2)?,
             count: 0,
             last_timestamp: 0,
             price_sum: 0.0,
-        }
+        })
     }
 
     /// 标准 MACD (12, 26, 9)
-    pub fn standard() -> Self {
+    pub fn standard() -> HQuantResult<Self> {
         Self::new(12, 26, 9)
     }
 
@@ -239,7 +251,7 @@ mod tests {
 
     #[test]
     fn test_macd_basic() {
-        let mut macd = MACD::new(3, 5, 2);
+        let mut macd = MACD::new(3, 5, 2).unwrap();
         // 上涨趋势
         let prices: Vec<f64> = (0..15).map(|i| 100.0 + i as f64).collect();
         let bars = create_bars(&prices);
@@ -255,7 +267,7 @@ mod tests {
 
     #[test]
     fn test_macd_standard() {
-        let mut macd = MACD::standard();
+        let mut macd = MACD::standard().unwrap();
         // 需要足够的数据
         let prices: Vec<f64> = (0..50).map(|i| 100.0 + (i as f64).sin() * 10.0).collect();
         let bars = create_bars(&prices);
@@ -271,7 +283,7 @@ mod tests {
 
     #[test]
     fn test_macd_result() {
-        let mut macd = MACD::new(3, 5, 2);
+        let mut macd = MACD::new(3, 5, 2).unwrap();
         let prices: Vec<f64> = (0..15).map(|i| 100.0 + i as f64).collect();
         let bars = create_bars(&prices);
 
@@ -287,7 +299,7 @@ mod tests {
 
     #[test]
     fn test_macd_not_ready() {
-        let mut macd = MACD::standard();
+        let mut macd = MACD::standard().unwrap();
         let bars = create_bars(&[100.0, 101.0, 102.0]);
 
         for bar in &bars {

@@ -248,50 +248,65 @@ pub struct PyEngine {
 #[pymethods]
 impl PyEngine {
     #[new]
-    pub fn new(capacity: usize) -> Self {
-        Self {
-            inner: Mutex::new(QuantEngine::new(capacity)),
-        }
+    pub fn new(capacity: usize) -> PyResult<Self> {
+        Ok(Self {
+            inner: Mutex::new(
+                QuantEngine::new(capacity)
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
+            ),
+        })
     }
 
     pub fn add_ma_indicator(&self, name: String, indicator: &PyMAIndicator) -> PyResult<()> {
-        let mut engine = self.inner.lock().unwrap();
-        engine.add_indicator(name, indicator.inner.clone());
+        let mut engine = self.inner.lock().map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("engine lock poisoned"))?;
+        engine
+            .add_indicator(name, indicator.inner.clone())
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(())
     }
 
     pub fn add_rsi_indicator(&self, name: String, indicator: &PyRSIIndicator) -> PyResult<()> {
-        let mut engine = self.inner.lock().unwrap();
-        engine.add_indicator(name, indicator.inner.clone());
+        let mut engine = self.inner.lock().map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("engine lock poisoned"))?;
+        engine
+            .add_indicator(name, indicator.inner.clone())
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(())
     }
 
     pub fn add_macd_indicator(&self, name: String, indicator: &PyMACDIndicator) -> PyResult<()> {
-        let mut engine = self.inner.lock().unwrap();
-        engine.add_indicator(name, indicator.inner.clone());
+        let mut engine = self.inner.lock().map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("engine lock poisoned"))?;
+        engine
+            .add_indicator(name, indicator.inner.clone())
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(())
     }
 
     pub fn add_atr_indicator(&self, name: String, indicator: &PyATRIndicator) -> PyResult<()> {
-        let mut engine = self.inner.lock().unwrap();
-        engine.add_indicator(name, indicator.inner.clone());
+        let mut engine = self.inner.lock().map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("engine lock poisoned"))?;
+        engine
+            .add_indicator(name, indicator.inner.clone())
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(())
     }
 
     pub fn add_boll_indicator(&self, name: String, indicator: &PyBOLLIndicator) -> PyResult<()> {
-        let mut engine = self.inner.lock().unwrap();
-        engine.add_indicator(name, indicator.inner.clone());
+        let mut engine = self.inner.lock().map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("engine lock poisoned"))?;
+        engine
+            .add_indicator(name, indicator.inner.clone())
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(())
     }
 
     pub fn add_vri_indicator(&self, name: String, indicator: &PyVRIIndicator) -> PyResult<()> {
-        let mut engine = self.inner.lock().unwrap();
-        engine.add_indicator(name, indicator.inner.clone());
+        let mut engine = self.inner.lock().map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("engine lock poisoned"))?;
+        engine
+            .add_indicator(name, indicator.inner.clone())
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(())
     }
 
     pub fn append_bar(&self, bar: PyBar) -> PyResult<Vec<PySignal>> {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = self.inner.lock().map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("engine lock poisoned"))?;
         let signals: Vec<PySignal> = engine
             .append_bar(&to_bar(&bar))
             .iter()
@@ -301,30 +316,36 @@ impl PyEngine {
     }
 
     pub fn update_last_bar(&self, bar: PyBar) -> PyResult<()> {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = self.inner.lock().map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("engine lock poisoned"))?;
         engine.update_last_bar(&to_bar(&bar));
         Ok(())
     }
 
     pub fn load_history(&self, bars: Vec<PyBar>) -> PyResult<()> {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = self.inner.lock().map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("engine lock poisoned"))?;
         let rust_bars: Vec<Bar> = bars.iter().map(to_bar).collect();
         engine.load_history(&rust_bars);
         Ok(())
     }
 
     pub fn indicator_value(&self, name: String) -> Option<f64> {
-        let engine = self.inner.lock().unwrap();
+        let engine = self.inner.lock().ok()?;
         engine.indicator_value(&name)
     }
 
     pub fn indicator_ready(&self, name: String) -> bool {
-        let engine = self.inner.lock().unwrap();
+        let engine = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return false,
+        };
         engine.indicator_ready(&name)
     }
 
     pub fn reset(&self) {
-        let mut engine = self.inner.lock().unwrap();
+        let mut engine = match self.inner.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
         engine.reset();
     }
 }

@@ -8,6 +8,9 @@
 //! - 灵活的策略系统
 //! - 现货/合约回测引擎（支持爆仓模拟）
 
+pub mod error;
+pub use error::{HQuantError, HQuantResult};
+
 pub mod common;
 pub mod kline;
 pub mod indicators;
@@ -57,72 +60,42 @@ pub struct QuantEngine {
 
 impl QuantEngine {
     /// 创建新的量化引擎
-    pub fn new(capacity: usize) -> Self {
-        Self {
-            klines: KlineSeries::new(capacity),
+    pub fn new(capacity: usize) -> HQuantResult<Self> {
+        let klines = KlineSeries::new(capacity)?;
+        Ok(Self {
+            klines,
             indicators: HashMap::new(),
             strategies: Vec::new(),
             aggregator: None,
             backtest: None,
-        }
+        })
     }
 
     /// 添加指标（使用 Builder 模式）
     ///
     /// # Example
     /// ```ignore
-    /// use hquant_rust::{QuantEngine, macd, rsi, sma};
+    /// use hquant::{QuantEngine, macd, rsi, sma};
     ///
-    /// let mut engine = QuantEngine::new(1000);
+    /// let mut engine = QuantEngine::new(1000)?;
     ///
     /// // 使用 builder 模式添加指标
-    /// engine.add_indicator("macd", macd().fast(12).slow(26).signal(9));
-    /// engine.add_indicator("rsi", rsi().period(14));
-    /// engine.add_indicator("sma20", sma(20));
+    /// engine.add_indicator("macd", macd().fast(12).slow(26).signal(9))?;
+    /// engine.add_indicator("rsi", rsi().period(14))?;
+    /// engine.add_indicator("sma20", sma(20))?;
     /// ```
-    pub fn add_indicator<B: IndicatorBuilder>(&mut self, name: impl Into<String>, builder: B) {
-        self.indicators.insert(name.into(), builder.build());
+    pub fn add_indicator<B: IndicatorBuilder>(
+        &mut self,
+        name: impl Into<String>,
+        builder: B,
+    ) -> HQuantResult<()> {
+        self.indicators.insert(name.into(), builder.build()?);
+        Ok(())
     }
 
     /// 添加已构建的指标（Box<dyn Indicator>）
     pub fn add_indicator_boxed(&mut self, name: impl Into<String>, indicator: Box<dyn Indicator>) {
         self.indicators.insert(name.into(), indicator);
-    }
-
-    /// 添加 MA 指标
-    #[deprecated(since = "0.2.0", note = "Use add_indicator with MABuilder instead: engine.add_indicator(\"ma\", ma().period(20).ema())")]
-    pub fn add_ma(&mut self, name: impl Into<String>, period: usize, ma_type: MAType) {
-        self.add_indicator_boxed(name, Box::new(MA::new(period, ma_type)));
-    }
-
-    /// 添加 RSI 指标
-    #[deprecated(since = "0.2.0", note = "Use add_indicator with RSIBuilder instead: engine.add_indicator(\"rsi\", rsi().period(14))")]
-    pub fn add_rsi(&mut self, name: impl Into<String>, period: usize) {
-        self.add_indicator_boxed(name, Box::new(RSI::new(period)));
-    }
-
-    /// 添加 MACD 指标
-    #[deprecated(since = "0.2.0", note = "Use add_indicator with MACDBuilder instead: engine.add_indicator(\"macd\", macd().fast(12).slow(26).signal(9))")]
-    pub fn add_macd(&mut self, name: impl Into<String>, fast: usize, slow: usize, signal: usize) {
-        self.add_indicator_boxed(name, Box::new(MACD::new(fast, slow, signal)));
-    }
-
-    /// 添加 ATR 指标
-    #[deprecated(since = "0.2.0", note = "Use add_indicator with ATRBuilder instead: engine.add_indicator(\"atr\", atr().period(14))")]
-    pub fn add_atr(&mut self, name: impl Into<String>, period: usize) {
-        self.add_indicator_boxed(name, Box::new(ATR::new(period)));
-    }
-
-    /// 添加 BOLL 指标
-    #[deprecated(since = "0.2.0", note = "Use add_indicator with BOLLBuilder instead: engine.add_indicator(\"boll\", boll().period(20).std_dev(2.0))")]
-    pub fn add_boll(&mut self, name: impl Into<String>, period: usize, std_dev_factor: f64) {
-        self.add_indicator_boxed(name, Box::new(BOLL::new(period, std_dev_factor)));
-    }
-
-    /// 添加 VRI 指标
-    #[deprecated(since = "0.2.0", note = "Use add_indicator with VRIBuilder instead: engine.add_indicator(\"vri\", vri().period(14))")]
-    pub fn add_vri(&mut self, name: impl Into<String>, period: usize) {
-        self.add_indicator_boxed(name, Box::new(VRI::new(period)));
     }
 
     /// 添加动态指标（运行时自定义计算函数）
@@ -139,51 +112,64 @@ impl QuantEngine {
         name: impl Into<String>,
         min_periods: usize,
         calc_fn: F,
-    ) where
+    ) -> HQuantResult<()>
+    where
         F: Fn(&KlineSeries) -> Option<f64> + Send + Sync + 'static,
     {
         let name_str = name.into();
         let capacity = self.klines.capacity();
         self.add_indicator_boxed(
             name_str.clone(),
-            Box::new(DynamicIndicator::new(name_str, min_periods, capacity, calc_fn)),
+            Box::new(DynamicIndicator::new(
+                name_str,
+                min_periods,
+                capacity,
+                calc_fn,
+            )?),
         );
+        Ok(())
     }
 
     /// 添加预定义的 VWAP 指标
-    pub fn add_vwap(&mut self, name: impl Into<String>) {
+    pub fn add_vwap(&mut self, name: impl Into<String>) -> HQuantResult<()> {
         let capacity = self.klines.capacity();
-        self.add_indicator_boxed(name, Box::new(vwap(capacity)));
+        self.add_indicator_boxed(name, Box::new(vwap(capacity)?));
+        Ok(())
     }
 
     /// 添加预定义的 OBV 指标
-    pub fn add_obv(&mut self, name: impl Into<String>) {
+    pub fn add_obv(&mut self, name: impl Into<String>) -> HQuantResult<()> {
         let capacity = self.klines.capacity();
-        self.add_indicator_boxed(name, Box::new(obv(capacity)));
+        self.add_indicator_boxed(name, Box::new(obv(capacity)?));
+        Ok(())
     }
 
     /// 添加预定义的 MFI 指标
-    pub fn add_mfi(&mut self, name: impl Into<String>, period: usize) {
+    pub fn add_mfi(&mut self, name: impl Into<String>, period: usize) -> HQuantResult<()> {
         let capacity = self.klines.capacity();
-        self.add_indicator_boxed(name, Box::new(mfi(period, capacity)));
+        self.add_indicator_boxed(name, Box::new(mfi(period, capacity)?));
+        Ok(())
     }
 
     /// 添加预定义的 Williams %R 指标
-    pub fn add_williams_r(&mut self, name: impl Into<String>, period: usize) {
+    pub fn add_williams_r(&mut self, name: impl Into<String>, period: usize) -> HQuantResult<()> {
         let capacity = self.klines.capacity();
-        self.add_indicator_boxed(name, Box::new(williams_r(period, capacity)));
+        self.add_indicator_boxed(name, Box::new(williams_r(period, capacity)?));
+        Ok(())
     }
 
     /// 添加预定义的 CCI 指标
-    pub fn add_cci(&mut self, name: impl Into<String>, period: usize) {
+    pub fn add_cci(&mut self, name: impl Into<String>, period: usize) -> HQuantResult<()> {
         let capacity = self.klines.capacity();
-        self.add_indicator_boxed(name, Box::new(cci(period, capacity)));
+        self.add_indicator_boxed(name, Box::new(cci(period, capacity)?));
+        Ok(())
     }
 
     /// 添加预定义的 ROC 指标
-    pub fn add_roc(&mut self, name: impl Into<String>, period: usize) {
+    pub fn add_roc(&mut self, name: impl Into<String>, period: usize) -> HQuantResult<()> {
         let capacity = self.klines.capacity();
-        self.add_indicator_boxed(name, Box::new(roc(period, capacity)));
+        self.add_indicator_boxed(name, Box::new(roc(period, capacity)?));
+        Ok(())
     }
 
     /// 添加策略
@@ -192,8 +178,14 @@ impl QuantEngine {
     }
 
     /// 设置多周期聚合
-    pub fn setup_aggregator(&mut self, base_tf: TimeFrame, target_tfs: &[TimeFrame], capacity: usize) {
-        self.aggregator = Some(MultiTimeFrameAggregator::new(base_tf, target_tfs, capacity));
+    pub fn setup_aggregator(
+        &mut self,
+        base_tf: TimeFrame,
+        target_tfs: &[TimeFrame],
+        capacity: usize,
+    ) -> HQuantResult<()> {
+        self.aggregator = Some(MultiTimeFrameAggregator::new(base_tf, target_tfs, capacity)?);
+        Ok(())
     }
 
     /// 设置回测引擎
@@ -253,7 +245,7 @@ impl QuantEngine {
     }
 
     /// 评估所有策略
-    fn evaluate_strategies(&self, bar: &Bar) -> Vec<Signal> {
+    fn evaluate_strategies(&mut self, bar: &Bar) -> Vec<Signal> {
         let snapshot = IndicatorSnapshot::new(&self.indicators);
         let ctx = StrategyContext {
             bar,
@@ -261,7 +253,7 @@ impl QuantEngine {
         };
 
         self.strategies
-            .iter()
+            .iter_mut()
             .filter_map(|s| s.evaluate(&ctx))
             .collect()
     }
@@ -348,12 +340,12 @@ mod tests {
 
     #[test]
     fn test_quant_engine_basic() {
-        let mut engine = QuantEngine::new(1000);
+        let mut engine = QuantEngine::new(1000).unwrap();
 
         // 添加指标
-        engine.add_ma("ma20", 20, MAType::SMA);
-        engine.add_rsi("rsi14", 14);
-        engine.add_macd("macd", 12, 26, 9);
+        engine.add_indicator("ma20", ma().period(20).sma()).unwrap();
+        engine.add_indicator("rsi14", rsi().period(14)).unwrap();
+        engine.add_indicator("macd", macd().fast(12).slow(26).signal(9)).unwrap();
 
         // 加载数据
         let bars = create_test_bars();
@@ -367,10 +359,12 @@ mod tests {
 
     #[test]
     fn test_quant_engine_with_aggregator() {
-        let mut engine = QuantEngine::new(1000);
+        let mut engine = QuantEngine::new(1000).unwrap();
 
         // 设置聚合器
-        engine.setup_aggregator(TimeFrame::M15, &[TimeFrame::H1, TimeFrame::H4], 100);
+        engine
+            .setup_aggregator(TimeFrame::M15, &[TimeFrame::H1, TimeFrame::H4], 100)
+            .unwrap();
 
         let bars = create_test_bars();
         engine.load_history(&bars);
@@ -382,11 +376,11 @@ mod tests {
 
     #[test]
     fn test_quant_engine_backtest() {
-        let mut engine = QuantEngine::new(1000);
+        let mut engine = QuantEngine::new(1000).unwrap();
 
         // 添加指标
-        engine.add_ma("ma_fast", 5, MAType::SMA);
-        engine.add_ma("ma_slow", 20, MAType::SMA);
+        engine.add_indicator("ma_fast", ma().period(5).sma()).unwrap();
+        engine.add_indicator("ma_slow", ma().period(20).sma()).unwrap();
 
         // 设置回测
         engine.setup_backtest(BacktestConfig::spot(10000.0));
@@ -419,8 +413,8 @@ mod tests {
 
     #[test]
     fn test_quant_engine_realtime_update() {
-        let mut engine = QuantEngine::new(100);
-        engine.add_ma("ma5", 5, MAType::SMA);
+        let mut engine = QuantEngine::new(100).unwrap();
+        engine.add_indicator("ma5", ma().period(5).sma()).unwrap();
 
         // 加载初始数据
         for i in 0..10 {
@@ -440,17 +434,17 @@ mod tests {
 
     #[test]
     fn test_quant_engine_all_indicators() {
-        let mut engine = QuantEngine::new(500);
+        let mut engine = QuantEngine::new(500).unwrap();
 
         // 添加所有指标
-        engine.add_ma("sma20", 20, MAType::SMA);
-        engine.add_ma("ema20", 20, MAType::EMA);
-        engine.add_ma("wma20", 20, MAType::WMA);
-        engine.add_rsi("rsi14", 14);
-        engine.add_macd("macd", 12, 26, 9);
-        engine.add_atr("atr14", 14);
-        engine.add_boll("boll20", 20, 2.0);
-        engine.add_vri("vri14", 14);
+        engine.add_indicator("sma20", ma().period(20).sma()).unwrap();
+        engine.add_indicator("ema20", ma().period(20).ema()).unwrap();
+        engine.add_indicator("wma20", ma().period(20).wma()).unwrap();
+        engine.add_indicator("rsi14", rsi().period(14)).unwrap();
+        engine.add_indicator("macd", macd().fast(12).slow(26).signal(9)).unwrap();
+        engine.add_indicator("atr14", atr().period(14)).unwrap();
+        engine.add_indicator("boll20", boll().period(20).std_dev(2.0)).unwrap();
+        engine.add_indicator("vri14", vri().period(14)).unwrap();
 
         // 加载足够的数据
         let bars: Vec<Bar> = (0..100)
@@ -481,9 +475,9 @@ mod tests {
 
     #[test]
     fn test_futures_backtest() {
-        let mut engine = QuantEngine::new(1000);
+        let mut engine = QuantEngine::new(1000).unwrap();
 
-        engine.add_rsi("rsi14", 14);
+        engine.add_indicator("rsi14", rsi().period(14)).unwrap();
 
         // 合约回测配置
         let config = BacktestConfig {

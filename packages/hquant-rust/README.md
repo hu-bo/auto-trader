@@ -26,7 +26,7 @@
 hquant = { path = "packages/hquant-rust" }
 ```
 
-推荐用法：使用 Builder 添加指标（避免调用已标记 `deprecated` 的 `add_ma`/`add_rsi`/…）。
+推荐用法：使用 Builder 添加指标。
 
 ```rust
 use hquant::{
@@ -35,16 +35,16 @@ use hquant::{
     ma,
 };
 
-fn main() {
+fn main() -> hquant::HQuantResult<()> {
     // 初始化
-    let mut engine = QuantEngine::new(1_000);
+    let mut engine = QuantEngine::new(1_000)?;
 
     // 指标（Builder 模式）
-    engine.add_indicator("ma_fast", ma().period(5).sma());
-    engine.add_indicator("ma_slow", ma().period(20).sma());
+    engine.add_indicator("ma_fast", ma().period(5).sma())?;
+    engine.add_indicator("ma_slow", ma().period(20).sma())?;
 
     // 多周期聚合与回测
-    engine.setup_aggregator(TimeFrame::M15, &[TimeFrame::H1, TimeFrame::H4], 200);
+    engine.setup_aggregator(TimeFrame::M15, &[TimeFrame::H1, TimeFrame::H4], 200)?;
     engine.setup_backtest(BacktestConfig::spot(10_000.0));
 
     // 策略（示例：MA 交叉 + 强度计算）
@@ -85,25 +85,9 @@ fn main() {
         println!("Return: {:.2}%", stats.return_pct);
         println!("Max drawdown: {:.2}%", stats.max_drawdown_pct);
     }
+
+    Ok(())
 }
-```
-
-## 迁移提示（废弃方法）
-
-`QuantEngine` 中 `add_ma`/`add_rsi`/`add_macd`/`add_atr`/`add_boll`/`add_vri` 已标记为 `deprecated`。
-
-请替换为 Builder：
-
-```rust
-use hquant::{QuantEngine, ma, rsi, macd, atr, boll, vri};
-
-let mut engine = QuantEngine::new(1000);
-engine.add_indicator("ma", ma().period(20).ema());
-engine.add_indicator("rsi", rsi().period(14));
-engine.add_indicator("macd", macd().fast(12).slow(26).signal(9));
-engine.add_indicator("atr", atr().period(14));
-engine.add_indicator("boll", boll().period(20).std_dev(2.0));
-engine.add_indicator("vri", vri().period(14));
 ```
 
 ## 构建与测试

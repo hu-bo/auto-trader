@@ -6,6 +6,7 @@
 use crate::common::F64RingBuffer;
 use crate::kline::Bar;
 use super::{Indicator, IndicatorValue};
+use crate::{HQuantError, HQuantResult};
 
 #[derive(Debug)]
 pub struct VRI {
@@ -23,11 +24,14 @@ pub struct VRI {
 }
 
 impl VRI {
-    pub fn new(period: usize) -> Self {
-        Self {
+    pub fn new(period: usize) -> HQuantResult<Self> {
+        if period == 0 {
+            return Err(HQuantError::invalid_argument("VRI period must be > 0"));
+        }
+        Ok(Self {
             name: format!("VRI_{}", period),
             period,
-            values: F64RingBuffer::new(period * 2),
+            values: F64RingBuffer::new(period * 2)?,
             avg_up: 0.0,
             avg_down: 0.0,
             prev_volume: 0.0,
@@ -35,7 +39,7 @@ impl VRI {
             last_timestamp: 0,
             ups: Vec::with_capacity(period),
             downs: Vec::with_capacity(period),
-        }
+        })
     }
 
     fn calculate_vri(&self) -> f64 {
@@ -164,7 +168,7 @@ mod tests {
 
     #[test]
     fn test_vri_increasing_volume() {
-        let mut vri = VRI::new(14);
+        let mut vri = VRI::new(14).unwrap();
 
         // 成交量持续增加
         for i in 0..20 {
@@ -179,7 +183,7 @@ mod tests {
 
     #[test]
     fn test_vri_decreasing_volume() {
-        let mut vri = VRI::new(14);
+        let mut vri = VRI::new(14).unwrap();
 
         // 成交量持续减少
         for i in 0..20 {
@@ -201,7 +205,7 @@ mod tests {
 
     #[test]
     fn test_vri_range() {
-        let mut vri = VRI::new(14);
+        let mut vri = VRI::new(14).unwrap();
 
         for i in 0..20 {
             let volume = if i % 2 == 0 { 1000.0 + i as f64 * 50.0 } else { 1000.0 - i as f64 * 30.0 };
@@ -216,7 +220,7 @@ mod tests {
 
     #[test]
     fn test_vri_not_ready() {
-        let mut vri = VRI::new(14);
+        let mut vri = VRI::new(14).unwrap();
 
         for i in 0..5 {
             let bar = Bar::new(i * 1000, 100.0, 105.0, 98.0, 102.0, 1000.0);

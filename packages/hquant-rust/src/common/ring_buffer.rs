@@ -2,6 +2,8 @@
 /// 使用固定大小数组，避免动态内存分配
 /// 支持 O(1) 的追加和随机访问
 
+use crate::{HQuantError, HQuantResult};
+
 #[derive(Debug, Clone)]
 pub struct RingBuffer<T> {
     data: Vec<T>,
@@ -13,23 +15,25 @@ pub struct RingBuffer<T> {
 impl<T: Default + Clone> RingBuffer<T> {
     /// 创建指定容量的环形缓冲区
     #[inline]
-    pub fn new(capacity: usize) -> Self {
-        assert!(capacity > 0, "capacity must be > 0");
-        Self {
+    pub fn new(capacity: usize) -> HQuantResult<Self> {
+        if capacity == 0 {
+            return Err(HQuantError::invalid_capacity(capacity, "RingBuffer"));
+        }
+        Ok(Self {
             data: vec![T::default(); capacity],
             capacity,
             head: 0,
             len: 0,
-        }
+        })
     }
 
     /// 创建带初始数据的环形缓冲区
-    pub fn with_data(capacity: usize, initial: &[T]) -> Self {
-        let mut rb = Self::new(capacity);
+    pub fn with_data(capacity: usize, initial: &[T]) -> HQuantResult<Self> {
+        let mut rb = Self::new(capacity)?;
         for item in initial {
             rb.push(item.clone());
         }
-        rb
+        Ok(rb)
     }
 
     /// 追加元素，如果已满则覆盖最旧的元素
@@ -202,12 +206,12 @@ pub struct F64RingBuffer {
 
 impl F64RingBuffer {
     #[inline]
-    pub fn new(capacity: usize) -> Self {
-        Self {
-            inner: RingBuffer::new(capacity),
+    pub fn new(capacity: usize) -> HQuantResult<Self> {
+        Ok(Self {
+            inner: RingBuffer::new(capacity)?,
             sum: 0.0,
             sum_sq: 0.0,
-        }
+        })
     }
 
     /// 追加元素，维护缓存的和
@@ -333,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_ring_buffer_basic() {
-        let mut rb: RingBuffer<i32> = RingBuffer::new(3);
+        let mut rb: RingBuffer<i32> = RingBuffer::new(3).unwrap();
 
         rb.push(1);
         rb.push(2);
@@ -349,7 +353,7 @@ mod tests {
 
     #[test]
     fn test_ring_buffer_overflow() {
-        let mut rb: RingBuffer<i32> = RingBuffer::new(3);
+        let mut rb: RingBuffer<i32> = RingBuffer::new(3).unwrap();
 
         rb.push(1);
         rb.push(2);
@@ -364,7 +368,7 @@ mod tests {
 
     #[test]
     fn test_ring_buffer_update_last() {
-        let mut rb: RingBuffer<i32> = RingBuffer::new(3);
+        let mut rb: RingBuffer<i32> = RingBuffer::new(3).unwrap();
 
         rb.push(1);
         rb.push(2);
@@ -376,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_ring_buffer_iter() {
-        let mut rb: RingBuffer<i32> = RingBuffer::new(3);
+        let mut rb: RingBuffer<i32> = RingBuffer::new(3).unwrap();
         rb.push(1);
         rb.push(2);
         rb.push(3);
@@ -388,7 +392,7 @@ mod tests {
 
     #[test]
     fn test_ring_buffer_last_n() {
-        let mut rb: RingBuffer<i32> = RingBuffer::new(5);
+        let mut rb: RingBuffer<i32> = RingBuffer::new(5).unwrap();
         for i in 1..=5 {
             rb.push(i);
         }
@@ -399,7 +403,7 @@ mod tests {
 
     #[test]
     fn test_ring_buffer_get_from_end() {
-        let mut rb: RingBuffer<i32> = RingBuffer::new(5);
+        let mut rb: RingBuffer<i32> = RingBuffer::new(5).unwrap();
         for i in 1..=5 {
             rb.push(i);
         }
@@ -412,7 +416,7 @@ mod tests {
 
     #[test]
     fn test_f64_ring_buffer_mean() {
-        let mut rb = F64RingBuffer::new(4);
+        let mut rb = F64RingBuffer::new(4).unwrap();
         rb.push(1.0);
         rb.push(2.0);
         rb.push(3.0);
@@ -423,7 +427,7 @@ mod tests {
 
     #[test]
     fn test_f64_ring_buffer_overflow_mean() {
-        let mut rb = F64RingBuffer::new(3);
+        let mut rb = F64RingBuffer::new(3).unwrap();
         rb.push(1.0);
         rb.push(2.0);
         rb.push(3.0);
@@ -435,7 +439,7 @@ mod tests {
 
     #[test]
     fn test_f64_ring_buffer_std_dev() {
-        let mut rb = F64RingBuffer::new(4);
+        let mut rb = F64RingBuffer::new(4).unwrap();
         rb.push(2.0);
         rb.push(4.0);
         rb.push(4.0);
@@ -453,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_f64_ring_buffer_update_last() {
-        let mut rb = F64RingBuffer::new(3);
+        let mut rb = F64RingBuffer::new(3).unwrap();
         rb.push(1.0);
         rb.push(2.0);
         rb.push(3.0);

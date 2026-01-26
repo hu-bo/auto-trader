@@ -4,6 +4,7 @@
 use crate::common::F64RingBuffer;
 use crate::kline::Bar;
 use super::{Indicator, IndicatorValue, PriceType};
+use crate::{HQuantError, HQuantResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MAType {
@@ -34,15 +35,18 @@ pub struct MA {
 }
 
 impl MA {
-    pub fn new(period: usize, ma_type: MAType) -> Self {
+    pub fn new(period: usize, ma_type: MAType) -> HQuantResult<Self> {
         Self::with_price_type(period, ma_type, PriceType::Close)
     }
 
-    pub fn with_price_type(period: usize, ma_type: MAType, price_type: PriceType) -> Self {
+    pub fn with_price_type(period: usize, ma_type: MAType, price_type: PriceType) -> HQuantResult<Self> {
+        if period == 0 {
+            return Err(HQuantError::invalid_argument("MA period must be > 0"));
+        }
         let ema_multiplier = 2.0 / (period as f64 + 1.0);
         let wma_divisor = (period * (period + 1) / 2) as f64;
 
-        Self {
+        Ok(Self {
             name: format!("{}_{}", match ma_type {
                 MAType::SMA => "SMA",
                 MAType::EMA => "EMA",
@@ -51,25 +55,25 @@ impl MA {
             period,
             ma_type,
             price_type,
-            values: F64RingBuffer::new(period * 2),
+            values: F64RingBuffer::new(period * 2)?,
             ema_value: 0.0,
             ema_multiplier,
             wma_divisor,
-            input_buffer: F64RingBuffer::new(period),
+            input_buffer: F64RingBuffer::new(period)?,
             count: 0,
             last_timestamp: 0,
-        }
+        })
     }
 
-    pub fn sma(period: usize) -> Self {
+    pub fn sma(period: usize) -> HQuantResult<Self> {
         Self::new(period, MAType::SMA)
     }
 
-    pub fn ema(period: usize) -> Self {
+    pub fn ema(period: usize) -> HQuantResult<Self> {
         Self::new(period, MAType::EMA)
     }
 
-    pub fn wma(period: usize) -> Self {
+    pub fn wma(period: usize) -> HQuantResult<Self> {
         Self::new(period, MAType::WMA)
     }
 
@@ -194,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_sma() {
-        let mut ma = MA::sma(3);
+        let mut ma = MA::sma(3).unwrap();
         let bars = create_bars(&[1.0, 2.0, 3.0, 4.0, 5.0]);
 
         for bar in &bars {
@@ -208,7 +212,7 @@ mod tests {
 
     #[test]
     fn test_ema() {
-        let mut ma = MA::ema(3);
+        let mut ma = MA::ema(3).unwrap();
         let bars = create_bars(&[1.0, 2.0, 3.0, 4.0, 5.0]);
 
         for bar in &bars {
@@ -225,7 +229,7 @@ mod tests {
 
     #[test]
     fn test_wma() {
-        let mut ma = MA::wma(3);
+        let mut ma = MA::wma(3).unwrap();
         let bars = create_bars(&[1.0, 2.0, 3.0]);
 
         for bar in &bars {
@@ -238,7 +242,7 @@ mod tests {
 
     #[test]
     fn test_ma_update_last() {
-        let mut ma = MA::sma(3);
+        let mut ma = MA::sma(3).unwrap();
         let bars = create_bars(&[1.0, 2.0, 3.0]);
 
         for bar in &bars {
@@ -258,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_ma_not_ready() {
-        let mut ma = MA::sma(5);
+        let mut ma = MA::sma(5).unwrap();
         let bars = create_bars(&[1.0, 2.0, 3.0]);
 
         for bar in &bars {

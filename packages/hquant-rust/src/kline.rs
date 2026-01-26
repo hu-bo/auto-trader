@@ -5,6 +5,7 @@
 /// 3. 内存效率 - 避免结构体填充
 
 use crate::common::RingBuffer;
+use crate::HQuantResult;
 
 /// 单根K线数据（用于输入/输出）
 #[derive(Debug, Clone, Copy, Default)]
@@ -53,16 +54,16 @@ pub struct KlineSeries {
 
 impl KlineSeries {
     /// 创建指定容量的K线序列
-    pub fn new(capacity: usize) -> Self {
-        Self {
-            timestamp: RingBuffer::new(capacity),
-            open: RingBuffer::new(capacity),
-            high: RingBuffer::new(capacity),
-            low: RingBuffer::new(capacity),
-            close: RingBuffer::new(capacity),
-            volume: RingBuffer::new(capacity),
+    pub fn new(capacity: usize) -> HQuantResult<Self> {
+        Ok(Self {
+            timestamp: RingBuffer::new(capacity)?,
+            open: RingBuffer::new(capacity)?,
+            high: RingBuffer::new(capacity)?,
+            low: RingBuffer::new(capacity)?,
+            close: RingBuffer::new(capacity)?,
+            volume: RingBuffer::new(capacity)?,
             capacity,
-        }
+        })
     }
 
     /// 追加一根K线
@@ -238,7 +239,7 @@ mod tests {
 
     #[test]
     fn test_kline_series_basic() {
-        let mut series = KlineSeries::new(10);
+        let mut series = KlineSeries::new(10).unwrap();
         let bars = create_test_bars();
 
         for bar in &bars {
@@ -252,7 +253,7 @@ mod tests {
 
     #[test]
     fn test_kline_series_get() {
-        let mut series = KlineSeries::new(10);
+        let mut series = KlineSeries::new(10).unwrap();
         let bars = create_test_bars();
         series.load_history(&bars);
 
@@ -267,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_kline_series_update_last() {
-        let mut series = KlineSeries::new(10);
+        let mut series = KlineSeries::new(10).unwrap();
         let bars = create_test_bars();
         series.load_history(&bars);
 
@@ -284,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_kline_series_overflow() {
-        let mut series = KlineSeries::new(3);
+        let mut series = KlineSeries::new(3).unwrap();
         let bars = create_test_bars();
 
         for bar in &bars {
@@ -299,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_kline_series_iter() {
-        let mut series = KlineSeries::new(10);
+        let mut series = KlineSeries::new(10).unwrap();
         let bars = create_test_bars();
         series.load_history(&bars);
 
@@ -309,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_kline_series_get_from_end() {
-        let mut series = KlineSeries::new(10);
+        let mut series = KlineSeries::new(10).unwrap();
         let bars = create_test_bars();
         series.load_history(&bars);
 

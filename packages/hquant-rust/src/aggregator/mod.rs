@@ -2,6 +2,9 @@
 /// 支持从细粒度K线聚合到粗粒度K线（如 15m -> 4h -> 1d）
 
 use crate::kline::{Bar, KlineSeries};
+use crate::{HQuantError, HQuantResult};
+
+use std::fmt;
 
 /// 时间周期定义（毫秒）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -31,6 +34,19 @@ impl TimeFrame {
         }
     }
 
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TimeFrame::M1 => "M1",
+            TimeFrame::M5 => "M5",
+            TimeFrame::M15 => "M15",
+            TimeFrame::M30 => "M30",
+            TimeFrame::H1 => "H1",
+            TimeFrame::H4 => "H4",
+            TimeFrame::D1 => "D1",
+            TimeFrame::W1 => "W1",
+        }
+    }
+
     /// 计算时间戳对应的周期起始时间
     pub fn align_timestamp(&self, timestamp: i64) -> i64 {
         let period = self.millis();
@@ -48,6 +64,12 @@ impl TimeFrame {
     }
 }
 
+impl fmt::Display for TimeFrame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// 周期聚合器
 #[derive(Debug)]
 pub struct Aggregator {
@@ -61,20 +83,21 @@ pub struct Aggregator {
 }
 
 impl Aggregator {
-    pub fn new(source_tf: TimeFrame, target_tf: TimeFrame, capacity: usize) -> Self {
-        assert!(
-            target_tf.is_multiple_of(&source_tf),
-            "Target timeframe must be a multiple of source timeframe"
-        );
+    pub fn new(source_tf: TimeFrame, target_tf: TimeFrame, capacity: usize) -> HQuantResult<Self> {
+        if !target_tf.is_multiple_of(&source_tf) {
+            return Err(HQuantError::invalid_argument(format!(
+                "invalid aggregation: target timeframe {target_tf} must be a multiple of source timeframe {source_tf}"
+            )));
+        }
 
-        Self {
+        Ok(Self {
             source_tf,
             target_tf,
             ratio: target_tf.ratio(&source_tf),
             current_bar: None,
             bar_count: 0,
-            output: KlineSeries::new(capacity),
-        }
+            output: KlineSeries::new(capacity)?,
+        })
     }
 
     /// 输入一根源周期K线，返回是否产生了新的目标周期K线
@@ -189,17 +212,29 @@ pub struct MultiTimeFrameAggregator {
 }
 
 impl MultiTimeFrameAggregator {
-    pub fn new(base_tf: TimeFrame, target_tfs: &[TimeFrame], capacity: usize) -> Self {
-        let aggregators = target_tfs
-            .iter()
-            .filter(|tf| tf.is_multiple_of(&base_tf) && **tf != base_tf)
-            .map(|tf| Aggregator::new(base_tf, *tf, capacity))
-            .collect();
+    pub fn new(base_tf: TimeFrame, target_tfs: &[TimeFrame], capacity: usize) -> HQuantResult<Self> {
+        for tf in target_tfs {
+            if *tf == base_tf {
+                return Err(HQuantError::invalid_argument(format!(
+                    "invalid aggregation: target timeframe {tf} must not equal base timeframe {base_tf}"
+                )));
+            }
+            if !tf.is_multiple_of(&base_tf) {
+                return Err(HQuantError::invalid_argument(format!(
+                    "invalid aggregation: target timeframe {tf} must be a multiple of base timeframe {base_tf}"
+                )));
+            }
+        }
 
-        Self {
+        let mut aggregators = Vec::with_capacity(target_tfs.len());
+        for tf in target_tfs {
+            aggregators.push(Aggregator::new(base_tf, *tf, capacity)?);
+        }
+
+        Ok(Self {
             base_tf,
             aggregators,
-        }
+        })
     }
 
     /// 输入基础周期K线，更新所有聚合器
@@ -295,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_aggregator_basic() {
-        let mut agg = Aggregator::new(TimeFrame::M15, TimeFrame::H1, 100);
+        let mut agg = Aggregator::new(TimeFrame::M15, TimeFrame::H1, 100).unwrap();
 
         // 输入4根15分钟K线
         let bars = vec![
@@ -329,7 +364,7 @@ mod tests {
 
     #[test]
     fn test_aggregator_current() {
-        let mut agg = Aggregator::new(TimeFrame::M15, TimeFrame::H1, 100);
+        let mut agg = Aggregator::new(TimeFrame::M15, TimeFrame::H1, 100).unwrap();
 
         let bar = Bar::new(0, 100.0, 105.0, 99.0, 104.0, 1000.0);
         agg.push(&bar);
@@ -341,7 +376,7 @@ mod tests {
 
     #[test]
     fn test_aggregator_flush() {
-        let mut agg = Aggregator::new(TimeFrame::M15, TimeFrame::H1, 100);
+        let mut agg = Aggregator::new(TimeFrame::M15, TimeFrame::H1, 100).unwrap();
 
         let bars = vec![
             Bar::new(0, 100.0, 105.0, 99.0, 104.0, 1000.0),
@@ -365,7 +400,8 @@ mod tests {
             TimeFrame::M15,
             &[TimeFrame::H1, TimeFrame::H4],
             100,
-        );
+        )
+        .unwrap();
 
         // 输入16根15分钟K线（4小时）
         for i in 0..16 {

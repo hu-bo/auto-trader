@@ -5,6 +5,7 @@
 use crate::common::F64RingBuffer;
 use crate::kline::Bar;
 use super::{Indicator, IndicatorValue};
+use crate::{HQuantError, HQuantResult};
 
 #[derive(Debug)]
 pub struct ATR {
@@ -19,17 +20,20 @@ pub struct ATR {
 }
 
 impl ATR {
-    pub fn new(period: usize) -> Self {
-        Self {
+    pub fn new(period: usize) -> HQuantResult<Self> {
+        if period == 0 {
+            return Err(HQuantError::invalid_argument("ATR period must be > 0"));
+        }
+        Ok(Self {
             name: format!("ATR_{}", period),
             period,
-            values: F64RingBuffer::new(period * 2),
-            tr_values: F64RingBuffer::new(period),
+            values: F64RingBuffer::new(period * 2)?,
+            tr_values: F64RingBuffer::new(period)?,
             atr_value: 0.0,
             prev_close: 0.0,
             count: 0,
             last_timestamp: 0,
-        }
+        })
     }
 
     fn calculate_tr(&self, bar: &Bar, prev_close: f64) -> f64 {
@@ -147,7 +151,7 @@ mod tests {
 
     #[test]
     fn test_atr_basic() {
-        let mut atr = ATR::new(14);
+        let mut atr = ATR::new(14).unwrap();
 
         // 创建测试数据
         for i in 0..20 {
@@ -168,8 +172,8 @@ mod tests {
 
     #[test]
     fn test_atr_volatility() {
-        let mut atr_low = ATR::new(5);
-        let mut atr_high = ATR::new(5);
+        let mut atr_low = ATR::new(5).unwrap();
+        let mut atr_high = ATR::new(5).unwrap();
 
         // 低波动
         for i in 0..10 {
@@ -188,7 +192,7 @@ mod tests {
 
     #[test]
     fn test_atr_not_ready() {
-        let mut atr = ATR::new(14);
+        let mut atr = ATR::new(14).unwrap();
 
         for i in 0..5 {
             let bar = Bar::new(i * 1000, 100.0, 105.0, 98.0, 102.0, 1000.0);

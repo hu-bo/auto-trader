@@ -3,6 +3,8 @@
 /// 类似 JavaScript 的 Float64Array / Int32Array 的环形缓冲区实现
 /// 支持 f64 和 i32 两种类型
 
+use crate::{HQuantError, HQuantResult};
+
 /// f64 类型的环形缓冲区 (类似 Float64Array)
 #[derive(Debug, Clone)]
 pub struct Float64RingBuffer {
@@ -16,15 +18,17 @@ pub struct Float64RingBuffer {
 impl Float64RingBuffer {
     /// 创建指定容量的缓冲区
     #[inline]
-    pub fn new(capacity: usize) -> Self {
-        assert!(capacity > 0, "capacity must be > 0");
-        Self {
+    pub fn new(capacity: usize) -> HQuantResult<Self> {
+        if capacity == 0 {
+            return Err(HQuantError::invalid_capacity(capacity, "Float64RingBuffer"));
+        }
+        Ok(Self {
             buffer: vec![0.0; capacity],
             capacity,
             front: 0,
             rear: 0,
             len: 0,
-        }
+        })
     }
 
     /// 追加元素，队列满时覆盖最旧数据
@@ -206,15 +210,17 @@ pub struct Int32RingBuffer {
 impl Int32RingBuffer {
     /// 创建指定容量的缓冲区
     #[inline]
-    pub fn new(capacity: usize) -> Self {
-        assert!(capacity > 0, "capacity must be > 0");
-        Self {
+    pub fn new(capacity: usize) -> HQuantResult<Self> {
+        if capacity == 0 {
+            return Err(HQuantError::invalid_capacity(capacity, "Int32RingBuffer"));
+        }
+        Ok(Self {
             buffer: vec![0; capacity],
             capacity,
             front: 0,
             rear: 0,
             len: 0,
-        }
+        })
     }
 
     /// 追加元素，队列满时覆盖最旧数据
@@ -386,7 +392,7 @@ mod tests {
 
     #[test]
     fn test_float64_basic() {
-        let mut rb = Float64RingBuffer::new(3);
+        let mut rb = Float64RingBuffer::new(3).unwrap();
 
         rb.push(1.0);
         rb.push(2.0);
@@ -402,7 +408,7 @@ mod tests {
 
     #[test]
     fn test_float64_overflow() {
-        let mut rb = Float64RingBuffer::new(3);
+        let mut rb = Float64RingBuffer::new(3).unwrap();
 
         rb.push(1.0);
         rb.push(2.0);
@@ -417,7 +423,7 @@ mod tests {
 
     #[test]
     fn test_float64_shift() {
-        let mut rb = Float64RingBuffer::new(3);
+        let mut rb = Float64RingBuffer::new(3).unwrap();
 
         rb.push(1.0);
         rb.push(2.0);
@@ -430,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_float64_pop() {
-        let mut rb = Float64RingBuffer::new(3);
+        let mut rb = Float64RingBuffer::new(3).unwrap();
 
         rb.push(1.0);
         rb.push(2.0);
@@ -443,7 +449,7 @@ mod tests {
 
     #[test]
     fn test_float64_update() {
-        let mut rb = Float64RingBuffer::new(3);
+        let mut rb = Float64RingBuffer::new(3).unwrap();
 
         rb.push(1.0);
         rb.push(2.0);
@@ -457,7 +463,7 @@ mod tests {
 
     #[test]
     fn test_float64_update_last() {
-        let mut rb = Float64RingBuffer::new(3);
+        let mut rb = Float64RingBuffer::new(3).unwrap();
 
         rb.push(1.0);
         rb.push(2.0);
@@ -468,7 +474,7 @@ mod tests {
 
     #[test]
     fn test_float64_get_from_end() {
-        let mut rb = Float64RingBuffer::new(5);
+        let mut rb = Float64RingBuffer::new(5).unwrap();
         for i in 1..=5 {
             rb.push(i as f64);
         }
@@ -481,7 +487,7 @@ mod tests {
 
     #[test]
     fn test_float64_iter() {
-        let mut rb = Float64RingBuffer::new(3);
+        let mut rb = Float64RingBuffer::new(3).unwrap();
         rb.push(1.0);
         rb.push(2.0);
         rb.push(3.0);
@@ -493,7 +499,7 @@ mod tests {
 
     #[test]
     fn test_float64_clear() {
-        let mut rb = Float64RingBuffer::new(3);
+        let mut rb = Float64RingBuffer::new(3).unwrap();
         rb.push(1.0);
         rb.push(2.0);
 
@@ -507,7 +513,7 @@ mod tests {
 
     #[test]
     fn test_int32_basic() {
-        let mut rb = Int32RingBuffer::new(3);
+        let mut rb = Int32RingBuffer::new(3).unwrap();
 
         rb.push(1);
         rb.push(2);
@@ -522,7 +528,7 @@ mod tests {
 
     #[test]
     fn test_int32_overflow() {
-        let mut rb = Int32RingBuffer::new(3);
+        let mut rb = Int32RingBuffer::new(3).unwrap();
 
         rb.push(1);
         rb.push(2);
@@ -537,7 +543,7 @@ mod tests {
 
     #[test]
     fn test_int32_shift_pop() {
-        let mut rb = Int32RingBuffer::new(3);
+        let mut rb = Int32RingBuffer::new(3).unwrap();
 
         rb.push(1);
         rb.push(2);
@@ -551,7 +557,7 @@ mod tests {
 
     #[test]
     fn test_int32_iter() {
-        let mut rb = Int32RingBuffer::new(3);
+        let mut rb = Int32RingBuffer::new(3).unwrap();
         rb.push(1);
         rb.push(2);
         rb.push(3);
