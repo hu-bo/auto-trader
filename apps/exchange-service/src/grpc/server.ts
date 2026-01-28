@@ -11,7 +11,7 @@ const logger = createLogger('grpc-server');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const PROTO_PATH = join(__dirname, '../../proto/exchange.proto');
+const PROTO_PATH = join(__dirname, '../../../../packages/contracts/proto/exchange.proto');
 
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   keepCase: false,
