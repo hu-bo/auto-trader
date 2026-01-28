@@ -1,0 +1,44 @@
+{
+  "name": "@hquant/contracts",
+  "version": "0.1.0",
+  "description": "Proto 定义与生成的 gRPC 代码，供大仓各服务共用",
+  "type": "module",
+  "main": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/node/index.js",
+      "types": "./dist/node/index.d.ts"
+    },
+    "./exchange": {
+      "import": "./dist/node/exchange.js",
+      "types": "./dist/node/exchange.d.ts"
+    },
+    "./signal": {
+      "import": "./dist/node/signal.js",
+      "types": "./dist/node/signal.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "proto"
+  ],
+  "scripts": {
+    "generate": "bash scripts/generate.sh",
+    "generate:node": "bash scripts/generate.sh node",
+    "generate:python": "bash scripts/generate.sh python",
+    "clean": "rm -rf dist",
+    "build": "pnpm generate:node"
+  },
+  "devDependencies": {
+    "grpc-tools": "^1.12.4",
+    "grpc_tools_node_protoc_ts": "^5.3.3",
+    "ts-proto": "^2.6.1"
+  },
+  "keywords": [
+    "proto",
+    "grpc",
+    "contracts"
+  ],
+  "license": "GPL-3.0-or-later"
+}
