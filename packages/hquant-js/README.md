@@ -1,130 +1,154 @@
+# @hquant/js
 
-# hquant
+High-performance quantitative trading engine powered by Rust (via napi-rs).
 
-TypeScript 量化指标与策略框架，支持高效滑动窗口、事件驱动、策略回测等。
+## Features
 
-## 特性
-- 技术指标、交易策略、信号回调全流程支持
-- 高性能 CircularQueue 实现，适合实时数据流
-- 支持自定义数据结构和多种指标
+- Native Rust performance with zero-copy data transfer
+- Complete technical indicator library (MA/RSI/MACD/ATR/BOLL/VRI)
+- Multi-timeframe aggregation (15m/1h/4h/1d)
+- Strategy DSL for custom trading logic
+- Backtest engine with liquidation simulation
 
-## 安装
+## Installation
+
 ```bash
-pnpm add hquant
+npm install @hquant/js
+# or
+pnpm add @hquant/js
 ```
 
-## 快速开始
+## Quick Start
 
-### 1. 创建 Quant 实例
-```ts
-import { Quant } from "hquant";
-const quant = new Quant({ maxHistoryLength: 240 });
-```
+```typescript
+import { HQuant, Indicators } from '@hquant/js'
 
-### 2. 添加技术指标
-```ts
-import { MA } from "hquant/lib/indicator/ma";
-import { BOLL } from "hquant/lib/indicator/boll";
-import { RSI } from "hquant/lib/indicator/rsi";
+// Create engine with multi-timeframe support
+const engine = new HQuant(1000, ['15m', '1h', '4h'])
+const ind = new Indicators()
 
-quant.addIndicator('ma60', new MA({ period: 60 }));
-quant.addIndicator('boll', new BOLL({ period: 14, stdDevFactor: 2 }));
-quant.addIndicator('rsi', new RSI({ period: 14 }));
-```
+// Add indicators
+engine.addRsiIndicator('rsi', ind.rsi().period(14))
+engine.addMaIndicator('ma_fast', ind.ma().period(5).ema())
+engine.addMaIndicator('ma_slow', ind.ma().period(20).ema())
+engine.addMacdIndicator('macd', ind.macd().fast(12).slow(26).signal(9))
+engine.addBollIndicator('boll', ind.boll().period(20).stdDev(2))
 
-### 3. 添加交易策略
-```ts
-quant.addStrategy('rsi', (indicators, bar) => {
-  const rsi = indicators.get('rsi').getValue();
-  if (rsi < 30) return 'BUY';
-  if (rsi > 70) return 'SELL';
-});
-```
-
-### 4. 注册信号回调
-```ts
-quant.onSignal('rsi', (signal, bar) => {
-  console.log(`RSI信号: ${signal}`);
-});
-quant.onSignal('all', (signals, bar) => {
-  console.log(`全部信号:`, signals);
-});
-```
-
-### 5. 添加/更新数据
-```ts
-quant.addData({
+// Feed K-line data (from WebSocket)
+const bar = {
+  timestamp: Date.now(),
   open: 100,
-  close: 105,
-  low: 99,
-  high: 106,
+  high: 105,
+  low: 95,
+  close: 102,
   volume: 1000,
-  timestamp: Date.now()
-});
-// 更新最后一条数据
-quant.updateLastData({ ... });
+}
+
+// feedKline returns aggregator events when higher timeframe candles complete
+const events = engine.feedKline(bar)
+for (const event of events) {
+  if (event.kind === 'KlineClosed') {
+    console.log(`${event.period} candle closed:`, event.candle)
+  }
+}
+
+// Get indicator values
+const rsi = engine.getIndicatorValue('rsi')
+const macdResult = engine.getIndicatorResult('macd')
+if (macdResult) {
+  console.log(`MACD: ${macdResult.value}, Histogram: ${macdResult.extra?.[0]}`)
+}
 ```
 
-### 6. 获取指标和信号
-```ts
-const ma = quant.getIndicator('ma60').getValue();
-const rsiSignal = quant.getSignal('rsi');
+## DSL Strategy
+
+```typescript
+import { DslStrategy, validateDsl } from '@hquant/js'
+
+// Validate DSL syntax
+const source = `
+  IF RSI(14) < 30 AND close > EMA(20) THEN BUY
+  IF RSI(14) > 70 THEN SELL
+`
+validateDsl(source)
+
+// Create and evaluate strategy
+const strategy = new DslStrategy(source)
+const signals = strategy.evaluate(bar, {})
+
+for (const signal of signals) {
+  console.log(`${signal.side}: ${signal.reason}`)
+}
 ```
 
-### 7. 获取历史数据
-```ts
-const history = quant.history.toArray();
+## Backtesting
+
+```typescript
+import { Backtest } from '@hquant/js'
+
+const bt = new Backtest({
+  marketType: 'spot',
+  initialCapital: 10000,
+  makerFee: 0.001,
+  takerFee: 0.001,
+})
+
+// Execute trades
+bt.openLong(100, 1.0)
+bt.close(110)
+
+// Get results
+const result = bt.result()
+console.log(`Total PnL: ${result.totalPnl}`)
+console.log(`Win Rate: ${(result.winRate * 100).toFixed(2)}%`)
+console.log(`Max Drawdown: ${(result.maxDrawdownPct).toFixed(2)}%`)
+console.log(`Sharpe Ratio: ${result.sharpeRatio.toFixed(2)}`)
 ```
 
-### 8. 移除指标/策略
-```ts
-quant.removeIndicator('ma60');
-quant.removeStrategy('rsi');
+## Multi-Timeframe Aggregation
+
+```typescript
+import { KlineAggregator } from '@hquant/js'
+
+const agg = new KlineAggregator('1m', ['15m', '1h', '4h'], 1000)
+
+// Push 1-minute candles from exchange WebSocket
+const events = agg.pushKline(bar)
+
+for (const event of events) {
+  if (event.kind === 'KlineClosed') {
+    console.log(`${event.period} candle:`, event.candle)
+    // Process higher timeframe candle
+  }
+}
 ```
 
-### 9. 销毁 Quant 实例
-```ts
-quant.destroy();
+## Supported Indicators
+
+| Builder | Methods | Description |
+|---------|---------|-------------|
+| `ma()` | `period(n)`, `sma()`, `ema()`, `wma()` | Moving Average |
+| `rsi()` | `period(n)` | Relative Strength Index |
+| `macd()` | `fast(n)`, `slow(n)`, `signal(n)` | MACD |
+| `atr()` | `period(n)` | Average True Range |
+| `boll()` | `period(n)`, `stdDev(f)` | Bollinger Bands |
+| `vri()` | `period(n)` | Volume Ratio Index |
+
+## Building Native Module
+
+```bash
+# Build Rust native module
+cd ../hquant-rs
+cargo build --release --features ffi-node
+
+# Copy to native directory (macOS)
+cp target/release/libhquant.dylib ../hquant-js/native/hquant.node
+
+# Build TypeScript
+cd ../hquant-js
+pnpm build
 ```
 
-## 进阶用法
-- ### ObjectRingBuffer 内存共享示例（主线程与 Worker 间零拷贝）
+## License
 
-```ts
-import { SharedObjectRingBuffer } from "hquant/lib/common/ObjectRingBuffer";
-
-// 1. 主线程创建共享队列
-const buf = new SharedObjectRingBuffer(
-  { price: Float64Array, amount: Float64Array },
-  1000
-);
-buf.push({ price: 1.23, amount: 100 });
-buf.push({ price: 1.25, amount: 120 });
-
-// 2. 导出元数据，传递给 Worker
-const meta = buf.exportMeta();
-worker.postMessage(meta, [meta.sab, meta.controlBuffer]); // 共享内存，无拷贝
-
-// 3. Worker 内重建队列，直接访问主线程数据
-// Worker.js
-import { SharedObjectRingBuffer } from "hquant/lib/common/ObjectRingBuffer";
-self.onmessage = (e) => {
-  const meta = e.data;
-  const buf = SharedObjectRingBuffer.importMeta(meta);
-  // 直接读取主线程写入的数据
-  console.log(buf.get(0)); // { price: 1.23, amount: 100 }
-  buf.push({ price: 1.30, amount: 150 }); // 也可写入，主线程可见
-};
-```
-
-
-## 目录结构说明
-- `src/indicator/`：内置技术指标（MA、BOLL、RSI、ATR等）
-- `src/common/`：高性能数据结构（CircularQueue、ObjectRingBuffer等）
-- `src/Quant.ts`：核心量化框架
-
-## 贡献与反馈
-如有问题或建议，欢迎提交 issue 或 PR。
-
-
-把hquant下的项目： 学习README.md用法、src源码。然后再同级目录下生成一个hquant-go-v2项目。使用golang语言开发，可以使用库减少代码，要求高性能，省内存，充分利用go的特征开发(能实现目标就行，不一定100%参照nodejs写法) 。。遇到选择参考hquant你帮我确认，一直到所有任务都完成
+GPL-3.0-or-later

@@ -1,135 +1,36 @@
-"""Type stubs for hquant native module."""
+"""Type stubs for hquant native module"""
 
-from typing import Optional, List
+from typing import Dict, List, Optional, Any, TypedDict
 
-class PyBar:
-    """K-line (candlestick) bar data."""
-
+class BarDict(TypedDict, total=False):
     timestamp: int
     open: float
     high: float
     low: float
     close: float
     volume: float
+    buy_volume: float
 
-    def __init__(
-        self,
-        timestamp: int,
-        open: float,
-        high: float,
-        low: float,
-        close: float,
-        volume: float,
-    ) -> None: ...
-    def __repr__(self) -> str: ...
-
-class PySignal:
-    """Trading signal output."""
-
-    side: str
+class SignalDict(TypedDict):
+    side: str  # "BUY" | "SELL" | "HOLD"
     strength: float
     reason: str
     timestamp: int
 
-    @property
-    def is_buy(self) -> bool: ...
-    @property
-    def is_sell(self) -> bool: ...
-    @property
-    def is_hold(self) -> bool: ...
-    def __repr__(self) -> str: ...
+class IndicatorConfig(TypedDict, total=False):
+    type: str  # "ma", "sma", "ema", "wma", "rsi", "macd", "atr", "boll", "vri", "vwap", "obv"
+    period: int
+    fast: int
+    slow: int
+    signal: int
+    std_dev: float
 
-class PyIndicatorValue:
-    """Indicator result with optional extra data."""
-
+class IndicatorResult(TypedDict, total=False):
     value: float
     timestamp: int
-    extra: Optional[List[float]]
+    extra: List[float]
 
-    def __repr__(self) -> str: ...
-
-class PyMABuilder:
-    """Moving Average indicator builder."""
-
-    def __init__(self) -> None: ...
-    def period(self, period: int) -> PyMABuilder: ...
-    def sma(self) -> PyMABuilder: ...
-    def ema(self) -> PyMABuilder: ...
-    def wma(self) -> PyMABuilder: ...
-
-class PyRSIBuilder:
-    """RSI indicator builder."""
-
-    def __init__(self) -> None: ...
-    def period(self, period: int) -> PyRSIBuilder: ...
-
-class PyMACDBuilder:
-    """MACD indicator builder."""
-
-    def __init__(self) -> None: ...
-    def fast(self, period: int) -> PyMACDBuilder: ...
-    def slow(self, period: int) -> PyMACDBuilder: ...
-    def signal(self, period: int) -> PyMACDBuilder: ...
-
-class PyATRBuilder:
-    """ATR indicator builder."""
-
-    def __init__(self) -> None: ...
-    def period(self, period: int) -> PyATRBuilder: ...
-
-class PyBOLLBuilder:
-    """Bollinger Bands indicator builder."""
-
-    def __init__(self) -> None: ...
-    def period(self, period: int) -> PyBOLLBuilder: ...
-    def std_dev(self, factor: float) -> PyBOLLBuilder: ...
-
-class PyVRIBuilder:
-    """VRI (Volume Relative Index) indicator builder."""
-
-    def __init__(self) -> None: ...
-    def period(self, period: int) -> PyVRIBuilder: ...
-
-class PyIndicators:
-    """Indicators factory for creating indicator builders."""
-
-    def __init__(self) -> None: ...
-    def ma(self) -> PyMABuilder: ...
-    def rsi(self) -> PyRSIBuilder: ...
-    def macd(self) -> PyMACDBuilder: ...
-    def atr(self) -> PyATRBuilder: ...
-    def boll(self) -> PyBOLLBuilder: ...
-    def vri(self) -> PyVRIBuilder: ...
-
-class PyBacktestConfig:
-    """Backtest configuration."""
-
-    market_type: str
-    initial_capital: float
-    leverage: float
-    maker_fee: float
-    taker_fee: float
-    slippage: float
-    position_size_pct: float
-
-    def __init__(
-        self,
-        initial_capital: float = 10000.0,
-        market_type: str = "spot",
-        leverage: float = 1.0,
-        maker_fee: float = 0.001,
-        taker_fee: float = 0.001,
-        slippage: float = 0.0005,
-        position_size_pct: float = 0.1,
-    ) -> None: ...
-    @staticmethod
-    def spot(initial_capital: float) -> PyBacktestConfig: ...
-    @staticmethod
-    def futures(initial_capital: float, leverage: float) -> PyBacktestConfig: ...
-
-class PyBacktestStats:
-    """Backtest statistics result."""
-
+class BacktestResult(TypedDict):
     total_trades: int
     winning_trades: int
     losing_trades: int
@@ -138,112 +39,251 @@ class PyBacktestStats:
     max_drawdown_pct: float
     sharpe_ratio: float
     win_rate: float
-    profit_factor: float
     final_equity: float
     return_pct: float
     liquidations: int
 
-    def __repr__(self) -> str: ...
+class AggregatorEvent(TypedDict, total=False):
+    kind: str
+    period: str
+    candle: BarDict
 
-class PyTrade:
-    """Trade record."""
+class LabeledVectorDict(TypedDict):
+    label: int
+    vector: List[float]
 
-    timestamp: int
-    side: str
-    price: float
-    size: float
-    fee: float
-    pnl: float
+class HQuant:
+    """High-performance quantitative trading engine"""
 
-    def __repr__(self) -> str: ...
+    def __init__(self, capacity: int = 1000) -> None:
+        """
+        Create a new quantitative engine.
 
-class PyPosition:
-    """Current position."""
+        Args:
+            capacity: Maximum number of K-lines to store (default: 1000)
+        """
+        ...
 
-    side: str
-    size: float
-    entry_price: float
-    leverage: float
-    liquidation_price: float
-    unrealized_pnl: float
-    timestamp: int
+    def add_indicator(self, name: str, config: IndicatorConfig) -> None:
+        """
+        Add an indicator to the engine.
 
-    def __repr__(self) -> str: ...
+        Args:
+            name: Unique name for the indicator
+            config: Indicator configuration dict
+
+        Example:
+            engine.add_indicator("rsi14", {"type": "rsi", "period": 14})
+            engine.add_indicator("ma20", {"type": "ema", "period": 20})
+            engine.add_indicator("macd", {"type": "macd", "fast": 12, "slow": 26, "signal": 9})
+        """
+        ...
+
+    def push_kline(self, bar: BarDict) -> List[SignalDict]:
+        """
+        Push a new K-line and update all indicators.
+
+        Args:
+            bar: K-line data dict
+
+        Returns:
+            List of generated signals
+        """
+        ...
+
+    def update_last(self, bar: BarDict) -> None:
+        """
+        Update the last K-line (for realtime data).
+
+        Args:
+            bar: Updated K-line data
+        """
+        ...
+
+    def get_indicator(self, name: str) -> Optional[float]:
+        """
+        Get the current value of an indicator.
+
+        Args:
+            name: Indicator name
+
+        Returns:
+            Current indicator value or None if not ready
+        """
+        ...
+
+    def get_indicator_result(self, name: str) -> Optional[IndicatorResult]:
+        """
+        Get indicator result with extra data (e.g., MACD histogram).
+
+        Args:
+            name: Indicator name
+
+        Returns:
+            Indicator result dict or None
+        """
+        ...
+
+    def is_ready(self, name: str) -> bool:
+        """
+        Check if an indicator has enough data to produce valid results.
+
+        Args:
+            name: Indicator name
+
+        Returns:
+            True if indicator is ready
+        """
+        ...
+
+    def reset(self) -> None:
+        """Reset the engine, clearing all data."""
+        ...
+
+class PyBacktest:
+    """Backtest engine for strategy evaluation"""
+
+    def __init__(
+        self,
+        initial_margin: float,
+        leverage: float = 1.0,
+        maker_fee_rate: float = 0.001,
+        taker_fee_rate: float = 0.001,
+        market_type: str = "spot",
+    ) -> None:
+        """
+        Create a backtest engine.
+
+        Args:
+            initial_margin: Initial capital
+            leverage: Leverage ratio (default: 1.0)
+            maker_fee_rate: Maker fee rate (default: 0.1%)
+            taker_fee_rate: Taker fee rate (default: 0.1%)
+            market_type: "spot" or "futures"
+        """
+        ...
+
+    def open_long(self, price: float, size: float) -> None:
+        """Open a long position."""
+        ...
+
+    def open_short(self, price: float, size: float) -> None:
+        """Open a short position (futures only)."""
+        ...
+
+    def close(self, price: float) -> None:
+        """Close current position."""
+        ...
+
+    def backtest_result(self) -> BacktestResult:
+        """Get backtest statistics."""
+        ...
+
+    def get_equity(self) -> float:
+        """Get current equity."""
+        ...
+
+    def get_equity_curve(self) -> List[float]:
+        """Get equity curve."""
+        ...
+
+    def reset(self) -> None:
+        """Reset backtest state."""
+        ...
 
 class PyAggregator:
-    """K-line aggregator for a single target timeframe."""
+    """Multi-timeframe K-line aggregator"""
 
-    def __init__(self, source_tf: str, target_tf: str, capacity: int) -> None: ...
-    def push(self, bar: PyBar) -> bool: ...
-    def update_last(self, bar: PyBar) -> None: ...
-    def current(self) -> Optional[PyBar]: ...
-    def output(self) -> List[PyBar]: ...
-    def flush(self) -> Optional[PyBar]: ...
+    def __init__(self, base_tf: str, target_tfs: List[str], capacity: int) -> None:
+        """
+        Create a multi-timeframe aggregator.
 
-class PyMultiTimeFrameAggregator:
-    """Multi-timeframe K-line aggregator."""
+        Args:
+            base_tf: Base timeframe (e.g., "1m", "15m")
+            target_tfs: Target timeframes to aggregate (e.g., ["1h", "4h", "1d"])
+            capacity: Capacity for each timeframe
+        """
+        ...
 
-    def __init__(self, base_tf: str, target_tfs: List[str], capacity: int) -> None: ...
-    def push(self, bar: PyBar) -> List[str]: ...
-    def output(self, tf: str) -> List[PyBar]: ...
-    def current(self, tf: str) -> Optional[PyBar]: ...
+    def push_kline(self, bar: BarDict) -> List[AggregatorEvent]:
+        """
+        Push a K-line and get completed candle events.
 
-class PyQuantEngine:
-    """Main quantitative trading engine (internal)."""
+        Args:
+            bar: K-line data
 
-    def __init__(self, capacity: int) -> None: ...
+        Returns:
+            List of completed candle events
+        """
+        ...
 
-    # Indicator management (unified method pattern)
-    def add_ma_indicator(self, name: str, indicator: PyMABuilder) -> None: ...
-    def add_rsi_indicator(self, name: str, indicator: PyRSIBuilder) -> None: ...
-    def add_macd_indicator(self, name: str, indicator: PyMACDBuilder) -> None: ...
-    def add_atr_indicator(self, name: str, indicator: PyATRBuilder) -> None: ...
-    def add_boll_indicator(self, name: str, indicator: PyBOLLBuilder) -> None: ...
-    def add_vri_indicator(self, name: str, indicator: PyVRIBuilder) -> None: ...
-    def add_vwap_indicator(self, name: str) -> None: ...
-    def add_obv_indicator(self, name: str) -> None: ...
-    def add_mfi_indicator(self, name: str, period: int) -> None: ...
-    def add_williams_r_indicator(self, name: str, period: int) -> None: ...
-    def add_cci_indicator(self, name: str, period: int) -> None: ...
-    def add_roc_indicator(self, name: str, period: int) -> None: ...
+    def flush(self) -> None:
+        """Flush all pending candles."""
+        ...
 
-    # Multi-timeframe aggregation
-    def setup_aggregator(
-        self, base_tf: str, target_tfs: List[str], capacity: int
-    ) -> None: ...
+    def reset(self) -> None:
+        """Reset aggregator state."""
+        ...
 
-    # Backtesting
-    def setup_backtest(self, config: PyBacktestConfig) -> None: ...
-    def backtest_result(self) -> Optional[PyBacktestStats]: ...
-    def backtest_trades(self) -> List[PyTrade]: ...
-    def backtest_equity_curve(self) -> List[float]: ...
+class PyDslStrategy:
+    """DSL-based strategy engine"""
 
-    # Data processing
-    def append_bar(self, bar: PyBar) -> List[PySignal]: ...
-    def update_last_bar(self, bar: PyBar) -> None: ...
-    def load_history(self, bars: List[PyBar]) -> List[PySignal]: ...
+    def __init__(self, source: str) -> None:
+        """
+        Create a DSL strategy from source code.
 
-    # Indicator access
-    def indicator_value(self, name: str) -> Optional[float]: ...
-    def indicator_result(self, name: str) -> Optional[PyIndicatorValue]: ...
-    def indicator_ready(self, name: str) -> bool: ...
+        Args:
+            source: DSL source code
 
-    # Data access
-    def len(self) -> int: ...
-    def is_empty(self) -> bool: ...
-    def last_bar(self) -> Optional[PyBar]: ...
+        Example:
+            strategy = PyDslStrategy('''
+                IF RSI(14) < 30 THEN BUY
+                IF RSI(14) > 70 THEN SELL
+            ''')
+        """
+        ...
 
-    # Management
-    def reset(self) -> None: ...
+    def load_store(self, name: str, vectors: List[LabeledVectorDict]) -> None:
+        """
+        Load labeled vectors for similarity matching.
 
-class PyBacktestEngine:
-    """Standalone backtest engine for custom strategy execution."""
+        Args:
+            name: Store name (used in VEC_STORE())
+            vectors: List of labeled vector dicts
+        """
+        ...
 
-    def __init__(self, config: PyBacktestConfig) -> None: ...
-    def process_signal(self, side: str, strength: float, bar: PyBar) -> None: ...
-    def position(self) -> Optional[PyPosition]: ...
-    def equity(self) -> float: ...
-    def result(self) -> PyBacktestStats: ...
-    def trades(self) -> List[PyTrade]: ...
-    def equity_curve(self) -> List[float]: ...
-    def reset(self) -> None: ...
+    def set_threshold(self, threshold: float) -> None:
+        """Set similarity threshold (default: 0.9)."""
+        ...
+
+    def evaluate(self, bar: BarDict) -> List[SignalDict]:
+        """
+        Evaluate strategy with given bar data.
+
+        Args:
+            bar: K-line data
+
+        Returns:
+            List of generated signals
+        """
+        ...
+
+    def reset(self) -> None:
+        """Reset strategy state."""
+        ...
+
+def validate_dsl(source: str) -> bool:
+    """
+    Validate DSL source code without creating an engine.
+
+    Args:
+        source: DSL source code
+
+    Returns:
+        True if valid
+
+    Raises:
+        ValueError: If DSL has syntax errors
+    """
+    ...

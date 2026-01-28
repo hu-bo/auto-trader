@@ -1,0 +1,83 @@
+// Strategy DSL Grammar
+
+// Whitespace and comments
+WHITESPACE = _{ " " | "\t" | "\r" }
+COMMENT = _{ "#" ~ (!NEWLINE ~ ANY)* }
+
+// Program structure
+program = { SOI ~ NEWLINE* ~ (statement ~ (NEWLINE+ ~ statement)*)? ~ NEWLINE* ~ EOI }
+statement = { if_then | assignment }
+
+// Statements
+assignment = { identifier ~ "=" ~ expr }
+if_then = { ^"IF" ~ expr ~ ^"THEN" ~ action }
+
+// Actions
+action = { (buy | sell | hold) ~ meta_args? }
+buy = { ^"BUY" }
+sell = { ^"SELL" }
+hold = { ^"HOLD" }
+meta_args = { "(" ~ kwargs? ~ ")" }
+
+// Expressions (precedence from low to high)
+expr = { or_expr }
+
+or_expr = { and_expr ~ (or_op ~ and_expr)* }
+or_op = { ^"OR" }
+
+and_expr = { not_expr ~ (and_op ~ not_expr)* }
+and_op = { ^"AND" }
+
+not_expr = { not_op? ~ comparison }
+not_op = { ^"NOT" | "!" }
+
+comparison = { additive ~ (comp_op ~ additive)* }
+comp_op = { "<=" | ">=" | "==" | "!=" | "<" | ">" }
+
+additive = { multiplicative ~ (add_op ~ multiplicative)* }
+add_op = { "+" | "-" }
+
+multiplicative = { unary ~ (mul_op ~ unary)* }
+mul_op = { "*" | "/" }
+
+unary = { neg_op? ~ postfix }
+neg_op = { "-" }
+
+postfix = { primary ~ (field_access | period_access)* }
+field_access = { "." ~ identifier }
+period_access = { "@" ~ period_id }
+
+// Primary expressions
+primary = {
+    "(" ~ expr ~ ")" |
+    function_call |
+    boolean |
+    number |
+    string |
+    identifier
+}
+
+// Function call
+function_call = { identifier ~ "(" ~ args? ~ ")" }
+args = { (kwarg ~ ("," ~ kwarg)*) | (arg ~ ("," ~ (kwarg | arg))*) }
+arg = { expr }
+kwarg = { identifier ~ "=" ~ expr }
+kwargs = { kwarg ~ ("," ~ kwarg)* }
+
+// Literals
+number = @{
+    "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)?
+}
+
+string = ${ "\"" ~ string_inner ~ "\"" | "'" ~ string_inner_sq ~ "'" }
+string_inner = @{ (!("\"" | "\\") ~ ANY | "\\" ~ ANY)* }
+string_inner_sq = @{ (!("'" | "\\") ~ ANY | "\\" ~ ANY)* }
+
+boolean = { ^"TRUE" | ^"FALSE" }
+
+// Identifiers (including period identifiers like 4h, 15m)
+identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+period_id = @{ ASCII_DIGIT+ ~ ("m" | "h" | "d" | "w" | "M" | "s") }
+
+// Newline
+NEWLINE = _{ "\n" }

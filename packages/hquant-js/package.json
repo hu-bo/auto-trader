@@ -7,16 +7,25 @@
     "indicator",
     "strategy",
     "trading",
+    "backtest",
     "rust",
     "napi"
   ],
   "author": "hubo <hubo9@qq.com>",
   "license": "GPL-3.0-or-later",
   "main": "lib/index.js",
+  "module": "lib/index.mjs",
   "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.mjs",
+      "require": "./lib/index.js"
+    }
+  },
   "directories": {
     "lib": "lib",
-    "test": "__tests__"
+    "test": "__test__"
   },
   "files": [
     "lib",
@@ -27,6 +36,7 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
+    "build:native": "cd ../hquant-rs && cargo build --release --features ffi-node && cp target/release/libhquant.dylib ../hquant-js/native/hquant.node || cp target/release/libhquant.so ../hquant-js/native/hquant.node",
     "test": "jest --colors --onlyChanged"
   },
   "devDependencies": {

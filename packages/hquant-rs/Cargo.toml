@@ -1,0 +1,30 @@
+[package]
+name = "hquant"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance quantitative trading framework"
+authors = ["hubo <hubo9@qq.com>"]
+license = "GPL-3.0-or-later"
+
+[features]
+default = []
+ffi-node = ["napi", "napi-derive"]
+ffi-python = ["pyo3/extension-module"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+napi = { version = "2", default-features = false, features = ["napi4"], optional = true }
+napi-derive = { version = "2", optional = true }
+pyo3 = { version = "0.22", features = ["extension-module"], optional = true }
+
+# DSL parsing
+pest = "2.7"
+pest_derive = "2.7"
+
+[build-dependencies]
+napi-build = "2"
+
+[dev-dependencies]
