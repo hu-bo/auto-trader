@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "target": "es2018",
+    "types": ["node", "jest"],
     "module": "CommonJS",
     "moduleResolution": "Node",
     "rootDir": "./src",

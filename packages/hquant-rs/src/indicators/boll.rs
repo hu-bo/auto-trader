@@ -1,11 +1,15 @@
 //! Bollinger Bands (BOLL)
 //! Middle Band = SMA(period)
-//! Upper Band = Middle Band + (std_dev * StdDev)
-//! Lower Band = Middle Band - (std_dev * StdDev)
+//! Upper Band = Middle Band + (std_dev_factor * StdDev)
+//! Lower Band = Middle Band - (std_dev_factor * StdDev)
+//!
+//! Supports two modes:
+//! - **Standalone**: computes its own SMA and StdDev internally (default)
+//! - **Graph mode**: receives SMA and StdDev from graph dependencies, avoiding duplicate computation
 
 use crate::common::F64RingBuffer;
 use crate::kline::Bar;
-use super::{Indicator, IndicatorValue, PriceType};
+use super::{Indicator, IndicatorValue, IndicatorSpec, PriceType};
 use crate::{HQuantError, HQuantResult};
 
 #[derive(Debug)]
@@ -17,9 +21,12 @@ pub struct BOLL {
     values: F64RingBuffer,
     upper: F64RingBuffer,
     lower: F64RingBuffer,
+    // Input buffer (used in standalone mode)
     input_buffer: F64RingBuffer,
     count: usize,
     last_timestamp: i64,
+    // Graph mode: SMA and StdDev provided by external dependencies
+    graph_mode: bool,
 }
 
 impl BOLL {
@@ -28,6 +35,15 @@ impl BOLL {
     }
 
     pub fn with_price_type(period: usize, std_dev_factor: f64, price_type: PriceType) -> HQuantResult<Self> {
+        Self::create(period, std_dev_factor, price_type, false)
+    }
+
+    /// Create BOLL in graph mode — SMA and StdDev are provided by graph dependencies.
+    pub(crate) fn new_graph_mode(period: usize, std_dev_factor: f64, price_type: PriceType) -> HQuantResult<Self> {
+        Self::create(period, std_dev_factor, price_type, true)
+    }
+
+    fn create(period: usize, std_dev_factor: f64, price_type: PriceType, graph_mode: bool) -> HQuantResult<Self> {
         if period == 0 {
             return Err(HQuantError::invalid_argument("BOLL period must be > 0"));
         }
@@ -36,6 +52,7 @@ impl BOLL {
         }
 
         let capacity = period * 2;
+        let input_cap = if graph_mode { 1 } else { period };
 
         Ok(Self {
             name: format!("BOLL_{}", period),
@@ -45,9 +62,10 @@ impl BOLL {
             values: F64RingBuffer::new(capacity)?,
             upper: F64RingBuffer::new(capacity)?,
             lower: F64RingBuffer::new(capacity)?,
-            input_buffer: F64RingBuffer::new(period)?,
+            input_buffer: F64RingBuffer::new(input_cap)?,
             count: 0,
             last_timestamp: 0,
+            graph_mode,
         })
     }
 
@@ -63,6 +81,12 @@ impl BOLL {
         let upper = middle + band_width;
         let lower = middle - band_width;
         (middle, upper, lower)
+    }
+
+    /// Compute bands from external SMA and StdDev values (graph mode).
+    fn calculate_from_deps(&self, sma_val: f64, std_dev_val: f64) -> (f64, f64, f64) {
+        let band = std_dev_val * self.std_dev_factor;
+        (sma_val, sma_val + band, sma_val - band)
     }
 
     /// Get upper band value
@@ -102,6 +126,10 @@ impl Indicator for BOLL {
     }
 
     fn push(&mut self, bar: &Bar) {
+        if self.graph_mode {
+            return;
+        }
+
         let price = self.price_type.extract(bar);
         self.input_buffer.push(price);
         self.count += 1;
@@ -116,6 +144,10 @@ impl Indicator for BOLL {
     }
 
     fn update_last(&mut self, bar: &Bar) {
+        if self.graph_mode {
+            return;
+        }
+
         let price = self.price_type.extract(bar);
         self.input_buffer.update_last(price);
         self.last_timestamp = bar.timestamp;
@@ -143,7 +175,11 @@ impl Indicator for BOLL {
     }
 
     fn is_ready(&self) -> bool {
-        self.count >= self.period
+        if self.graph_mode {
+            !self.values.is_empty()
+        } else {
+            self.count >= self.period
+        }
     }
 
     fn get(&self, index: usize) -> Option<f64> {
@@ -165,6 +201,69 @@ impl Indicator for BOLL {
         self.input_buffer.clear();
         self.count = 0;
         self.last_timestamp = 0;
+    }
+
+    // -- Graph-aware methods --
+
+    fn deps(&self) -> Vec<IndicatorSpec> {
+        if self.graph_mode {
+            vec![
+                IndicatorSpec::Sma { period: self.period, price_type: self.price_type },
+                IndicatorSpec::StdDev { period: self.period, price_type: self.price_type },
+            ]
+        } else {
+            vec![]
+        }
+    }
+
+    fn push_with_deps(&mut self, bar: &Bar, dep_values: &[Option<f64>]) {
+        if !self.graph_mode {
+            self.push(bar);
+            return;
+        }
+
+        self.last_timestamp = bar.timestamp;
+
+        // dep_values[0] = SMA(period), dep_values[1] = StdDev(period)
+        let sma_val = match dep_values.get(0).and_then(|v| *v) {
+            Some(v) => v,
+            None => return,
+        };
+        let std_dev_val = match dep_values.get(1).and_then(|v| *v) {
+            Some(v) => v,
+            None => return,
+        };
+
+        self.count += 1;
+        let (middle, upper, lower) = self.calculate_from_deps(sma_val, std_dev_val);
+        self.values.push(middle);
+        self.upper.push(upper);
+        self.lower.push(lower);
+    }
+
+    fn update_last_with_deps(&mut self, bar: &Bar, dep_values: &[Option<f64>]) {
+        if !self.graph_mode {
+            self.update_last(bar);
+            return;
+        }
+
+        self.last_timestamp = bar.timestamp;
+
+        let sma_val = match dep_values.get(0).and_then(|v| *v) {
+            Some(v) => v,
+            None => return,
+        };
+        let std_dev_val = match dep_values.get(1).and_then(|v| *v) {
+            Some(v) => v,
+            None => return,
+        };
+
+        if !self.values.is_empty() {
+            let (middle, upper, lower) = self.calculate_from_deps(sma_val, std_dev_val);
+            self.values.update_last(middle);
+            self.upper.update_last(upper);
+            self.lower.update_last(lower);
+        }
     }
 }
 
@@ -247,5 +346,56 @@ mod tests {
         }
 
         assert!(!boll.is_ready());
+    }
+
+    #[test]
+    fn test_boll_graph_mode_no_op_on_push() {
+        let mut boll = BOLL::new_graph_mode(20, 2.0, PriceType::Close).unwrap();
+        let bars = create_bars(&[100.0; 30]);
+
+        for bar in &bars {
+            boll.push(bar);
+        }
+
+        assert!(!boll.is_ready());
+        assert!(boll.value().is_none());
+    }
+
+    #[test]
+    fn test_boll_graph_mode_with_deps() {
+        let mut boll = BOLL::new_graph_mode(5, 2.0, PriceType::Close).unwrap();
+
+        for i in 0..10 {
+            let bar = Bar::new(i * 1000, 100.0, 101.0, 99.0, 100.0, 100.0);
+            let sma_val = 100.0;
+            let std_dev_val = 1.0;
+            boll.push_with_deps(&bar, &[Some(sma_val), Some(std_dev_val)]);
+        }
+
+        assert!(boll.is_ready());
+
+        let middle = boll.value().unwrap();
+        assert!((middle - 100.0).abs() < 1e-10);
+
+        let upper = boll.upper_band().unwrap();
+        assert!((upper - 102.0).abs() < 1e-10); // 100 + 2*1
+
+        let lower = boll.lower_band().unwrap();
+        assert!((lower - 98.0).abs() < 1e-10); // 100 - 2*1
+    }
+
+    #[test]
+    fn test_boll_graph_mode_deps_declaration() {
+        let boll = BOLL::new_graph_mode(20, 2.0, PriceType::Close).unwrap();
+        let deps = boll.deps();
+        assert_eq!(deps.len(), 2);
+        assert_eq!(deps[0], IndicatorSpec::Sma { period: 20, price_type: PriceType::Close });
+        assert_eq!(deps[1], IndicatorSpec::StdDev { period: 20, price_type: PriceType::Close });
+    }
+
+    #[test]
+    fn test_boll_standalone_no_deps() {
+        let boll = BOLL::default_params().unwrap();
+        assert!(boll.deps().is_empty());
     }
 }

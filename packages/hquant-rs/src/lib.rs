@@ -29,14 +29,18 @@ pub use common::{RingBuffer, F64RingBuffer};
 pub use kline::{Bar, KlineSeries};
 pub use indicators::{
     Indicator, IndicatorValue, PriceType,
-    MA, MAType, RSI, MACD, ATR, BOLL, VRI,
+    MA, MAType, RSI, MACD, ATR, BOLL, VRI, StdDev,
     DynamicIndicator, vwap, obv, mfi, williams_r, cci, roc,
     IndicatorBuilder,
     MABuilder, RSIBuilder, MACDBuilder, ATRBuilder, BOLLBuilder, VRIBuilder,
     ma, sma, ema, rsi, macd, atr, boll, vri,
+    IndicatorSpec, IndicatorId, IndicatorGraph, GraphSummary,
 };
 pub use aggregator::{TimeFrame, Aggregator, MultiTimeFrameAggregator};
-pub use strategy::{Signal, Side, Strategy, StrategyContext, IndicatorSnapshot, FnStrategy, RSIStrategy};
+pub use strategy::{
+    Signal, Side, Strategy, StrategyContext, IndicatorSnapshot,
+    FnStrategy, RSIStrategy, MACrossStrategy, MACDStrategy, BollStrategy,
+};
 pub use backtest::{
     BacktestEngine, BacktestConfig, BacktestStats,
     MarketType, Position, PositionSide, Trade,
@@ -46,14 +50,12 @@ pub use dsl::{
     compile as compile_dsl, Statement, Expr, Action,
 };
 
-use std::collections::HashMap;
-
 /// Quantitative Engine - Core entry point
 pub struct QuantEngine {
     /// K-line data
     klines: KlineSeries,
-    /// Indicator collection
-    indicators: HashMap<String, Box<dyn Indicator>>,
+    /// Indicator graph with DAG-based dedup and topological execution
+    graph: IndicatorGraph,
     /// Strategy collection
     strategies: Vec<Box<dyn Strategy>>,
     /// Multi-timeframe aggregator
@@ -68,26 +70,36 @@ impl QuantEngine {
         let klines = KlineSeries::new(capacity)?;
         Ok(Self {
             klines,
-            indicators: HashMap::new(),
+            graph: IndicatorGraph::new(),
             strategies: Vec::new(),
             aggregator: None,
             backtest: None,
         })
     }
 
-    /// Add indicator using Builder pattern
+    /// Add indicator using Builder pattern (opaque, not deduplicated)
     pub fn add_indicator<B: IndicatorBuilder>(
         &mut self,
         name: impl Into<String>,
         builder: B,
     ) -> HQuantResult<()> {
-        self.indicators.insert(name.into(), builder.build()?);
+        self.graph.add_boxed(name, builder.build()?);
         Ok(())
     }
 
-    /// Add pre-built indicator (Box<dyn Indicator>)
+    /// Add pre-built indicator (Box<dyn Indicator>), opaque node
     pub fn add_indicator_boxed(&mut self, name: impl Into<String>, indicator: Box<dyn Indicator>) {
-        self.indicators.insert(name.into(), indicator);
+        self.graph.add_boxed(name, indicator);
+    }
+
+    /// Add indicator by spec with automatic deduplication.
+    /// Composite indicators (MACD, BOLL) automatically share sub-indicators.
+    pub fn add_indicator_spec(
+        &mut self,
+        name: impl Into<String>,
+        spec: IndicatorSpec,
+    ) -> HQuantResult<IndicatorId> {
+        self.graph.add_with_name(name, spec)
     }
 
     /// Add dynamic indicator (runtime custom calculation)
@@ -182,10 +194,8 @@ impl QuantEngine {
         // Update K-line
         self.klines.append(bar);
 
-        // Update all indicators
-        for indicator in self.indicators.values_mut() {
-            indicator.push(bar);
-        }
+        // Update all indicators in topological order
+        self.graph.push(bar);
 
         // Update aggregator
         if let Some(agg) = &mut self.aggregator {
@@ -209,9 +219,7 @@ impl QuantEngine {
     pub fn update_last_bar(&mut self, bar: &Bar) {
         self.klines.update_last(bar);
 
-        for indicator in self.indicators.values_mut() {
-            indicator.update_last(bar);
-        }
+        self.graph.update_last(bar);
 
         if let Some(agg) = &mut self.aggregator {
             agg.update_last(bar);
@@ -230,7 +238,7 @@ impl QuantEngine {
 
     /// Evaluate all strategies
     fn evaluate_strategies(&mut self, bar: &Bar) -> Vec<Signal> {
-        let snapshot = IndicatorSnapshot::new(&self.indicators);
+        let snapshot = IndicatorSnapshot::new(&self.graph);
         let ctx = StrategyContext {
             bar,
             indicators: snapshot,
@@ -244,17 +252,27 @@ impl QuantEngine {
 
     /// Get indicator value
     pub fn indicator_value(&self, name: &str) -> Option<f64> {
-        self.indicators.get(name).and_then(|i| i.value())
+        self.graph.value_by_name(name)
     }
 
     /// Get indicator result
     pub fn indicator_result(&self, name: &str) -> Option<IndicatorValue> {
-        self.indicators.get(name).and_then(|i| i.result())
+        self.graph.result_by_name(name)
     }
 
     /// Check if indicator is ready
     pub fn indicator_ready(&self, name: &str) -> bool {
-        self.indicators.get(name).map(|i| i.is_ready()).unwrap_or(false)
+        self.graph.is_ready_by_name(name)
+    }
+
+    /// Get the indicator graph (for advanced access and debugging)
+    pub fn graph(&self) -> &IndicatorGraph {
+        &self.graph
+    }
+
+    /// Get a summary of the indicator graph
+    pub fn graph_summary(&self) -> GraphSummary {
+        self.graph.summary()
     }
 
     /// Get K-line series
@@ -290,9 +308,7 @@ impl QuantEngine {
     /// Reset engine
     pub fn reset(&mut self) {
         self.klines.clear();
-        for indicator in self.indicators.values_mut() {
-            indicator.reset();
-        }
+        self.graph.reset();
         if let Some(agg) = &mut self.aggregator {
             agg.reset();
         }
@@ -382,5 +398,107 @@ mod tests {
         println!("Total trades: {}", stats.total_trades);
         println!("Total PnL: {:.2}", stats.total_pnl);
         println!("Max Drawdown: {:.2}%", stats.max_drawdown_pct);
+    }
+
+    /// Full integration test: spec-based dedup + multiple strategies + backtest
+    #[test]
+    fn test_full_integration_dedup_strategies_backtest() {
+        let mut engine = QuantEngine::new(1000).unwrap();
+
+        // ── Register indicators via IndicatorSpec (automatic dedup) ──
+        // MACD internally needs EMA(12) and EMA(26); BOLL needs SMA(20) and StdDev(20).
+        // Adding standalone EMA(12) should be shared with MACD's EMA(12).
+        let _ema12_id = engine.add_indicator_spec("ema12", IndicatorSpec::ema(12)).unwrap();
+        let _macd_id  = engine.add_indicator_spec("macd",  IndicatorSpec::macd(12, 26, 9)).unwrap();
+        let _boll_id  = engine.add_indicator_spec("boll",  IndicatorSpec::boll(20, 2.0)).unwrap();
+        let _rsi_id   = engine.add_indicator_spec("rsi14", IndicatorSpec::Rsi {
+            period: 14, price_type: PriceType::Close,
+        }).unwrap();
+        // Standalone SMA(20) — should be shared with BOLL's SMA(20)
+        let _sma20_id = engine.add_indicator_spec("sma20", IndicatorSpec::sma(20)).unwrap();
+
+        // ── Verify dedup via graph summary ──
+        let summary = engine.graph_summary();
+        // MACD adds: EMA(12), EMA(26), MACD composite  → EMA(12) shared with standalone
+        // BOLL adds: SMA(20), StdDev(20), BOLL composite → SMA(20) shared with standalone
+        // RSI adds: RSI(14)
+        // Total unique nodes: EMA(12), EMA(26), MACD, SMA(20), StdDev(20), BOLL, RSI(14) = 7
+        assert_eq!(summary.total_nodes, 7,
+            "Expected 7 unique nodes after dedup, got {}. Summary: {:?}", summary.total_nodes, summary);
+
+        // ── Add strategies ──
+        // RSI overbought/oversold
+        engine.add_strategy(Box::new(RSIStrategy::new("rsi14", 30.0, 70.0)));
+        // MACD histogram crossover
+        engine.add_strategy(Box::new(MACDStrategy::new("macd")));
+        // Bollinger band breakout
+        engine.add_strategy(Box::new(BollStrategy::new("boll")));
+
+        // ── Setup backtest (spot, $10k) ──
+        engine.setup_backtest(BacktestConfig::spot(10000.0));
+
+        // ── Generate synthetic price data (100 bars with oscillating pattern) ──
+        let bars: Vec<Bar> = (0..100)
+            .map(|i| {
+                let base = 100.0 + 10.0 * ((i as f64 * 0.15).sin());
+                Bar::new(
+                    i * 60_000,   // 1-minute bars
+                    base - 0.5,
+                    base + 2.0,
+                    base - 2.0,
+                    base + 0.5,
+                    500.0 + (i as f64 * 5.0),
+                )
+            })
+            .collect();
+
+        // ── Run backtest via load_history ──
+        let all_signals = engine.load_history(&bars);
+        println!("[integration] Total signals generated: {}", all_signals.len());
+
+        // ── Verify indicators produced values ──
+        assert!(engine.indicator_ready("ema12"), "EMA(12) should be ready after 100 bars");
+        assert!(engine.indicator_ready("rsi14"), "RSI(14) should be ready after 100 bars");
+        assert!(engine.indicator_ready("macd"),  "MACD should be ready after 100 bars");
+        assert!(engine.indicator_ready("boll"),  "BOLL should be ready after 100 bars");
+        assert!(engine.indicator_ready("sma20"), "SMA(20) should be ready after 100 bars");
+
+        // All indicator values should be Some
+        assert!(engine.indicator_value("ema12").is_some());
+        assert!(engine.indicator_value("rsi14").is_some());
+        assert!(engine.indicator_value("sma20").is_some());
+
+        // MACD result should have extra = [signal_line, histogram]
+        let macd_result = engine.indicator_result("macd").unwrap();
+        assert!(macd_result.extra.is_some());
+        assert_eq!(macd_result.extra.as_ref().unwrap().len(), 2);
+
+        // BOLL result should have extra = [upper, lower]
+        let boll_result = engine.indicator_result("boll").unwrap();
+        assert!(boll_result.extra.is_some());
+        assert_eq!(boll_result.extra.as_ref().unwrap().len(), 2);
+
+        // ── Verify shared values match ──
+        // The standalone EMA(12) and MACD's internal EMA(12) should be the same node
+        let ema12_val = engine.indicator_value("ema12").unwrap();
+        assert!(ema12_val.is_finite(), "EMA(12) should produce a finite value");
+
+        // SMA(20) and BOLL's middle band should match
+        let sma20_val = engine.indicator_value("sma20").unwrap();
+        let boll_middle = engine.indicator_value("boll").unwrap();
+        assert!((sma20_val - boll_middle).abs() < 1e-10,
+            "SMA(20)={} should equal BOLL middle={}  (shared node)", sma20_val, boll_middle);
+
+        // ── Verify backtest ran ──
+        let stats = engine.backtest_result().unwrap();
+        println!("[integration] Backtest: trades={}, pnl={:.2}, drawdown={:.2}%, equity={:.2}",
+            stats.total_trades, stats.total_pnl, stats.max_drawdown_pct, stats.final_equity);
+        // Stats should be coherent
+        assert_eq!(stats.winning_trades + stats.losing_trades, stats.total_trades);
+        assert!(stats.final_equity > 0.0, "Equity should remain positive");
+
+        // Equity curve should have entries
+        let curve = engine.backtest_equity_curve().unwrap();
+        assert!(curve.len() > 1, "Equity curve should have entries");
     }
 }

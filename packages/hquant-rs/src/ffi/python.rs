@@ -6,11 +6,12 @@ use pyo3::types::{PyDict, PyList};
 use std::sync::Mutex;
 
 use crate::{
-    Bar, QuantEngine, Side,
+    Bar, QuantEngine, Side, IndicatorGraph,
     TimeFrame, MultiTimeFrameAggregator,
-    BacktestEngine, BacktestConfig, MarketType,
+    BacktestEngine, BacktestConfig, BacktestStats, MarketType,
     MABuilder, RSIBuilder, MACDBuilder, ATRBuilder, BOLLBuilder, VRIBuilder,
     IndicatorBuilder,
+    Strategy, RSIStrategy, MACrossStrategy, MACDStrategy, BollStrategy,
     dsl::{DslEngine, DslContext, LabeledVector},
 };
 
@@ -237,6 +238,123 @@ impl HQuant {
         engine.reset();
         Ok(())
     }
+
+    // -- Strategy methods --
+
+    /// Add RSI strategy (buy when oversold, sell when overbought)
+    #[pyo3(signature = (indicator_name, oversold=30.0, overbought=70.0))]
+    pub fn add_rsi_strategy(&self, indicator_name: &str, oversold: f64, overbought: f64) -> PyResult<()> {
+        let mut engine = self.engine.lock().map_err(|_| PyValueError::new_err("lock poisoned"))?;
+        engine.add_strategy(Box::new(RSIStrategy::new(indicator_name, oversold, overbought)));
+        Ok(())
+    }
+
+    /// Add MACD histogram crossover strategy
+    pub fn add_macd_strategy(&self, indicator_name: &str) -> PyResult<()> {
+        let mut engine = self.engine.lock().map_err(|_| PyValueError::new_err("lock poisoned"))?;
+        engine.add_strategy(Box::new(MACDStrategy::new(indicator_name)));
+        Ok(())
+    }
+
+    /// Add Bollinger Band breakout strategy
+    pub fn add_boll_strategy(&self, indicator_name: &str) -> PyResult<()> {
+        let mut engine = self.engine.lock().map_err(|_| PyValueError::new_err("lock poisoned"))?;
+        engine.add_strategy(Box::new(BollStrategy::new(indicator_name)));
+        Ok(())
+    }
+
+    /// Add MA crossover strategy (golden/death cross)
+    pub fn add_ma_cross_strategy(&self, fast_ma: &str, slow_ma: &str) -> PyResult<()> {
+        let mut engine = self.engine.lock().map_err(|_| PyValueError::new_err("lock poisoned"))?;
+        engine.add_strategy(Box::new(MACrossStrategy::new(fast_ma, slow_ma)));
+        Ok(())
+    }
+
+    // -- Backtest methods --
+
+    /// Setup backtest engine
+    /// Example: engine.setup_backtest(initial_capital=10000.0, market_type="spot")
+    #[pyo3(signature = (initial_capital, market_type="spot", leverage=1.0, maker_fee=0.001, taker_fee=0.001, slippage=0.0005, position_size_pct=0.1))]
+    pub fn setup_backtest(
+        &self,
+        initial_capital: f64,
+        market_type: &str,
+        leverage: f64,
+        maker_fee: f64,
+        taker_fee: f64,
+        slippage: f64,
+        position_size_pct: f64,
+    ) -> PyResult<()> {
+        let mut engine = self.engine.lock().map_err(|_| PyValueError::new_err("lock poisoned"))?;
+        let mt = match market_type.to_lowercase().as_str() {
+            "futures" => MarketType::Futures,
+            _ => MarketType::Spot,
+        };
+        engine.setup_backtest(BacktestConfig {
+            market_type: mt,
+            initial_capital,
+            leverage,
+            maker_fee,
+            taker_fee,
+            slippage,
+            position_size_pct,
+        });
+        Ok(())
+    }
+
+    /// Get backtest result
+    pub fn backtest_result<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
+        let mut engine = self.engine.lock().map_err(|_| PyValueError::new_err("lock poisoned"))?;
+        match engine.backtest_result() {
+            Some(stats) => Ok(Some(stats_to_py_dict(py, stats)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Get backtest trades
+    pub fn backtest_trades<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
+        let engine = self.engine.lock().map_err(|_| PyValueError::new_err("lock poisoned"))?;
+        let list = PyList::empty_bound(py);
+        if let Some(trades) = engine.backtest_trades() {
+            for t in trades {
+                let dict = PyDict::new_bound(py);
+                dict.set_item("timestamp", t.timestamp)?;
+                dict.set_item("side", match t.side {
+                    Side::Buy => "BUY",
+                    Side::Sell => "SELL",
+                    Side::Hold => "HOLD",
+                })?;
+                dict.set_item("price", t.price)?;
+                dict.set_item("size", t.size)?;
+                dict.set_item("fee", t.fee)?;
+                dict.set_item("pnl", t.pnl)?;
+                list.append(dict)?;
+            }
+        }
+        Ok(list)
+    }
+
+    /// Get backtest equity curve
+    pub fn backtest_equity_curve(&self) -> PyResult<Vec<f64>> {
+        let engine = self.engine.lock().map_err(|_| PyValueError::new_err("lock poisoned"))?;
+        Ok(engine.backtest_equity_curve().map(|c| c.to_vec()).unwrap_or_default())
+    }
+}
+
+fn stats_to_py_dict<'py>(py: Python<'py>, stats: &BacktestStats) -> PyResult<Bound<'py, PyDict>> {
+    let dict = PyDict::new_bound(py);
+    dict.set_item("total_trades", stats.total_trades)?;
+    dict.set_item("winning_trades", stats.winning_trades)?;
+    dict.set_item("losing_trades", stats.losing_trades)?;
+    dict.set_item("total_pnl", stats.total_pnl)?;
+    dict.set_item("max_drawdown", stats.max_drawdown)?;
+    dict.set_item("max_drawdown_pct", stats.max_drawdown_pct)?;
+    dict.set_item("sharpe_ratio", stats.sharpe_ratio)?;
+    dict.set_item("win_rate", stats.win_rate)?;
+    dict.set_item("final_equity", stats.final_equity)?;
+    dict.set_item("return_pct", stats.return_pct)?;
+    dict.set_item("liquidations", stats.liquidations)?;
+    Ok(dict)
 }
 
 /// Backtest engine
@@ -300,22 +418,7 @@ impl PyBacktest {
     /// Get backtest result
     pub fn backtest_result<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let mut engine = self.engine.lock().map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        let stats = engine.result();
-
-        let dict = PyDict::new_bound(py);
-        dict.set_item("total_trades", stats.total_trades)?;
-        dict.set_item("winning_trades", stats.winning_trades)?;
-        dict.set_item("losing_trades", stats.losing_trades)?;
-        dict.set_item("total_pnl", stats.total_pnl)?;
-        dict.set_item("max_drawdown", stats.max_drawdown)?;
-        dict.set_item("max_drawdown_pct", stats.max_drawdown_pct)?;
-        dict.set_item("sharpe_ratio", stats.sharpe_ratio)?;
-        dict.set_item("win_rate", stats.win_rate)?;
-        dict.set_item("final_equity", stats.final_equity)?;
-        dict.set_item("return_pct", stats.return_pct)?;
-        dict.set_item("liquidations", stats.liquidations)?;
-
-        Ok(dict)
+        stats_to_py_dict(py, engine.result())
     }
 
     /// Get equity
@@ -461,8 +564,8 @@ impl PyDslStrategy {
         let mut engine = self.inner.lock().map_err(|_| PyValueError::new_err("lock poisoned"))?;
         let bar = to_bar(bar_dict)?;
 
-        let empty_indicators = std::collections::HashMap::new();
-        let ctx = DslContext::new(&bar, &empty_indicators);
+        let empty_graph = IndicatorGraph::new();
+        let ctx = DslContext::new(&bar, &empty_graph);
 
         let signals = engine.evaluate(&ctx)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;

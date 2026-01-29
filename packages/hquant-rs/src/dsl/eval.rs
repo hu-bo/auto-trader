@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use crate::error::QuantError;
-use crate::indicators::Indicator;
+use crate::indicators::{Indicator, IndicatorGraph};
 use crate::kline::Bar;
 use crate::strategy::{Signal, Side};
 use super::ast::{Statement, Expr, BinaryOperator, UnaryOperator, Action};
@@ -62,14 +62,14 @@ pub struct DslContext<'a> {
     pub bar: &'a Bar,
     /// Multi-period bars (period -> bar)
     pub period_bars: HashMap<String, &'a Bar>,
-    /// Named indicators
-    pub indicators: &'a HashMap<String, Box<dyn Indicator>>,
-    /// Multi-period indicators (period -> name -> indicator)
-    pub period_indicators: HashMap<String, &'a HashMap<String, Box<dyn Indicator>>>,
+    /// Named indicators (backed by IndicatorGraph)
+    pub indicators: &'a IndicatorGraph,
+    /// Multi-period indicators (period -> graph)
+    pub period_indicators: HashMap<String, &'a IndicatorGraph>,
 }
 
 impl<'a> DslContext<'a> {
-    pub fn new(bar: &'a Bar, indicators: &'a HashMap<String, Box<dyn Indicator>>) -> Self {
+    pub fn new(bar: &'a Bar, indicators: &'a IndicatorGraph) -> Self {
         Self {
             bar,
             period_bars: HashMap::new(),
@@ -88,7 +88,7 @@ impl<'a> DslContext<'a> {
     pub fn with_period_indicators(
         mut self,
         period: &str,
-        indicators: &'a HashMap<String, Box<dyn Indicator>>,
+        indicators: &'a IndicatorGraph,
     ) -> Self {
         self.period_indicators.insert(period.to_string(), indicators);
         self
@@ -115,24 +115,24 @@ impl<'a> DslContext<'a> {
 
     /// Get indicator value
     pub fn get_indicator(&self, name: &str, period: Option<&str>) -> Option<f64> {
-        let indicators = if let Some(p) = period {
-            self.period_indicators.get(p).copied()?
+        let graph = if let Some(p) = period {
+            *self.period_indicators.get(p)?
         } else {
             self.indicators
         };
 
-        indicators.get(name).and_then(|i| i.value())
+        graph.value_by_name(name)
     }
 
     /// Get indicator history (last n values)
     pub fn get_indicator_history(&self, name: &str, period: Option<&str>, length: usize) -> Option<Vec<f64>> {
-        let indicators = if let Some(p) = period {
-            self.period_indicators.get(p).copied()?
+        let graph = if let Some(p) = period {
+            *self.period_indicators.get(p)?
         } else {
             self.indicators
         };
 
-        let indicator = indicators.get(name)?;
+        let indicator = graph.indicator_by_name(name)?;
         let mut values = Vec::with_capacity(length);
         for i in 0..length {
             if let Some(v) = indicator.get_from_end(length - 1 - i) {
@@ -568,7 +568,7 @@ mod tests {
         let source = "IF close > 100 THEN BUY";
         let mut engine = DslEngine::new(source).unwrap();
         let bar = make_bar(105.0);
-        let indicators = HashMap::new();
+        let indicators = IndicatorGraph::new();
         let ctx = DslContext::new(&bar, &indicators);
 
         let signals = engine.evaluate(&ctx).unwrap();
@@ -581,7 +581,7 @@ mod tests {
         let source = "IF close > 100 THEN BUY";
         let mut engine = DslEngine::new(source).unwrap();
         let bar = make_bar(95.0);
-        let indicators = HashMap::new();
+        let indicators = IndicatorGraph::new();
         let ctx = DslContext::new(&bar, &indicators);
 
         let signals = engine.evaluate(&ctx).unwrap();
@@ -596,7 +596,7 @@ mod tests {
         "#;
         let mut engine = DslEngine::new(source).unwrap();
         let bar = make_bar(105.0);
-        let indicators = HashMap::new();
+        let indicators = IndicatorGraph::new();
         let ctx = DslContext::new(&bar, &indicators);
 
         let signals = engine.evaluate(&ctx).unwrap();
@@ -613,7 +613,7 @@ mod tests {
 
         // Test buy
         let bar = make_bar(90.0);
-        let indicators = HashMap::new();
+        let indicators = IndicatorGraph::new();
         let ctx = DslContext::new(&bar, &indicators);
         let signals = engine.evaluate(&ctx).unwrap();
         assert_eq!(signals.len(), 1);
@@ -632,7 +632,7 @@ mod tests {
         let source = "IF close > 100 AND volume > 500 THEN BUY";
         let mut engine = DslEngine::new(source).unwrap();
         let bar = make_bar(105.0);
-        let indicators = HashMap::new();
+        let indicators = IndicatorGraph::new();
         let ctx = DslContext::new(&bar, &indicators);
 
         let signals = engine.evaluate(&ctx).unwrap();

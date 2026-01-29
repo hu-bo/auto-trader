@@ -140,6 +140,105 @@ class HQuant:
         """Reset the engine, clearing all data."""
         ...
 
+    # -- Strategy methods --
+
+    def add_rsi_strategy(
+        self,
+        indicator_name: str,
+        oversold: float = 30.0,
+        overbought: float = 70.0,
+    ) -> None:
+        """
+        Add RSI strategy (buy when oversold, sell when overbought).
+
+        Args:
+            indicator_name: Name of the RSI indicator to use
+            oversold: Buy threshold (default: 30.0)
+            overbought: Sell threshold (default: 70.0)
+        """
+        ...
+
+    def add_macd_strategy(self, indicator_name: str) -> None:
+        """
+        Add MACD histogram crossover strategy.
+
+        Args:
+            indicator_name: Name of the MACD indicator to use
+        """
+        ...
+
+    def add_boll_strategy(self, indicator_name: str) -> None:
+        """
+        Add Bollinger Band breakout strategy.
+
+        Args:
+            indicator_name: Name of the BOLL indicator to use
+        """
+        ...
+
+    def add_ma_cross_strategy(self, fast_ma: str, slow_ma: str) -> None:
+        """
+        Add MA crossover strategy (golden/death cross).
+
+        Args:
+            fast_ma: Name of the fast moving average indicator
+            slow_ma: Name of the slow moving average indicator
+        """
+        ...
+
+    # -- Backtest methods --
+
+    def setup_backtest(
+        self,
+        initial_capital: float,
+        market_type: str = "spot",
+        leverage: float = 1.0,
+        maker_fee: float = 0.001,
+        taker_fee: float = 0.001,
+        slippage: float = 0.0005,
+        position_size_pct: float = 0.1,
+    ) -> None:
+        """
+        Setup backtest engine.
+
+        Args:
+            initial_capital: Initial capital for backtesting
+            market_type: "spot" or "futures" (default: "spot")
+            leverage: Leverage ratio (default: 1.0)
+            maker_fee: Maker fee rate (default: 0.1%)
+            taker_fee: Taker fee rate (default: 0.1%)
+            slippage: Slippage rate (default: 0.05%)
+            position_size_pct: Position size as fraction of capital (default: 0.1)
+        """
+        ...
+
+    def backtest_result(self) -> Optional[BacktestResult]:
+        """
+        Get backtest statistics.
+
+        Returns:
+            Backtest result dict or None if backtest not configured
+        """
+        ...
+
+    def backtest_trades(self) -> List[Dict[str, Any]]:
+        """
+        Get backtest trade records.
+
+        Returns:
+            List of trade dicts with keys: timestamp, side, price, size, fee, pnl
+        """
+        ...
+
+    def backtest_equity_curve(self) -> List[float]:
+        """
+        Get backtest equity curve.
+
+        Returns:
+            List of equity values over time
+        """
+        ...
+
 class PyBacktest:
     """Backtest engine for strategy evaluation"""
 

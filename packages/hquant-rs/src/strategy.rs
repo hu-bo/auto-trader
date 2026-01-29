@@ -1,8 +1,6 @@
 //! Strategy system - signal generation and evaluation
 
-use std::collections::HashMap;
-
-use crate::indicators::Indicator;
+use crate::indicators::{Indicator, IndicatorValue, IndicatorGraph};
 use crate::kline::Bar;
 
 /// Signal direction
@@ -45,34 +43,45 @@ impl Signal {
     }
 }
 
-/// Indicator snapshot - provides read-only access to indicators
+/// Indicator snapshot - provides read-only access to indicators.
+/// Backed by IndicatorGraph for dedup-aware access.
 pub struct IndicatorSnapshot<'a> {
-    indicators: &'a HashMap<String, Box<dyn Indicator>>,
+    graph: &'a IndicatorGraph,
 }
 
 impl<'a> IndicatorSnapshot<'a> {
-    pub fn new(indicators: &'a HashMap<String, Box<dyn Indicator>>) -> Self {
-        Self { indicators }
+    pub fn new(graph: &'a IndicatorGraph) -> Self {
+        Self { graph }
     }
 
     /// Get indicator value by name
     pub fn value(&self, name: &str) -> Option<f64> {
-        self.indicators.get(name).and_then(|i| i.value())
+        self.graph.value_by_name(name)
     }
 
     /// Get indicator's nth value from end
     pub fn value_from_end(&self, name: &str, n: usize) -> Option<f64> {
-        self.indicators.get(name).and_then(|i| i.get_from_end(n))
+        self.graph.value_from_end_by_name(name, n)
     }
 
     /// Check if indicator is ready
     pub fn is_ready(&self, name: &str) -> bool {
-        self.indicators.get(name).map(|i| i.is_ready()).unwrap_or(false)
+        self.graph.is_ready_by_name(name)
     }
 
     /// Get multiple indicator values
     pub fn values(&self, names: &[&str]) -> Vec<Option<f64>> {
         names.iter().map(|n| self.value(n)).collect()
+    }
+
+    /// Get full indicator result by name (for strategies needing extra data)
+    pub fn result(&self, name: &str) -> Option<IndicatorValue> {
+        self.graph.result_by_name(name)
+    }
+
+    /// Get reference to indicator by name (for advanced access)
+    pub fn indicator(&self, name: &str) -> Option<&dyn Indicator> {
+        self.graph.indicator_by_name(name)
     }
 }
 
@@ -266,8 +275,7 @@ impl Strategy for MACDStrategy {
     }
 
     fn evaluate(&mut self, ctx: &StrategyContext) -> Option<Signal> {
-        let indicator = ctx.indicators.indicators.get(&self.indicator_name)?;
-        let result = indicator.result()?;
+        let result = ctx.indicators.result(&self.indicator_name)?;
 
         // MACD result.extra = [signal, histogram]
         let histogram = result.extra.as_ref()?.get(1)?;
@@ -318,8 +326,7 @@ impl Strategy for BollStrategy {
     }
 
     fn evaluate(&mut self, ctx: &StrategyContext) -> Option<Signal> {
-        let indicator = ctx.indicators.indicators.get(&self.indicator_name)?;
-        let result = indicator.result()?;
+        let result = ctx.indicators.result(&self.indicator_name)?;
 
         // BOLL result.extra = [upper, lower]
         let extra = result.extra.as_ref()?;

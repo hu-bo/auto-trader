@@ -3,33 +3,24 @@
  *
  * @example
  * ```ts
- * import { HQuant, Indicators } from '@hquant/js'
- *
- * const engine = new HQuant(1000, ['15m', '1h', '4h'])
+ * const engine = new Engine(1000)
  * const ind = new Indicators()
  *
- * engine.addRsiIndicator('rsi', ind.rsi().period(14))
  * engine.addMaIndicator('ma20', ind.ma().period(20).ema())
+ * engine.addRsiIndicator('rsi', ind.rsi().period(14))
+ * engine.addRsiStrategy('rsi', 30, 70)
+ * engine.setupBacktest({ initialCapital: 10000 })
  *
- * const events = engine.feedKline({
- *   timestamp: Date.now(),
- *   open: 100,
- *   high: 105,
- *   low: 95,
- *   close: 102,
- *   volume: 1000,
- * })
+ * const signals = engine.pushKline({ timestamp: 1, open: 100, high: 105, low: 95, close: 102, volume: 1000 })
+ * const result = engine.backtestResult()
  * ```
  */
-
-// Import native bindings
-const native = require('../native/hquant.node')
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface Bar {
+export type Bar = {
   timestamp: number
   open: number
   high: number
@@ -39,20 +30,27 @@ export interface Bar {
   buyVolume?: number
 }
 
-export interface Signal {
+export type Signal = {
   side: 'BUY' | 'SELL' | 'HOLD'
   strength: number
   reason: string
   timestamp: number
 }
 
-export interface IndicatorResult {
+/** Signal from DSL strategy (compatible with jx-quant) */
+export type DslSignal = {
+  strategyId: number
+  action: 'BUY' | 'SELL' | 'HOLD'
+  timestamp: number
+}
+
+export type IndicatorResult = {
   value: number
   timestamp: number
   extra?: number[]
 }
 
-export interface BacktestStats {
+export type BacktestStats = {
   totalTrades: number
   winningTrades: number
   losingTrades: number
@@ -66,7 +64,7 @@ export interface BacktestStats {
   liquidations: number
 }
 
-export interface Trade {
+export type Trade = {
   timestamp: number
   side: string
   price: number
@@ -75,13 +73,13 @@ export interface Trade {
   pnl: number
 }
 
-export interface AggregatorEvent {
+export type AggregatorEvent = {
   kind: string
   period: string
   candle?: Bar
 }
 
-export interface BacktestConfig {
+export type BacktestConfig = {
   marketType?: 'spot' | 'futures'
   initialCapital: number
   leverage?: number
@@ -91,534 +89,190 @@ export interface BacktestConfig {
   positionSizePct?: number
 }
 
-export interface LabeledVector {
+export type LabeledVector = {
   label: number
   vector: number[]
 }
 
-// ============================================================================
-// Indicator Builders
-// ============================================================================
-
-/** MA Indicator Builder */
-export class MAIndicator {
-  private _inner: any
-
-  constructor() {
-    this._inner = new native.MAIndicator()
-  }
-
-  /** Set period (default: 20) */
-  period(p: number): this {
-    this._inner.period(p)
-    return this
-  }
-
-  /** Use Simple Moving Average */
-  sma(): this {
-    this._inner.sma()
-    return this
-  }
-
-  /** Use Exponential Moving Average */
-  ema(): this {
-    this._inner.ema()
-    return this
-  }
-
-  /** Use Weighted Moving Average */
-  wma(): this {
-    this._inner.wma()
-    return this
-  }
-
-  /** @internal */
-  get inner() {
-    return this._inner
-  }
+/** Futures backtest configuration (compatible with jx-quant) */
+export type FuturesBacktestConfig = {
+  initialMargin: number
+  leverage: number
+  contractSize: number
+  makerFeeRate: number
+  takerFeeRate: number
+  maintenanceMarginRate: number
 }
 
-/** RSI Indicator Builder */
-export class RSIIndicator {
-  private _inner: any
-
-  constructor() {
-    this._inner = new native.RSIIndicator()
-  }
-
-  /** Set period (default: 14) */
-  period(p: number): this {
-    this._inner.period(p)
-    return this
-  }
-
-  /** @internal */
-  get inner() {
-    return this._inner
-  }
-}
-
-/** MACD Indicator Builder */
-export class MACDIndicator {
-  private _inner: any
-
-  constructor() {
-    this._inner = new native.MACDIndicator()
-  }
-
-  /** Set fast period (default: 12) */
-  fast(p: number): this {
-    this._inner.fast(p)
-    return this
-  }
-
-  /** Set slow period (default: 26) */
-  slow(p: number): this {
-    this._inner.slow(p)
-    return this
-  }
-
-  /** Set signal period (default: 9) */
-  signal(p: number): this {
-    this._inner.signal(p)
-    return this
-  }
-
-  /** @internal */
-  get inner() {
-    return this._inner
-  }
-}
-
-/** ATR Indicator Builder */
-export class ATRIndicator {
-  private _inner: any
-
-  constructor() {
-    this._inner = new native.ATRIndicator()
-  }
-
-  /** Set period (default: 14) */
-  period(p: number): this {
-    this._inner.period(p)
-    return this
-  }
-
-  /** @internal */
-  get inner() {
-    return this._inner
-  }
-}
-
-/** Bollinger Bands Indicator Builder */
-export class BOLLIndicator {
-  private _inner: any
-
-  constructor() {
-    this._inner = new native.BOLLIndicator()
-  }
-
-  /** Set period (default: 20) */
-  period(p: number): this {
-    this._inner.period(p)
-    return this
-  }
-
-  /** Set standard deviation multiplier (default: 2.0) */
-  stdDev(factor: number): this {
-    this._inner.stdDev(factor)
-    return this
-  }
-
-  /** Alias for stdDev */
-  multiplier(factor: number): this {
-    return this.stdDev(factor)
-  }
-
-  /** @internal */
-  get inner() {
-    return this._inner
-  }
-}
-
-/** VRI Indicator Builder */
-export class VRIIndicator {
-  private _inner: any
-
-  constructor() {
-    this._inner = new native.VRIIndicator()
-  }
-
-  /** Set period (default: 14) */
-  period(p: number): this {
-    this._inner.period(p)
-    return this
-  }
-
-  /** @internal */
-  get inner() {
-    return this._inner
-  }
+/** Futures backtest result (compatible with jx-quant) */
+export type FuturesBacktestResult = {
+  equity: number
+  profit: number
+  profitRate: number
+  maxDrawdownRate: number
+  liquidated: boolean
 }
 
 // ============================================================================
-// Indicators Factory
+// Builder interfaces (methods return `this` for chaining)
 // ============================================================================
 
-/** Factory for creating indicator builders */
-export class Indicators {
-  /** Create MA indicator builder */
-  ma(): MAIndicator {
-    return new MAIndicator()
-  }
-
-  /** Create RSI indicator builder */
-  rsi(): RSIIndicator {
-    return new RSIIndicator()
-  }
-
-  /** Create MACD indicator builder */
-  macd(): MACDIndicator {
-    return new MACDIndicator()
-  }
-
-  /** Create ATR indicator builder */
-  atr(): ATRIndicator {
-    return new ATRIndicator()
-  }
-
-  /** Create Bollinger Bands indicator builder */
-  boll(): BOLLIndicator {
-    return new BOLLIndicator()
-  }
-
-  /** Create VRI indicator builder */
-  vri(): VRIIndicator {
-    return new VRIIndicator()
-  }
+export interface IMAIndicator {
+  period(p: number): this
+  sma(): this
+  ema(): this
+  wma(): this
+}
+export interface IRSIIndicator {
+  period(p: number): this
+}
+export interface IMACDIndicator {
+  fast(p: number): this
+  slow(p: number): this
+  signal(p: number): this
+}
+export interface IATRIndicator {
+  period(p: number): this
+}
+export interface IBOLLIndicator {
+  period(p: number): this
+  stdDev(factor: number): this
+  multiplier(factor: number): this
+}
+export interface IVRIIndicator {
+  period(p: number): this
 }
 
 // ============================================================================
-// HQuant Engine
+// Native type shape
 // ============================================================================
 
-/**
- * Multi-period quantitative engine with built-in aggregator.
- * Ideal for production use with WebSocket data streams.
- */
-export class HQuant {
-  private _inner: any
-
-  /**
-   * Create a new HQuant engine
-   * @param capacity - Maximum K-lines to store
-   * @param periods - Timeframes (first is base, rest are targets for aggregation)
-   */
-  constructor(capacity: number, periods?: string[]) {
-    this._inner = new native.HQuant(capacity, periods)
+type Native = {
+  MaIndicator: new () => IMAIndicator
+  RsiIndicator: new () => IRSIIndicator
+  MacdIndicator: new () => IMACDIndicator
+  AtrIndicator: new () => IATRIndicator
+  BollIndicator: new () => IBOLLIndicator
+  VriIndicator: new () => IVRIIndicator
+  Indicators: new () => {
+    ma(): IMAIndicator
+    rsi(): IRSIIndicator
+    macd(): IMACDIndicator
+    atr(): IATRIndicator
+    boll(): IBOLLIndicator
+    vri(): IVRIIndicator
   }
 
-  /** Add MA indicator */
-  addMaIndicator(name: string, indicator: MAIndicator): void {
-    this._inner.addMaIndicator(name, indicator.inner)
+  Engine: new (capacity: number) => {
+    addMaIndicator(name: string, indicator: IMAIndicator): void
+    addRsiIndicator(name: string, indicator: IRSIIndicator): void
+    addMacdIndicator(name: string, indicator: IMACDIndicator): void
+    addAtrIndicator(name: string, indicator: IATRIndicator): void
+    addBollIndicator(name: string, indicator: IBOLLIndicator): void
+    addVriIndicator(name: string, indicator: IVRIIndicator): void
+    addVwap(name: string): void
+    addObv(name: string): void
+    setupAggregator(baseTf: string, targetTfs: string[], capacity: number): void
+    pushKline(bar: Bar): Signal[]
+    updateLast(bar: Bar): void
+    feedKline(bar: Bar): AggregatorEvent[]
+    getLastBar(): Bar | null
+    getKlineCount(): number
+    getIndicatorValue(name: string): number | null
+    getIndicatorResult(name: string): IndicatorResult | null
+    isIndicatorReady(name: string): boolean
+    addRsiStrategy(indicatorName: string, oversold?: number, overbought?: number): void
+    addMacdStrategy(indicatorName: string): void
+    addBollStrategy(indicatorName: string): void
+    addMaCrossStrategy(fastMa: string, slowMa: string): void
+    setupBacktest(config: BacktestConfig): void
+    backtestResult(): BacktestStats | null
+    backtestTrades(): Trade[]
+    backtestEquityCurve(): number[]
+    pollSignals(): Signal[]
+    reset(): void
   }
 
-  /** Add RSI indicator */
-  addRsiIndicator(name: string, indicator: RSIIndicator): void {
-    this._inner.addRsiIndicator(name, indicator.inner)
+  HQuant: new (capacity: number, periods?: string[]) => {
+    addMaIndicator(name: string, indicator: IMAIndicator): void
+    addRsiIndicator(name: string, indicator: IRSIIndicator): void
+    addMacdIndicator(name: string, indicator: IMACDIndicator): void
+    addAtrIndicator(name: string, indicator: IATRIndicator): void
+    addBollIndicator(name: string, indicator: IBOLLIndicator): void
+    addVriIndicator(name: string, indicator: IVRIIndicator): void
+    addRsi(period: number): number
+    addStrategy(name: string, dsl: string): number
+    feedKline(bar: Bar): AggregatorEvent[]
+    pushBar(bar: Bar): void
+    pushKline(bar: Bar): Signal[]
+    updateLast(bar: Bar): void
+    pollSignals(): DslSignal[]
+    getIndicatorValue(name: string): number | null
+    getIndicatorResult(name: string): IndicatorResult | null
+    isIndicatorReady(name: string): boolean
+    addRsiStrategy(indicatorName: string, oversold?: number, overbought?: number): void
+    addMacdStrategy(indicatorName: string): void
+    addBollStrategy(indicatorName: string): void
+    addMaCrossStrategy(fastMa: string, slowMa: string): void
+    setupBacktest(config: BacktestConfig): void
+    backtestResult(): BacktestStats | null
+    backtestTrades(): Trade[]
+    backtestEquityCurve(): number[]
+    reset(): void
   }
 
-  /** Add MACD indicator */
-  addMacdIndicator(name: string, indicator: MACDIndicator): void {
-    this._inner.addMacdIndicator(name, indicator.inner)
+  Backtest: new (config: BacktestConfig) => {
+    openLong(price: number, size: number): void
+    openShort(price: number, size: number): void
+    close(price: number): void
+    result(): BacktestStats
+    getTrades(): Trade[]
+    getEquityCurve(): number[]
+    getEquity(): number
+    reset(): void
   }
 
-  /** Add ATR indicator */
-  addAtrIndicator(name: string, indicator: ATRIndicator): void {
-    this._inner.addAtrIndicator(name, indicator.inner)
+  KlineAggregator: new (baseTf: string, targetTfs: string[], capacity: number) => {
+    pushKline(bar: Bar): AggregatorEvent[]
+    updateLast(bar: Bar): void
+    flush(): void
+    reset(): void
   }
 
-  /** Add Bollinger Bands indicator */
-  addBollIndicator(name: string, indicator: BOLLIndicator): void {
-    this._inner.addBollIndicator(name, indicator.inner)
+  DslStrategy: new (source: string) => {
+    loadStore(name: string, vectors: LabeledVector[]): void
+    setThreshold(threshold: number): void
+    evaluate(bar: Bar, indicators: Record<string, number>): Signal[]
+    reset(): void
   }
 
-  /** Add VRI indicator */
-  addVriIndicator(name: string, indicator: VRIIndicator): void {
-    this._inner.addVriIndicator(name, indicator.inner)
+  FuturesBacktest: new (config: FuturesBacktestConfig) => {
+    applySignal(action: 'BUY' | 'SELL' | 'HOLD', price: number, margin: number): void
+    onPrice(price: number): void
+    result(price: number): FuturesBacktestResult
   }
 
-  /**
-   * Feed raw K-line data from WebSocket stream.
-   * Returns aggregator events when higher timeframe candles complete.
-   */
-  feedKline(bar: Bar): AggregatorEvent[] {
-    return this._inner.feedKline(bar)
-  }
-
-  /** Push completed K-line (for historical data loading) */
-  pushKline(bar: Bar): Signal[] {
-    return this._inner.pushKline(bar)
-  }
-
-  /** Update last K-line (for realtime price updates within same candle) */
-  updateLast(bar: Bar): void {
-    this._inner.updateLast(bar)
-  }
-
-  /** Poll accumulated signals */
-  pollSignals(): Signal[] {
-    return this._inner.pollSignals()
-  }
-
-  /** Get indicator value */
-  getIndicatorValue(name: string): number | null {
-    return this._inner.getIndicatorValue(name)
-  }
-
-  /** Get indicator result with extra data */
-  getIndicatorResult(name: string): IndicatorResult | null {
-    return this._inner.getIndicatorResult(name)
-  }
-
-  /** Check if indicator is ready */
-  isIndicatorReady(name: string): boolean {
-    return this._inner.isIndicatorReady(name)
-  }
-
-  /** Reset engine */
-  reset(): void {
-    this._inner.reset()
-  }
+  validateDsl(source: string): boolean
 }
 
 // ============================================================================
-// Engine (Simple version without aggregator)
+// Load native & re-export
 // ============================================================================
 
-/** Simple quantitative engine without built-in aggregator */
-export class Engine {
-  private _inner: any
+const native = require('../native/hquant.node') as Native
 
-  constructor(capacity: number) {
-    this._inner = new native.Engine(capacity)
-  }
-
-  addMaIndicator(name: string, indicator: MAIndicator): void {
-    this._inner.addMaIndicator(name, indicator.inner)
-  }
-
-  addRsiIndicator(name: string, indicator: RSIIndicator): void {
-    this._inner.addRsiIndicator(name, indicator.inner)
-  }
-
-  addMacdIndicator(name: string, indicator: MACDIndicator): void {
-    this._inner.addMacdIndicator(name, indicator.inner)
-  }
-
-  addAtrIndicator(name: string, indicator: ATRIndicator): void {
-    this._inner.addAtrIndicator(name, indicator.inner)
-  }
-
-  addBollIndicator(name: string, indicator: BOLLIndicator): void {
-    this._inner.addBollIndicator(name, indicator.inner)
-  }
-
-  addVriIndicator(name: string, indicator: VRIIndicator): void {
-    this._inner.addVriIndicator(name, indicator.inner)
-  }
-
-  addVwap(name: string): void {
-    this._inner.addVwap(name)
-  }
-
-  addObv(name: string): void {
-    this._inner.addObv(name)
-  }
-
-  setupAggregator(baseTf: string, targetTfs: string[], capacity: number): void {
-    this._inner.setupAggregator(baseTf, targetTfs, capacity)
-  }
-
-  pushKline(bar: Bar): Signal[] {
-    return this._inner.pushKline(bar)
-  }
-
-  updateLast(bar: Bar): void {
-    this._inner.updateLast(bar)
-  }
-
-  getIndicatorValue(name: string): number | null {
-    return this._inner.getIndicatorValue(name)
-  }
-
-  getIndicatorResult(name: string): IndicatorResult | null {
-    return this._inner.getIndicatorResult(name)
-  }
-
-  isIndicatorReady(name: string): boolean {
-    return this._inner.isIndicatorReady(name)
-  }
-
-  getLastBar(): Bar | null {
-    return this._inner.getLastBar()
-  }
-
-  getKlineCount(): number {
-    return this._inner.getKlineCount()
-  }
-
-  feedKline(bar: Bar): AggregatorEvent[] {
-    return this._inner.feedKline(bar)
-  }
-
-  reset(): void {
-    this._inner.reset()
-  }
-}
-
-// ============================================================================
-// Backtest
-// ============================================================================
-
-/** Backtest engine for strategy evaluation */
-export class Backtest {
-  private _inner: any
-
-  constructor(config: BacktestConfig) {
-    this._inner = new native.Backtest({
-      marketType: config.marketType,
-      initialCapital: config.initialCapital,
-      leverage: config.leverage,
-      makerFee: config.makerFee,
-      takerFee: config.takerFee,
-      slippage: config.slippage,
-      positionSizePct: config.positionSizePct,
-    })
-  }
-
-  /** Open long position */
-  openLong(price: number, size: number): void {
-    this._inner.openLong(price, size)
-  }
-
-  /** Open short position (futures only) */
-  openShort(price: number, size: number): void {
-    this._inner.openShort(price, size)
-  }
-
-  /** Close current position */
-  close(price: number): void {
-    this._inner.close(price)
-  }
-
-  /** Get backtest result */
-  result(): BacktestStats {
-    return this._inner.result()
-  }
-
-  /** Get trades */
-  getTrades(): Trade[] {
-    return this._inner.getTrades()
-  }
-
-  /** Get equity curve */
-  getEquityCurve(): number[] {
-    return this._inner.getEquityCurve()
-  }
-
-  /** Get current equity */
-  getEquity(): number {
-    return this._inner.getEquity()
-  }
-
-  /** Reset backtest */
-  reset(): void {
-    this._inner.reset()
-  }
-}
-
-// ============================================================================
-// Aggregator
-// ============================================================================
-
-/** Multi-timeframe K-line aggregator */
-export class KlineAggregator {
-  private _inner: any
-
-  constructor(baseTf: string, targetTfs: string[], capacity: number) {
-    this._inner = new native.KlineAggregator(baseTf, targetTfs, capacity)
-  }
-
-  /** Push K-line and get completed events */
-  pushKline(bar: Bar): AggregatorEvent[] {
-    return this._inner.pushKline(bar)
-  }
-
-  /** Update last K-line */
-  updateLast(bar: Bar): void {
-    this._inner.updateLast(bar)
-  }
-
-  /** Flush all pending candles */
-  flush(): void {
-    this._inner.flush()
-  }
-
-  /** Reset aggregator */
-  reset(): void {
-    this._inner.reset()
-  }
-}
-
-// ============================================================================
-// DSL Strategy
-// ============================================================================
-
-/**
- * DSL Strategy engine for custom trading strategies
- *
- * @example
- * ```ts
- * const strategy = new DslStrategy(`
- *   IF RSI(14) < 30 AND close > EMA(20) THEN BUY
- *   IF RSI(14) > 70 THEN SELL
- * `)
- * const signals = strategy.evaluate(bar, {})
- * ```
- */
-export class DslStrategy {
-  private _inner: any
-
-  constructor(source: string) {
-    this._inner = new native.DslStrategy(source)
-  }
-
-  /** Load labeled vectors for similarity matching */
-  loadStore(name: string, vectors: LabeledVector[]): void {
-    this._inner.loadStore(name, vectors)
-  }
-
-  /** Set similarity threshold (default: 0.9) */
-  setThreshold(threshold: number): void {
-    this._inner.setThreshold(threshold)
-  }
-
-  /** Evaluate strategy with given bar data */
-  evaluate(bar: Bar, indicators: Record<string, number>): Signal[] {
-    return this._inner.evaluate(bar, indicators)
-  }
-
-  /** Reset strategy state */
-  reset(): void {
-    this._inner.reset()
-  }
-}
-
-/** Validate DSL source code without creating an engine */
-export function validateDsl(source: string): boolean {
-  return native.validateDsl(source)
-}
-
-// Re-export for convenience
-export { native }
+// Re-export native classes
+export class MAIndicator extends native.MaIndicator {}
+export class RSIIndicator extends native.RsiIndicator {}
+export class MACDIndicator extends native.MacdIndicator {}
+export class ATRIndicator extends native.AtrIndicator {}
+export class BOLLIndicator extends native.BollIndicator {}
+export class VRIIndicator extends native.VriIndicator {}
+export class Indicators extends native.Indicators {}
+export class Engine extends native.Engine {}
+export class HQuant extends native.HQuant {}
+export class Backtest extends native.Backtest {}
+export class KlineAggregator extends native.KlineAggregator {}
+export class DslStrategy extends native.DslStrategy {}
+export class FuturesBacktest extends native.FuturesBacktest {}
+export const validateDsl = native.validateDsl

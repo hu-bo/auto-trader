@@ -6,10 +6,11 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
 use crate::{
-    Bar, QuantEngine, Signal, Side,
+    Bar, QuantEngine, Signal, Side, IndicatorGraph,
     TimeFrame, Aggregator, MultiTimeFrameAggregator,
     BacktestEngine, BacktestConfig, BacktestStats, MarketType, Position, PositionSide, Trade,
     MABuilder, RSIBuilder, MACDBuilder, ATRBuilder, BOLLBuilder, VRIBuilder,
+    Strategy, RSIStrategy, MACrossStrategy, MACDStrategy, BollStrategy,
     dsl::{DslEngine, DslContext, VectorStore, LabeledVector},
 };
 
@@ -71,6 +72,14 @@ pub struct SignalOutput {
     pub side: String,
     pub strength: f64,
     pub reason: String,
+    pub timestamp: i64,
+}
+
+/// Signal output for DSL strategies (compatible with jx-quant)
+#[napi(object)]
+pub struct DslSignalOutput {
+    pub strategy_id: u32,
+    pub action: String,
     pub timestamp: i64,
 }
 
@@ -600,6 +609,134 @@ impl Engine {
         let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         Ok(engine.klines().len() as u32)
     }
+
+    // -- Strategy methods --
+
+    /// Add RSI strategy (buy when oversold, sell when overbought)
+    #[napi]
+    pub fn add_rsi_strategy(
+        &self,
+        indicator_name: String,
+        oversold: Option<f64>,
+        overbought: Option<f64>,
+    ) -> napi::Result<()> {
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        engine.add_strategy(Box::new(RSIStrategy::new(
+            indicator_name,
+            oversold.unwrap_or(30.0),
+            overbought.unwrap_or(70.0),
+        )));
+        Ok(())
+    }
+
+    /// Add MACD histogram crossover strategy
+    #[napi]
+    pub fn add_macd_strategy(&self, indicator_name: String) -> napi::Result<()> {
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        engine.add_strategy(Box::new(MACDStrategy::new(indicator_name)));
+        Ok(())
+    }
+
+    /// Add Bollinger Band breakout strategy
+    #[napi]
+    pub fn add_boll_strategy(&self, indicator_name: String) -> napi::Result<()> {
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        engine.add_strategy(Box::new(BollStrategy::new(indicator_name)));
+        Ok(())
+    }
+
+    /// Add MA crossover strategy (golden/death cross)
+    #[napi]
+    pub fn add_ma_cross_strategy(&self, fast_ma: String, slow_ma: String) -> napi::Result<()> {
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        engine.add_strategy(Box::new(MACrossStrategy::new(fast_ma, slow_ma)));
+        Ok(())
+    }
+
+    // -- Backtest methods --
+
+    /// Setup backtest engine
+    #[napi]
+    pub fn setup_backtest(&self, config: BacktestConfigInput) -> napi::Result<()> {
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        let bt_config = parse_backtest_config(&config);
+        engine.setup_backtest(bt_config);
+        Ok(())
+    }
+
+    /// Get backtest result
+    #[napi]
+    pub fn backtest_result(&self) -> napi::Result<Option<BacktestStatsOutput>> {
+        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(engine.backtest_result().map(stats_to_output))
+    }
+
+    /// Get backtest trades
+    #[napi]
+    pub fn backtest_trades(&self) -> napi::Result<Vec<TradeOutput>> {
+        let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(engine.backtest_trades().map(|trades| {
+            trades.iter().map(trade_to_output).collect()
+        }).unwrap_or_default())
+    }
+
+    /// Get backtest equity curve
+    #[napi]
+    pub fn backtest_equity_curve(&self) -> napi::Result<Vec<f64>> {
+        let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(engine.backtest_equity_curve().map(|c| c.to_vec()).unwrap_or_default())
+    }
+}
+
+// ============================================================================
+// Shared helpers
+// ============================================================================
+
+fn parse_backtest_config(config: &BacktestConfigInput) -> BacktestConfig {
+    let market_type = match config.market_type.as_deref() {
+        Some("futures") | Some("Futures") | Some("FUTURES") => MarketType::Futures,
+        _ => MarketType::Spot,
+    };
+    BacktestConfig {
+        market_type,
+        initial_capital: config.initial_capital,
+        leverage: config.leverage.unwrap_or(1.0),
+        maker_fee: config.maker_fee.unwrap_or(0.001),
+        taker_fee: config.taker_fee.unwrap_or(0.001),
+        slippage: config.slippage.unwrap_or(0.0005),
+        position_size_pct: config.position_size_pct.unwrap_or(0.1),
+    }
+}
+
+fn stats_to_output(stats: &BacktestStats) -> BacktestStatsOutput {
+    BacktestStatsOutput {
+        total_trades: stats.total_trades as u32,
+        winning_trades: stats.winning_trades as u32,
+        losing_trades: stats.losing_trades as u32,
+        total_pnl: stats.total_pnl,
+        max_drawdown: stats.max_drawdown,
+        max_drawdown_pct: stats.max_drawdown_pct,
+        sharpe_ratio: stats.sharpe_ratio,
+        win_rate: stats.win_rate,
+        final_equity: stats.final_equity,
+        return_pct: stats.return_pct,
+        liquidations: stats.liquidations as u32,
+    }
+}
+
+fn trade_to_output(t: &Trade) -> TradeOutput {
+    TradeOutput {
+        timestamp: t.timestamp,
+        side: match t.side {
+            Side::Buy => "BUY".to_string(),
+            Side::Sell => "SELL".to_string(),
+            Side::Hold => "HOLD".to_string(),
+        },
+        price: t.price,
+        size: t.size,
+        fee: t.fee,
+        pnl: t.pnl,
+    }
 }
 
 // ============================================================================
@@ -614,6 +751,8 @@ pub struct HQuant {
     aggregator: Mutex<Option<MultiTimeFrameAggregator>>,
     base_tf: Mutex<Option<TimeFrame>>,
     signal_queue: Mutex<Vec<Signal>>,
+    dsl_strategies: Mutex<Vec<(u32, String, DslEngine)>>,
+    next_strategy_id: Mutex<u32>,
 }
 
 #[napi]
@@ -651,6 +790,8 @@ impl HQuant {
             aggregator: Mutex::new(aggregator),
             base_tf: Mutex::new(base_tf),
             signal_queue: Mutex::new(Vec::new()),
+            dsl_strategies: Mutex::new(Vec::new()),
+            next_strategy_id: Mutex::new(1),
         })
     }
 
@@ -751,12 +892,41 @@ impl HQuant {
     }
 
     /// Push completed K-line (for historical data loading)
+    /// This method updates indicators and evaluates DSL strategies
+    #[napi]
+    pub fn push_bar(&self, bar: BarInput) -> napi::Result<()> {
+        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
+        let mut signal_queue = self.signal_queue.lock().map_err(|_| lock_poisoned_error())?;
+        let mut dsl_strategies = self.dsl_strategies.lock().map_err(|_| lock_poisoned_error())?;
+
+        let b = to_bar(&bar);
+
+        // Append bar to engine (updates indicators)
+        let _builtin_signals = engine.append_bar(&b);
+
+        // Evaluate DSL strategies
+        let graph = engine.graph();
+        let ctx = DslContext::new(&b, graph);
+
+        for (strategy_id, _name, dsl_engine) in dsl_strategies.iter_mut() {
+            if let Ok(signals) = dsl_engine.evaluate(&ctx) {
+                for mut sig in signals {
+                    // Encode strategy_id in the signal reason
+                    sig.reason = format!("{}:{}", strategy_id, sig.reason);
+                    signal_queue.push(sig);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Push completed K-line (legacy alias for push_bar)
     #[napi]
     pub fn push_kline(&self, bar: BarInput) -> napi::Result<Vec<SignalOutput>> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        let b = to_bar(&bar);
-        let signals = engine.append_bar(&b);
-        Ok(signals.iter().map(signal_to_output).collect())
+        self.push_bar(bar)?;
+        // Return empty - use pollSignals() to get accumulated signals
+        Ok(Vec::new())
     }
 
     /// Update last K-line (for realtime price updates within same candle)
@@ -775,11 +945,26 @@ impl HQuant {
         Ok(())
     }
 
-    /// Poll accumulated signals
+    /// Poll accumulated signals from DSL strategies
+    /// Returns signals with strategyId and action (BUY/SELL/HOLD)
     #[napi]
-    pub fn poll_signals(&self) -> napi::Result<Vec<SignalOutput>> {
+    pub fn poll_signals(&self) -> napi::Result<Vec<DslSignalOutput>> {
         let mut signal_queue = self.signal_queue.lock().map_err(|_| lock_poisoned_error())?;
-        let signals: Vec<SignalOutput> = signal_queue.iter().map(signal_to_output).collect();
+        let signals: Vec<DslSignalOutput> = signal_queue.iter().map(|s| {
+            // Parse strategy_id from reason (format: "id:reason")
+            let strategy_id = s.reason.split(':').next()
+                .and_then(|id| id.parse::<u32>().ok())
+                .unwrap_or(0);
+            DslSignalOutput {
+                strategy_id,
+                action: match s.side {
+                    Side::Buy => "BUY".to_string(),
+                    Side::Sell => "SELL".to_string(),
+                    Side::Hold => "HOLD".to_string(),
+                },
+                timestamp: s.timestamp,
+            }
+        }).collect();
         signal_queue.clear();
         Ok(signals)
     }
@@ -824,6 +1009,113 @@ impl HQuant {
 
         Ok(())
     }
+
+    // -- DSL Strategy methods --
+
+    /// Add a DSL-based strategy
+    /// Returns the strategy ID (>0 on success)
+    #[napi]
+    pub fn add_strategy(&self, name: String, dsl: String) -> napi::Result<u32> {
+        let dsl_engine = DslEngine::new(&dsl)
+            .map_err(|e| Error::from_reason(format!("DSL compile error: {}", e)))?;
+
+        let mut strategies = self.dsl_strategies.lock().map_err(|_| lock_poisoned_error())?;
+        let mut next_id = self.next_strategy_id.lock().map_err(|_| lock_poisoned_error())?;
+
+        let id = *next_id;
+        strategies.push((id, name, dsl_engine));
+        *next_id += 1;
+
+        Ok(id)
+    }
+
+    /// Add RSI indicator with specified period
+    #[napi]
+    pub fn add_rsi(&self, period: u32) -> napi::Result<u32> {
+        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
+        let indicator_name = format!("rsi_{}", period);
+        engine
+            .add_indicator(&indicator_name, RSIBuilder::new().period(period as usize))
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(period)
+    }
+
+    // -- Built-in Strategy methods --
+
+    /// Add RSI strategy (buy when oversold, sell when overbought)
+    #[napi]
+    pub fn add_rsi_strategy(
+        &self,
+        indicator_name: String,
+        oversold: Option<f64>,
+        overbought: Option<f64>,
+    ) -> napi::Result<()> {
+        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
+        engine.add_strategy(Box::new(RSIStrategy::new(
+            indicator_name,
+            oversold.unwrap_or(30.0),
+            overbought.unwrap_or(70.0),
+        )));
+        Ok(())
+    }
+
+    /// Add MACD histogram crossover strategy
+    #[napi]
+    pub fn add_macd_strategy(&self, indicator_name: String) -> napi::Result<()> {
+        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
+        engine.add_strategy(Box::new(MACDStrategy::new(indicator_name)));
+        Ok(())
+    }
+
+    /// Add Bollinger Band breakout strategy
+    #[napi]
+    pub fn add_boll_strategy(&self, indicator_name: String) -> napi::Result<()> {
+        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
+        engine.add_strategy(Box::new(BollStrategy::new(indicator_name)));
+        Ok(())
+    }
+
+    /// Add MA crossover strategy (golden/death cross)
+    #[napi]
+    pub fn add_ma_cross_strategy(&self, fast_ma: String, slow_ma: String) -> napi::Result<()> {
+        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
+        engine.add_strategy(Box::new(MACrossStrategy::new(fast_ma, slow_ma)));
+        Ok(())
+    }
+
+    // -- Backtest methods --
+
+    /// Setup backtest engine
+    #[napi]
+    pub fn setup_backtest(&self, config: BacktestConfigInput) -> napi::Result<()> {
+        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
+        let bt_config = parse_backtest_config(&config);
+        engine.setup_backtest(bt_config);
+        Ok(())
+    }
+
+    /// Get backtest result
+    #[napi]
+    pub fn backtest_result(&self) -> napi::Result<Option<BacktestStatsOutput>> {
+        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(engine.backtest_result().map(stats_to_output))
+    }
+
+    /// Get backtest trades
+    #[napi]
+    pub fn backtest_trades(&self) -> napi::Result<Vec<TradeOutput>> {
+        let engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(engine.backtest_trades().map(|trades| {
+            trades.iter().map(trade_to_output).collect()
+        }).unwrap_or_default())
+    }
+
+    /// Get backtest equity curve
+    #[napi]
+    pub fn backtest_equity_curve(&self) -> napi::Result<Vec<f64>> {
+        let engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(engine.backtest_equity_curve().map(|c| c.to_vec()).unwrap_or_default())
+    }
 }
 
 // ============================================================================
@@ -850,23 +1142,8 @@ pub struct Backtest {
 impl Backtest {
     #[napi(constructor)]
     pub fn new(config: BacktestConfigInput) -> Self {
-        let market_type = match config.market_type.as_deref() {
-            Some("futures") | Some("Futures") | Some("FUTURES") => MarketType::Futures,
-            _ => MarketType::Spot,
-        };
-
-        let bt_config = BacktestConfig {
-            market_type,
-            initial_capital: config.initial_capital,
-            leverage: config.leverage.unwrap_or(1.0),
-            maker_fee: config.maker_fee.unwrap_or(0.001),
-            taker_fee: config.taker_fee.unwrap_or(0.001),
-            slippage: config.slippage.unwrap_or(0.0005),
-            position_size_pct: config.position_size_pct.unwrap_or(0.1),
-        };
-
         Self {
-            inner: Mutex::new(BacktestEngine::new(bt_config)),
+            inner: Mutex::new(BacktestEngine::new(parse_backtest_config(&config))),
         }
     }
 
@@ -898,42 +1175,14 @@ impl Backtest {
     #[napi]
     pub fn result(&self) -> napi::Result<BacktestStatsOutput> {
         let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let stats = engine.result();
-        Ok(BacktestStatsOutput {
-            total_trades: stats.total_trades as u32,
-            winning_trades: stats.winning_trades as u32,
-            losing_trades: stats.losing_trades as u32,
-            total_pnl: stats.total_pnl,
-            max_drawdown: stats.max_drawdown,
-            max_drawdown_pct: stats.max_drawdown_pct,
-            sharpe_ratio: stats.sharpe_ratio,
-            win_rate: stats.win_rate,
-            final_equity: stats.final_equity,
-            return_pct: stats.return_pct,
-            liquidations: stats.liquidations as u32,
-        })
+        Ok(stats_to_output(engine.result()))
     }
 
     /// Get trades
     #[napi]
     pub fn get_trades(&self) -> napi::Result<Vec<TradeOutput>> {
         let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine
-            .trades()
-            .iter()
-            .map(|t| TradeOutput {
-                timestamp: t.timestamp,
-                side: match t.side {
-                    Side::Buy => "BUY".to_string(),
-                    Side::Sell => "SELL".to_string(),
-                    Side::Hold => "HOLD".to_string(),
-                },
-                price: t.price,
-                size: t.size,
-                fee: t.fee,
-                pnl: t.pnl,
-            })
-            .collect())
+        Ok(engine.trades().iter().map(trade_to_output).collect())
     }
 
     /// Get equity curve
@@ -1122,8 +1371,8 @@ impl DslStrategy {
 
         // Create a minimal indicator map for context
         // Note: In real usage, you'd pass the actual engine's indicators
-        let empty_indicators = std::collections::HashMap::new();
-        let ctx = DslContext::new(&b, &empty_indicators);
+        let empty_graph = IndicatorGraph::new();
+        let ctx = DslContext::new(&b, &empty_graph);
 
         let signals = engine.evaluate(&ctx)
             .map_err(|e| Error::from_reason(e.to_string()))?;
@@ -1146,5 +1395,190 @@ pub fn validate_dsl(source: String) -> napi::Result<bool> {
     match crate::dsl::compile(&source) {
         Ok(_) => Ok(true),
         Err(e) => Err(Error::from_reason(e.to_string())),
+    }
+}
+
+// ============================================================================
+// FuturesBacktest (standalone, compatible with jx-quant)
+// ============================================================================
+
+#[napi(object)]
+pub struct FuturesBacktestConfig {
+    pub initial_margin: f64,
+    pub leverage: f64,
+    pub contract_size: f64,
+    pub maker_fee_rate: f64,
+    pub taker_fee_rate: f64,
+    pub maintenance_margin_rate: f64,
+}
+
+#[napi(object)]
+pub struct FuturesBacktestResult {
+    pub equity: f64,
+    pub profit: f64,
+    pub profit_rate: f64,
+    pub max_drawdown_rate: f64,
+    pub liquidated: bool,
+}
+
+/// Standalone futures backtest engine (compatible with jx-quant FuturesBacktest)
+/// Decoupled from HQuant, can be used independently with any signal source
+#[napi]
+pub struct FuturesBacktest {
+    initial_margin: f64,
+    leverage: f64,
+    contract_size: f64,
+    maker_fee_rate: f64,
+    taker_fee_rate: f64,
+    maintenance_margin_rate: f64,
+    // State
+    equity: f64,
+    position: f64,  // positive = long, negative = short, 0 = no position
+    entry_price: f64,
+    max_equity: f64,
+    liquidated: bool,
+}
+
+#[napi]
+impl FuturesBacktest {
+    #[napi(constructor)]
+    pub fn new(config: FuturesBacktestConfig) -> Self {
+        Self {
+            initial_margin: config.initial_margin,
+            leverage: config.leverage,
+            contract_size: config.contract_size,
+            maker_fee_rate: config.maker_fee_rate,
+            taker_fee_rate: config.taker_fee_rate,
+            maintenance_margin_rate: config.maintenance_margin_rate,
+            equity: config.initial_margin,
+            position: 0.0,
+            entry_price: 0.0,
+            max_equity: config.initial_margin,
+            liquidated: false,
+        }
+    }
+
+    /// Apply a trading signal
+    /// action: "BUY", "SELL", or "HOLD"
+    /// price: current market price
+    /// margin: margin amount to use for opening positions
+    #[napi]
+    pub fn apply_signal(&mut self, action: String, price: f64, margin: f64) {
+        if self.liquidated {
+            return;
+        }
+
+        match action.as_str() {
+            "BUY" => {
+                if self.position < 0.0 {
+                    // Close short position
+                    self.close_position(price);
+                }
+                if self.position == 0.0 {
+                    // Open long position
+                    self.open_position(price, margin, true);
+                }
+            }
+            "SELL" => {
+                if self.position > 0.0 {
+                    // Close long position
+                    self.close_position(price);
+                }
+                if self.position == 0.0 {
+                    // Open short position
+                    self.open_position(price, margin, false);
+                }
+            }
+            "HOLD" | _ => {}
+        }
+    }
+
+    /// Update position value on price change (for liquidation checking)
+    #[napi]
+    pub fn on_price(&mut self, price: f64) {
+        if self.liquidated || self.position == 0.0 {
+            return;
+        }
+
+        // Check for liquidation
+        let unrealized_pnl = self.calculate_pnl(price);
+        let margin_used = self.position.abs() * self.entry_price / self.leverage;
+        let maintenance_margin = margin_used * self.maintenance_margin_rate;
+
+        if self.equity + unrealized_pnl < maintenance_margin {
+            self.liquidated = true;
+            self.equity = 0.0;
+            self.position = 0.0;
+        }
+    }
+
+    /// Get backtest result
+    #[napi]
+    pub fn result(&self, price: f64) -> FuturesBacktestResult {
+        let unrealized_pnl = if self.position != 0.0 {
+            self.calculate_pnl(price)
+        } else {
+            0.0
+        };
+
+        let current_equity = if self.liquidated {
+            0.0
+        } else {
+            self.equity + unrealized_pnl
+        };
+
+        let profit = current_equity - self.initial_margin;
+        let profit_rate = profit / self.initial_margin;
+        let max_drawdown_rate = if self.max_equity > 0.0 {
+            (self.max_equity - current_equity) / self.max_equity
+        } else {
+            0.0
+        };
+
+        FuturesBacktestResult {
+            equity: current_equity,
+            profit,
+            profit_rate,
+            max_drawdown_rate: max_drawdown_rate.max(0.0),
+            liquidated: self.liquidated,
+        }
+    }
+
+    fn open_position(&mut self, price: f64, margin: f64, is_long: bool) {
+        let fee = margin * self.leverage * self.taker_fee_rate;
+        self.equity -= fee;
+
+        let position_size = (margin * self.leverage) / price * self.contract_size;
+        self.position = if is_long { position_size } else { -position_size };
+        self.entry_price = price;
+    }
+
+    fn close_position(&mut self, price: f64) {
+        let pnl = self.calculate_pnl(price);
+        let notional = self.position.abs() * price / self.contract_size;
+        let fee = notional * self.taker_fee_rate;
+
+        self.equity += pnl - fee;
+        if self.equity > self.max_equity {
+            self.max_equity = self.equity;
+        }
+
+        self.position = 0.0;
+        self.entry_price = 0.0;
+    }
+
+    fn calculate_pnl(&self, price: f64) -> f64 {
+        if self.position == 0.0 {
+            return 0.0;
+        }
+
+        let price_diff = price - self.entry_price;
+        if self.position > 0.0 {
+            // Long position
+            price_diff * self.position / self.contract_size
+        } else {
+            // Short position
+            -price_diff * self.position.abs() / self.contract_size
+        }
     }
 }

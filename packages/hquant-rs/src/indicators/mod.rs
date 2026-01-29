@@ -6,8 +6,11 @@ pub mod macd;
 pub mod atr;
 pub mod boll;
 pub mod vri;
+pub mod stddev;
 pub mod dynamic;
 pub mod builder;
+pub mod spec;
+pub mod graph;
 
 pub use ma::{MA, MAType};
 pub use rsi::RSI;
@@ -15,12 +18,15 @@ pub use macd::MACD;
 pub use atr::ATR;
 pub use boll::BOLL;
 pub use vri::VRI;
+pub use stddev::StdDev;
 pub use dynamic::{DynamicIndicator, vwap, obv, mfi, williams_r, cci, roc};
 pub use builder::{
     IndicatorBuilder,
     MABuilder, RSIBuilder, MACDBuilder, ATRBuilder, BOLLBuilder, VRIBuilder,
     ma, sma, ema, rsi, macd, atr, boll, vri,
 };
+pub use spec::{IndicatorSpec, IndicatorId, F64Key};
+pub use graph::{IndicatorGraph, GraphSummary};
 
 use crate::kline::Bar;
 
@@ -85,10 +91,32 @@ pub trait Indicator: Send + Sync {
 
     /// Reset indicator state
     fn reset(&mut self);
+
+    // -- Graph-aware methods (default implementations for non-composite indicators) --
+
+    /// Declare dependency specs for graph-based execution.
+    /// Override for composite indicators (MACD, BOLL) to enable dependency sharing.
+    fn deps(&self) -> Vec<IndicatorSpec> {
+        vec![]
+    }
+
+    /// Push with dependency values available from the graph.
+    /// `dep_values` are in the same order as `deps()`.
+    /// Default: ignores dep_values and delegates to `push()`.
+    fn push_with_deps(&mut self, bar: &Bar, _dep_values: &[Option<f64>]) {
+        self.push(bar);
+    }
+
+    /// Update last with dependency values available from the graph.
+    /// `dep_values` are in the same order as `deps()`.
+    /// Default: ignores dep_values and delegates to `update_last()`.
+    fn update_last_with_deps(&mut self, bar: &Bar, _dep_values: &[Option<f64>]) {
+        self.update_last(bar);
+    }
 }
 
 /// Indicator input type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum PriceType {
     Open,
     High,
