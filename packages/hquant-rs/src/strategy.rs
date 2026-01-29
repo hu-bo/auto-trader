@@ -1,6 +1,6 @@
 //! Strategy system - signal generation and evaluation
 
-use crate::indicators::{Indicator, IndicatorValue, IndicatorGraph};
+use crate::indicators::{Indicator, IndicatorGraph, IndicatorValue};
 use crate::kline::Bar;
 
 /// Signal direction
@@ -150,11 +150,7 @@ pub struct RSIStrategy {
 }
 
 impl RSIStrategy {
-    pub fn new(
-        indicator_name: impl Into<String>,
-        oversold: f64,
-        overbought: f64,
-    ) -> Self {
+    pub fn new(indicator_name: impl Into<String>, oversold: f64, overbought: f64) -> Self {
         Self {
             name: "RSI_Strategy".to_string(),
             indicator_name: indicator_name.into(),
@@ -284,10 +280,18 @@ impl Strategy for MACDStrategy {
             Some(prev) => {
                 if prev <= 0.0 && *histogram > 0.0 {
                     // Histogram crosses above zero - buy
-                    Some(Signal::buy(0.7, "MACD histogram cross up", ctx.bar.timestamp))
+                    Some(Signal::buy(
+                        0.7,
+                        "MACD histogram cross up",
+                        ctx.bar.timestamp,
+                    ))
                 } else if prev >= 0.0 && *histogram < 0.0 {
                     // Histogram crosses below zero - sell
-                    Some(Signal::sell(0.7, "MACD histogram cross down", ctx.bar.timestamp))
+                    Some(Signal::sell(
+                        0.7,
+                        "MACD histogram cross down",
+                        ctx.bar.timestamp,
+                    ))
                 } else {
                     None
                 }
@@ -338,11 +342,19 @@ impl Strategy for BollStrategy {
         if close < *lower {
             // Price below lower band - oversold
             let strength = (lower - close) / (upper - lower).max(0.01);
-            Some(Signal::buy(strength.min(1.0), "Price below lower BOLL", ctx.bar.timestamp))
+            Some(Signal::buy(
+                strength.min(1.0),
+                "Price below lower BOLL",
+                ctx.bar.timestamp,
+            ))
         } else if close > *upper {
             // Price above upper band - overbought
             let strength = (close - upper) / (upper - lower).max(0.01);
-            Some(Signal::sell(strength.min(1.0), "Price above upper BOLL", ctx.bar.timestamp))
+            Some(Signal::sell(
+                strength.min(1.0),
+                "Price above upper BOLL",
+                ctx.bar.timestamp,
+            ))
         } else {
             None
         }

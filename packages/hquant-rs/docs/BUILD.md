@@ -111,11 +111,10 @@ pnpm link --global @hquant/js
 ### 验证安装
 
 ```typescript
-import { HQuant, Indicators } from '@hquant/js'
+import { HQuant } from '@hquant/js'
 
 const engine = new HQuant(1000)
-const ind = new Indicators()
-engine.addRsiIndicator('rsi', ind.rsi().period(14))
+engine.addIndicator('rsi', { type: 'rsi', period: 14 })
 console.log('HQuant Node.js 安装成功!')
 ```
 

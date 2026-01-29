@@ -7,9 +7,9 @@
 //! - **Standalone**: computes its own SMA and StdDev internally (default)
 //! - **Graph mode**: receives SMA and StdDev from graph dependencies, avoiding duplicate computation
 
+use super::{Indicator, IndicatorSpec, IndicatorValue, PriceType};
 use crate::common::F64RingBuffer;
 use crate::kline::Bar;
-use super::{Indicator, IndicatorValue, IndicatorSpec, PriceType};
 use crate::{HQuantError, HQuantResult};
 
 #[derive(Debug)]
@@ -34,21 +34,36 @@ impl BOLL {
         Self::with_price_type(period, std_dev_factor, PriceType::Close)
     }
 
-    pub fn with_price_type(period: usize, std_dev_factor: f64, price_type: PriceType) -> HQuantResult<Self> {
+    pub fn with_price_type(
+        period: usize,
+        std_dev_factor: f64,
+        price_type: PriceType,
+    ) -> HQuantResult<Self> {
         Self::create(period, std_dev_factor, price_type, false)
     }
 
     /// Create BOLL in graph mode — SMA and StdDev are provided by graph dependencies.
-    pub(crate) fn new_graph_mode(period: usize, std_dev_factor: f64, price_type: PriceType) -> HQuantResult<Self> {
+    pub(crate) fn new_graph_mode(
+        period: usize,
+        std_dev_factor: f64,
+        price_type: PriceType,
+    ) -> HQuantResult<Self> {
         Self::create(period, std_dev_factor, price_type, true)
     }
 
-    fn create(period: usize, std_dev_factor: f64, price_type: PriceType, graph_mode: bool) -> HQuantResult<Self> {
+    fn create(
+        period: usize,
+        std_dev_factor: f64,
+        price_type: PriceType,
+        graph_mode: bool,
+    ) -> HQuantResult<Self> {
         if period == 0 {
             return Err(HQuantError::invalid_argument("BOLL period must be > 0"));
         }
         if std_dev_factor <= 0.0 {
-            return Err(HQuantError::invalid_argument("BOLL std_dev factor must be > 0"));
+            return Err(HQuantError::invalid_argument(
+                "BOLL std_dev factor must be > 0",
+            ));
         }
 
         let capacity = period * 2;
@@ -208,8 +223,14 @@ impl Indicator for BOLL {
     fn deps(&self) -> Vec<IndicatorSpec> {
         if self.graph_mode {
             vec![
-                IndicatorSpec::Sma { period: self.period, price_type: self.price_type },
-                IndicatorSpec::StdDev { period: self.period, price_type: self.price_type },
+                IndicatorSpec::Sma {
+                    period: self.period,
+                    price_type: self.price_type,
+                },
+                IndicatorSpec::StdDev {
+                    period: self.period,
+                    price_type: self.price_type,
+                },
             ]
         } else {
             vec![]
@@ -272,9 +293,11 @@ mod tests {
     use super::*;
 
     fn create_bars(prices: &[f64]) -> Vec<Bar> {
-        prices.iter().enumerate().map(|(i, &p)| {
-            Bar::new(i as i64 * 1000, p, p + 1.0, p - 1.0, p, 100.0)
-        }).collect()
+        prices
+            .iter()
+            .enumerate()
+            .map(|(i, &p)| Bar::new(i as i64 * 1000, p, p + 1.0, p - 1.0, p, 100.0))
+            .collect()
     }
 
     #[test]
@@ -389,8 +412,20 @@ mod tests {
         let boll = BOLL::new_graph_mode(20, 2.0, PriceType::Close).unwrap();
         let deps = boll.deps();
         assert_eq!(deps.len(), 2);
-        assert_eq!(deps[0], IndicatorSpec::Sma { period: 20, price_type: PriceType::Close });
-        assert_eq!(deps[1], IndicatorSpec::StdDev { period: 20, price_type: PriceType::Close });
+        assert_eq!(
+            deps[0],
+            IndicatorSpec::Sma {
+                period: 20,
+                price_type: PriceType::Close
+            }
+        );
+        assert_eq!(
+            deps[1],
+            IndicatorSpec::StdDev {
+                period: 20,
+                price_type: PriceType::Close
+            }
+        );
     }
 
     #[test]

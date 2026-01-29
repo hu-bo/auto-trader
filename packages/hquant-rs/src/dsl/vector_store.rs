@@ -206,10 +206,13 @@ mod tests {
         let mut store = VectorStore::new();
         store.set_threshold(0.8);
 
-        store.load("test", vec![
-            LabeledVector::new(1, vec![1.0, 0.0, 0.0]),
-            LabeledVector::new(-1, vec![0.0, 1.0, 0.0]),
-        ]);
+        store.load(
+            "test",
+            vec![
+                LabeledVector::new(1, vec![1.0, 0.0, 0.0]),
+                LabeledVector::new(-1, vec![0.0, 1.0, 0.0]),
+            ],
+        );
 
         let result = store.find_similar("test", &[0.9, 0.1, 0.0]);
         assert!(result.is_some());
@@ -237,7 +240,8 @@ mod tests {
         assert!(mean.abs() < 1e-10);
 
         // Std should be 1
-        let variance: f64 = normalized.iter().map(|x| x.powi(2)).sum::<f64>() / normalized.len() as f64;
+        let variance: f64 =
+            normalized.iter().map(|x| x.powi(2)).sum::<f64>() / normalized.len() as f64;
         assert!((variance - 1.0).abs() < 1e-10);
     }
 }

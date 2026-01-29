@@ -2,12 +2,12 @@
 
 use std::collections::HashMap;
 
+use super::ast::{Action, BinaryOperator, Expr, Statement, UnaryOperator};
+use super::vector_store::{min_max_normalize, SimilarityResult, VectorStore};
 use crate::error::QuantError;
-use crate::indicators::{Indicator, IndicatorGraph};
+use crate::indicators::IndicatorGraph;
 use crate::kline::Bar;
-use crate::strategy::{Signal, Side};
-use super::ast::{Statement, Expr, BinaryOperator, UnaryOperator, Action};
-use super::vector_store::{VectorStore, SimilarityResult, min_max_normalize, cosine_similarity};
+use crate::strategy::Signal;
 
 /// Runtime value type
 #[derive(Debug, Clone)]
@@ -24,15 +24,6 @@ impl Value {
     pub fn as_number(&self) -> Option<f64> {
         match self {
             Value::Number(n) => Some(*n),
-            _ => None,
-        }
-    }
-
-    pub fn as_bool(&self) -> Option<bool> {
-        match self {
-            Value::Bool(b) => Some(*b),
-            Value::Number(n) => Some(*n != 0.0),
-            Value::Null => Some(false),
             _ => None,
         }
     }
@@ -85,12 +76,9 @@ impl<'a> DslContext<'a> {
     }
 
     /// Add period-specific indicators
-    pub fn with_period_indicators(
-        mut self,
-        period: &str,
-        indicators: &'a IndicatorGraph,
-    ) -> Self {
-        self.period_indicators.insert(period.to_string(), indicators);
+    pub fn with_period_indicators(mut self, period: &str, indicators: &'a IndicatorGraph) -> Self {
+        self.period_indicators
+            .insert(period.to_string(), indicators);
         self
     }
 
@@ -125,7 +113,12 @@ impl<'a> DslContext<'a> {
     }
 
     /// Get indicator history (last n values)
-    pub fn get_indicator_history(&self, name: &str, period: Option<&str>, length: usize) -> Option<Vec<f64>> {
+    pub fn get_indicator_history(
+        &self,
+        name: &str,
+        period: Option<&str>,
+        length: usize,
+    ) -> Option<Vec<f64>> {
         let graph = if let Some(p) = period {
             *self.period_indicators.get(p)?
         } else {
@@ -199,14 +192,16 @@ impl DslEngine {
         self.signals.clear();
         self.variables.clear();
 
-        for stmt in self.statements.clone() {
-            self.eval_statement(&stmt, ctx)?;
+        for i in 0..self.statements.len() {
+            // Clone the statement to avoid borrow conflict
+            let stmt = self.statements[i].clone();
+            self.eval_statement_ref(&stmt, ctx)?;
         }
 
         Ok(std::mem::take(&mut self.signals))
     }
 
-    fn eval_statement(&mut self, stmt: &Statement, ctx: &DslContext) -> Result<(), QuantError> {
+    fn eval_statement_ref(&mut self, stmt: &Statement, ctx: &DslContext) -> Result<(), QuantError> {
         match stmt {
             Statement::Assignment { name, value } => {
                 let val = self.eval_expr(value, ctx)?;
@@ -228,18 +223,16 @@ impl DslEngine {
             Expr::String(s) => Ok(Value::String(s.clone())),
             Expr::Bool(b) => Ok(Value::Bool(*b)),
 
-            Expr::Variable(name) => {
-                self.variables
-                    .get(name)
-                    .cloned()
-                    .ok_or_else(|| QuantError::DslEval(format!("Undefined variable: {}", name)))
-            }
+            Expr::Variable(name) => self
+                .variables
+                .get(name)
+                .cloned()
+                .ok_or_else(|| QuantError::DslEval(format!("Undefined variable: {}", name))),
 
-            Expr::Series { name, period } => {
-                ctx.get_series(name, period.as_deref())
-                    .map(Value::Number)
-                    .ok_or_else(|| QuantError::DslEval(format!("Unknown series: {}", name)))
-            }
+            Expr::Series { name, period } => ctx
+                .get_series(name, period.as_deref())
+                .map(Value::Number)
+                .ok_or_else(|| QuantError::DslEval(format!("Unknown series: {}", name))),
 
             Expr::FunctionCall { name, args, kwargs } => {
                 self.eval_function(name, args, kwargs, ctx)
@@ -248,14 +241,15 @@ impl DslEngine {
             Expr::FieldAccess { object, field } => {
                 let obj = self.eval_expr(object, ctx)?;
                 match obj {
-                    Value::SimilarityHit(hit) => {
-                        match field.as_str() {
-                            "label" => Ok(Value::Number(hit.label as f64)),
-                            "score" => Ok(Value::Number(hit.score)),
-                            _ => Err(QuantError::DslEval(format!("Unknown field: {}", field))),
-                        }
-                    }
-                    _ => Err(QuantError::DslEval(format!("Cannot access field {} on non-object", field))),
+                    Value::SimilarityHit(hit) => match field.as_str() {
+                        "label" => Ok(Value::Number(hit.label as f64)),
+                        "score" => Ok(Value::Number(hit.score)),
+                        _ => Err(QuantError::DslEval(format!("Unknown field: {}", field))),
+                    },
+                    _ => Err(QuantError::DslEval(format!(
+                        "Cannot access field {} on non-object",
+                        field
+                    ))),
                 }
             }
 
@@ -361,7 +355,8 @@ impl DslEngine {
             // Vector functions
             "NORMALIZE" => {
                 // NORMALIZE(series, length=30)
-                let length = kwargs.get("length")
+                let length = kwargs
+                    .get("length")
                     .map(|e| self.eval_expr(e, ctx).ok())
                     .flatten()
                     .and_then(|v| v.as_number())
@@ -370,7 +365,7 @@ impl DslEngine {
                 // Get series or indicator name from first arg
                 if let Some(arg) = args.first() {
                     match arg {
-                        Expr::Series { name, period } => {
+                        Expr::Series { name: _, period: _ } => {
                             // Get history from series
                             // For now, just return empty vector
                             // In real implementation, would need KlineSeries access
@@ -394,7 +389,9 @@ impl DslEngine {
                         }
                     }
                 } else {
-                    Err(QuantError::DslEval("NORMALIZE requires an argument".to_string()))
+                    Err(QuantError::DslEval(
+                        "NORMALIZE requires an argument".to_string(),
+                    ))
                 }
             }
 
@@ -405,17 +402,24 @@ impl DslEngine {
                         // Return a marker value
                         Ok(Value::String(format!("__store:{}", name)))
                     } else {
-                        Err(QuantError::DslEval(format!("Vector store not found: {}", name)))
+                        Err(QuantError::DslEval(format!(
+                            "Vector store not found: {}",
+                            name
+                        )))
                     }
                 } else {
-                    Err(QuantError::DslEval("VEC_STORE requires store name".to_string()))
+                    Err(QuantError::DslEval(
+                        "VEC_STORE requires store name".to_string(),
+                    ))
                 }
             }
 
             "SIMILARITY" => {
                 // SIMILARITY(store, vector) or SIMILARITY(store, vector, method="cosine")
                 if args.len() < 2 {
-                    return Err(QuantError::DslEval("SIMILARITY requires store and vector".to_string()));
+                    return Err(QuantError::DslEval(
+                        "SIMILARITY requires store and vector".to_string(),
+                    ));
                 }
 
                 let store_val = self.eval_expr(&args[0], ctx)?;
@@ -425,12 +429,20 @@ impl DslEngine {
                     Value::String(s) if s.starts_with("__store:") => {
                         s.strip_prefix("__store:").unwrap().to_string()
                     }
-                    _ => return Err(QuantError::DslEval("First argument must be VEC_STORE".to_string())),
+                    _ => {
+                        return Err(QuantError::DslEval(
+                            "First argument must be VEC_STORE".to_string(),
+                        ))
+                    }
                 };
 
                 let query = match &vector_val {
                     Value::Vector(v) => v.clone(),
-                    _ => return Err(QuantError::DslEval("Second argument must be vector".to_string())),
+                    _ => {
+                        return Err(QuantError::DslEval(
+                            "Second argument must be vector".to_string(),
+                        ))
+                    }
                 };
 
                 if let Some(result) = self.vector_store.find_similar(&store_name, &query) {
@@ -444,7 +456,12 @@ impl DslEngine {
         }
     }
 
-    fn eval_binary_op(&self, op: BinaryOperator, left: Value, right: Value) -> Result<Value, QuantError> {
+    fn eval_binary_op(
+        &self,
+        op: BinaryOperator,
+        left: Value,
+        right: Value,
+    ) -> Result<Value, QuantError> {
         match op {
             BinaryOperator::Add => {
                 let l = left.as_number().unwrap_or(0.0);
@@ -486,28 +503,20 @@ impl DslEngine {
                 let r = right.as_number().unwrap_or(0.0);
                 Ok(Value::Bool(l >= r))
             }
-            BinaryOperator::Eq => {
-                match (&left, &right) {
-                    (Value::Number(l), Value::Number(r)) => Ok(Value::Bool((l - r).abs() < 1e-10)),
-                    (Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l == r)),
-                    (Value::String(l), Value::String(r)) => Ok(Value::Bool(l == r)),
-                    _ => Ok(Value::Bool(false)),
-                }
-            }
-            BinaryOperator::Ne => {
-                match (&left, &right) {
-                    (Value::Number(l), Value::Number(r)) => Ok(Value::Bool((l - r).abs() >= 1e-10)),
-                    (Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l != r)),
-                    (Value::String(l), Value::String(r)) => Ok(Value::Bool(l != r)),
-                    _ => Ok(Value::Bool(true)),
-                }
-            }
-            BinaryOperator::And => {
-                Ok(Value::Bool(left.is_truthy() && right.is_truthy()))
-            }
-            BinaryOperator::Or => {
-                Ok(Value::Bool(left.is_truthy() || right.is_truthy()))
-            }
+            BinaryOperator::Eq => match (&left, &right) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Bool((l - r).abs() < 1e-10)),
+                (Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l == r)),
+                (Value::String(l), Value::String(r)) => Ok(Value::Bool(l == r)),
+                _ => Ok(Value::Bool(false)),
+            },
+            BinaryOperator::Ne => match (&left, &right) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Bool((l - r).abs() >= 1e-10)),
+                (Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l != r)),
+                (Value::String(l), Value::String(r)) => Ok(Value::Bool(l != r)),
+                _ => Ok(Value::Bool(true)),
+            },
+            BinaryOperator::And => Ok(Value::Bool(left.is_truthy() && right.is_truthy())),
+            BinaryOperator::Or => Ok(Value::Bool(left.is_truthy() || right.is_truthy())),
         }
     }
 
@@ -524,19 +533,29 @@ impl DslEngine {
     fn execute_action(&mut self, action: &Action, ctx: &DslContext) -> Result<(), QuantError> {
         let signal = match action {
             Action::Buy(meta) => {
-                let reason = meta.as_ref()
+                let reason = meta
+                    .as_ref()
                     .and_then(|m| m.get("reason"))
                     .and_then(|e| {
-                        if let Expr::String(s) = e { Some(s.clone()) } else { None }
+                        if let Expr::String(s) = e {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
                     })
                     .unwrap_or_else(|| "DSL buy signal".to_string());
                 Signal::buy(0.8, reason, ctx.bar.timestamp)
             }
             Action::Sell(meta) => {
-                let reason = meta.as_ref()
+                let reason = meta
+                    .as_ref()
                     .and_then(|m| m.get("reason"))
                     .and_then(|e| {
-                        if let Expr::String(s) = e { Some(s.clone()) } else { None }
+                        if let Expr::String(s) = e {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
                     })
                     .unwrap_or_else(|| "DSL sell signal".to_string());
                 Signal::sell(0.8, reason, ctx.bar.timestamp)
@@ -558,6 +577,7 @@ impl DslEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Side;
 
     fn make_bar(close: f64) -> Bar {
         Bar::new(1000, 100.0, 110.0, 90.0, close, 1000.0)

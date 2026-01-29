@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
+use super::{Indicator, IndicatorValue};
 use crate::common::F64RingBuffer;
 use crate::kline::{Bar, KlineSeries};
-use super::{Indicator, IndicatorValue};
 use crate::{HQuantError, HQuantResult};
 
 /// Function type for dynamic indicator calculation
@@ -88,7 +88,8 @@ impl Indicator for DynamicIndicator {
     }
 
     fn result(&self) -> Option<IndicatorValue> {
-        self.value().map(|v| IndicatorValue::new(v, self.last_timestamp))
+        self.value()
+            .map(|v| IndicatorValue::new(v, self.last_timestamp))
     }
 
     fn is_ready(&self) -> bool {
@@ -170,69 +171,81 @@ pub fn mfi(period: usize, capacity: usize) -> HQuantResult<DynamicIndicator> {
         return Err(HQuantError::invalid_argument("MFI period must be > 0"));
     }
 
-    DynamicIndicator::new(format!("MFI_{}", period), period + 1, capacity, move |klines| {
-        if klines.len() < period + 1 {
-            return None;
-        }
-
-        let mut positive_mf = 0.0;
-        let mut negative_mf = 0.0;
-
-        let start = klines.len().saturating_sub(period + 1);
-        for i in (start + 1)..klines.len() {
-            let prev = klines.get(i - 1)?;
-            let curr = klines.get(i)?;
-
-            let prev_tp = prev.typical_price();
-            let curr_tp = curr.typical_price();
-            let raw_mf = curr_tp * curr.volume;
-
-            if curr_tp > prev_tp {
-                positive_mf += raw_mf;
-            } else if curr_tp < prev_tp {
-                negative_mf += raw_mf;
+    DynamicIndicator::new(
+        format!("MFI_{}", period),
+        period + 1,
+        capacity,
+        move |klines| {
+            if klines.len() < period + 1 {
+                return None;
             }
-        }
 
-        if negative_mf == 0.0 {
-            return Some(100.0);
-        }
+            let mut positive_mf = 0.0;
+            let mut negative_mf = 0.0;
 
-        let mf_ratio = positive_mf / negative_mf;
-        Some(100.0 - 100.0 / (1.0 + mf_ratio))
-    })
+            let start = klines.len().saturating_sub(period + 1);
+            for i in (start + 1)..klines.len() {
+                let prev = klines.get(i - 1)?;
+                let curr = klines.get(i)?;
+
+                let prev_tp = prev.typical_price();
+                let curr_tp = curr.typical_price();
+                let raw_mf = curr_tp * curr.volume;
+
+                if curr_tp > prev_tp {
+                    positive_mf += raw_mf;
+                } else if curr_tp < prev_tp {
+                    negative_mf += raw_mf;
+                }
+            }
+
+            if negative_mf == 0.0 {
+                return Some(100.0);
+            }
+
+            let mf_ratio = positive_mf / negative_mf;
+            Some(100.0 - 100.0 / (1.0 + mf_ratio))
+        },
+    )
 }
 
 /// Williams %R
 pub fn williams_r(period: usize, capacity: usize) -> HQuantResult<DynamicIndicator> {
     if period == 0 {
-        return Err(HQuantError::invalid_argument("Williams %R period must be > 0"));
+        return Err(HQuantError::invalid_argument(
+            "Williams %R period must be > 0",
+        ));
     }
 
-    DynamicIndicator::new(format!("WilliamsR_{}", period), period, capacity, move |klines| {
-        if klines.len() < period {
-            return None;
-        }
+    DynamicIndicator::new(
+        format!("WilliamsR_{}", period),
+        period,
+        capacity,
+        move |klines| {
+            if klines.len() < period {
+                return None;
+            }
 
-        let start = klines.len() - period;
-        let mut highest_high = f64::NEG_INFINITY;
-        let mut lowest_low = f64::INFINITY;
+            let start = klines.len() - period;
+            let mut highest_high = f64::NEG_INFINITY;
+            let mut lowest_low = f64::INFINITY;
 
-        for i in start..klines.len() {
-            let bar = klines.get(i)?;
-            highest_high = highest_high.max(bar.high);
-            lowest_low = lowest_low.min(bar.low);
-        }
+            for i in start..klines.len() {
+                let bar = klines.get(i)?;
+                highest_high = highest_high.max(bar.high);
+                lowest_low = lowest_low.min(bar.low);
+            }
 
-        let last = klines.last()?;
-        let range = highest_high - lowest_low;
+            let last = klines.last()?;
+            let range = highest_high - lowest_low;
 
-        if range == 0.0 {
-            return Some(-50.0);
-        }
+            if range == 0.0 {
+                return Some(-50.0);
+            }
 
-        Some(-100.0 * (highest_high - last.close) / range)
-    })
+            Some(-100.0 * (highest_high - last.close) / range)
+        },
+    )
 }
 
 /// Commodity Channel Index (CCI)
@@ -277,20 +290,25 @@ pub fn roc(period: usize, capacity: usize) -> HQuantResult<DynamicIndicator> {
         return Err(HQuantError::invalid_argument("ROC period must be > 0"));
     }
 
-    DynamicIndicator::new(format!("ROC_{}", period), period + 1, capacity, move |klines| {
-        if klines.len() < period + 1 {
-            return None;
-        }
+    DynamicIndicator::new(
+        format!("ROC_{}", period),
+        period + 1,
+        capacity,
+        move |klines| {
+            if klines.len() < period + 1 {
+                return None;
+            }
 
-        let current = klines.last()?;
-        let past = klines.get(klines.len() - period - 1)?;
+            let current = klines.last()?;
+            let past = klines.get(klines.len() - period - 1)?;
 
-        if past.close == 0.0 {
-            return None;
-        }
+            if past.close == 0.0 {
+                return None;
+            }
 
-        Some((current.close - past.close) / past.close * 100.0)
-    })
+            Some((current.close - past.close) / past.close * 100.0)
+        },
+    )
 }
 
 #[cfg(test)]

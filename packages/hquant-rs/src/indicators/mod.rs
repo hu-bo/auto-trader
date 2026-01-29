@@ -1,32 +1,31 @@
 //! Technical indicators module
 
-pub mod ma;
-pub mod rsi;
-pub mod macd;
 pub mod atr;
 pub mod boll;
-pub mod vri;
-pub mod stddev;
-pub mod dynamic;
 pub mod builder;
-pub mod spec;
+pub mod dynamic;
 pub mod graph;
+pub mod ma;
+pub mod macd;
+pub mod rsi;
+pub mod spec;
+pub mod stddev;
+pub mod vri;
 
-pub use ma::{MA, MAType};
-pub use rsi::RSI;
-pub use macd::MACD;
 pub use atr::ATR;
 pub use boll::BOLL;
-pub use vri::VRI;
-pub use stddev::StdDev;
-pub use dynamic::{DynamicIndicator, vwap, obv, mfi, williams_r, cci, roc};
 pub use builder::{
-    IndicatorBuilder,
-    MABuilder, RSIBuilder, MACDBuilder, ATRBuilder, BOLLBuilder, VRIBuilder,
-    ma, sma, ema, rsi, macd, atr, boll, vri,
+    atr, boll, ema, ma, macd, rsi, sma, vri, ATRBuilder, BOLLBuilder, IndicatorBuilder, MABuilder,
+    MACDBuilder, RSIBuilder, VRIBuilder,
 };
-pub use spec::{IndicatorSpec, IndicatorId, F64Key};
-pub use graph::{IndicatorGraph, GraphSummary};
+pub use dynamic::{cci, mfi, obv, roc, vwap, williams_r, DynamicIndicator};
+pub use graph::{GraphSummary, IndicatorGraph};
+pub use ma::{MAType, MA};
+pub use macd::MACD;
+pub use rsi::RSI;
+pub use spec::{F64Key, IndicatorId, IndicatorSpec};
+pub use stddev::StdDev;
+pub use vri::VRI;
 
 use crate::kline::Bar;
 

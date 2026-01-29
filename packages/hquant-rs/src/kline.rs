@@ -52,16 +52,6 @@ impl Bar {
         }
     }
 
-    /// Merge two K-lines (for timeframe aggregation)
-    pub fn merge(&mut self, other: &Bar) {
-        self.high = self.high.max(other.high);
-        self.low = self.low.min(other.low);
-        self.close = other.close;
-        self.volume += other.volume;
-        self.buy_volume += other.buy_volume;
-        // timestamp and open remain unchanged
-    }
-
     /// Get typical price (HLC/3)
     #[inline]
     pub fn typical_price(&self) -> f64 {
@@ -369,21 +359,6 @@ mod tests {
         assert_eq!(series.get_from_end(2).unwrap().timestamp, 4000);
         assert_eq!(series.get_from_end(5).unwrap().timestamp, 1000);
         assert!(series.get_from_end(6).is_none());
-    }
-
-    #[test]
-    fn test_bar_merge() {
-        let mut bar1 = Bar::new(1000, 100.0, 105.0, 99.0, 104.0, 1000.0);
-        let bar2 = Bar::new(2000, 104.0, 108.0, 103.0, 107.0, 1200.0);
-
-        bar1.merge(&bar2);
-
-        assert_eq!(bar1.timestamp, 1000);
-        assert_eq!(bar1.open, 100.0);
-        assert_eq!(bar1.high, 108.0);
-        assert_eq!(bar1.low, 99.0);
-        assert_eq!(bar1.close, 107.0);
-        assert_eq!(bar1.volume, 2200.0);
     }
 
     #[test]

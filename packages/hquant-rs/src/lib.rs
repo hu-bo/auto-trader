@@ -11,43 +11,55 @@
 pub mod error;
 pub use error::{HQuantError, HQuantResult, QuantError};
 
-pub mod common;
-pub mod kline;
-pub mod indicators;
 pub mod aggregator;
-pub mod strategy;
 pub mod backtest;
+pub mod common;
 pub mod dsl;
+pub mod indicators;
+pub mod kline;
+pub mod strategy;
 
 #[cfg(all(feature = "ffi-node", feature = "ffi-python"))]
-compile_error!("ffi-node and ffi-python cannot be enabled together. Build one FFI target at a time.");
+compile_error!(
+    "ffi-node and ffi-python cannot be enabled together. Build one FFI target at a time."
+);
 
 #[cfg(any(feature = "ffi-node", feature = "ffi-python"))]
 pub mod ffi;
 
-pub use common::{RingBuffer, F64RingBuffer};
-pub use kline::{Bar, KlineSeries};
-pub use indicators::{
-    Indicator, IndicatorValue, PriceType,
-    MA, MAType, RSI, MACD, ATR, BOLL, VRI, StdDev,
-    DynamicIndicator, vwap, obv, mfi, williams_r, cci, roc,
-    IndicatorBuilder,
-    MABuilder, RSIBuilder, MACDBuilder, ATRBuilder, BOLLBuilder, VRIBuilder,
-    ma, sma, ema, rsi, macd, atr, boll, vri,
-    IndicatorSpec, IndicatorId, IndicatorGraph, GraphSummary,
-};
-pub use aggregator::{TimeFrame, Aggregator, MultiTimeFrameAggregator};
-pub use strategy::{
-    Signal, Side, Strategy, StrategyContext, IndicatorSnapshot,
-    FnStrategy, RSIStrategy, MACrossStrategy, MACDStrategy, BollStrategy,
-};
+pub use aggregator::{Aggregator, MultiTimeFrameAggregator, TimeFrame};
 pub use backtest::{
-    BacktestEngine, BacktestConfig, BacktestStats,
-    MarketType, Position, PositionSide, Trade,
+    // Decimal utility
+    round_decimal,
+    BacktestConfig,
+    BacktestEngine,
+    BacktestStats,
+    ClosedPosition,
+    // FuturesBacktest (standalone)
+    FuturesBacktest,
+    FuturesBacktestConfig,
+    FuturesBacktestResult,
+    MarketType,
+    Position,
+    PositionSide,
+    Trade,
+    DEFAULT_DECIMALS,
 };
+pub use common::{F64RingBuffer, RingBuffer};
 pub use dsl::{
-    DslEngine, DslContext, VectorStore, LabeledVector,
-    compile as compile_dsl, Statement, Expr, Action,
+    compile as compile_dsl, Action, DslContext, DslEngine, Expr, LabeledVector, Statement,
+    VectorStore,
+};
+pub use indicators::{
+    atr, boll, cci, ema, ma, macd, mfi, obv, roc, rsi, sma, vri, vwap, williams_r, ATRBuilder,
+    BOLLBuilder, DynamicIndicator, GraphSummary, Indicator, IndicatorBuilder, IndicatorGraph,
+    IndicatorId, IndicatorSpec, IndicatorValue, MABuilder, MACDBuilder, MAType, PriceType,
+    RSIBuilder, StdDev, VRIBuilder, ATR, BOLL, MA, MACD, RSI, VRI,
+};
+pub use kline::{Bar, KlineSeries};
+pub use strategy::{
+    BollStrategy, FnStrategy, IndicatorSnapshot, MACDStrategy, MACrossStrategy, RSIStrategy, Side,
+    Signal, Strategy, StrategyContext,
 };
 
 /// Quantitative Engine - Core entry point
@@ -133,20 +145,6 @@ impl QuantEngine {
         Ok(())
     }
 
-    /// Add predefined OBV indicator
-    pub fn add_obv(&mut self, name: impl Into<String>) -> HQuantResult<()> {
-        let capacity = self.klines.capacity();
-        self.add_indicator_boxed(name, Box::new(obv(capacity)?));
-        Ok(())
-    }
-
-    /// Add predefined MFI indicator
-    pub fn add_mfi(&mut self, name: impl Into<String>, period: usize) -> HQuantResult<()> {
-        let capacity = self.klines.capacity();
-        self.add_indicator_boxed(name, Box::new(mfi(period, capacity)?));
-        Ok(())
-    }
-
     /// Add predefined Williams %R indicator
     pub fn add_williams_r(&mut self, name: impl Into<String>, period: usize) -> HQuantResult<()> {
         let capacity = self.klines.capacity();
@@ -180,7 +178,9 @@ impl QuantEngine {
         target_tfs: &[TimeFrame],
         capacity: usize,
     ) -> HQuantResult<()> {
-        self.aggregator = Some(MultiTimeFrameAggregator::new(base_tf, target_tfs, capacity)?);
+        self.aggregator = Some(MultiTimeFrameAggregator::new(
+            base_tf, target_tfs, capacity,
+        )?);
         Ok(())
     }
 
@@ -344,7 +344,9 @@ mod tests {
 
         engine.add_indicator("ma20", ma().period(20).sma()).unwrap();
         engine.add_indicator("rsi14", rsi().period(14)).unwrap();
-        engine.add_indicator("macd", macd().fast(12).slow(26).signal(9)).unwrap();
+        engine
+            .add_indicator("macd", macd().fast(12).slow(26).signal(9))
+            .unwrap();
 
         let bars = create_test_bars();
         engine.load_history(&bars);
@@ -373,8 +375,12 @@ mod tests {
     fn test_quant_engine_backtest() {
         let mut engine = QuantEngine::new(1000).unwrap();
 
-        engine.add_indicator("ma_fast", ma().period(5).sma()).unwrap();
-        engine.add_indicator("ma_slow", ma().period(20).sma()).unwrap();
+        engine
+            .add_indicator("ma_fast", ma().period(5).sma())
+            .unwrap();
+        engine
+            .add_indicator("ma_slow", ma().period(20).sma())
+            .unwrap();
 
         engine.setup_backtest(BacktestConfig::spot(10000.0));
 
@@ -408,14 +414,28 @@ mod tests {
         // ── Register indicators via IndicatorSpec (automatic dedup) ──
         // MACD internally needs EMA(12) and EMA(26); BOLL needs SMA(20) and StdDev(20).
         // Adding standalone EMA(12) should be shared with MACD's EMA(12).
-        let _ema12_id = engine.add_indicator_spec("ema12", IndicatorSpec::ema(12)).unwrap();
-        let _macd_id  = engine.add_indicator_spec("macd",  IndicatorSpec::macd(12, 26, 9)).unwrap();
-        let _boll_id  = engine.add_indicator_spec("boll",  IndicatorSpec::boll(20, 2.0)).unwrap();
-        let _rsi_id   = engine.add_indicator_spec("rsi14", IndicatorSpec::Rsi {
-            period: 14, price_type: PriceType::Close,
-        }).unwrap();
+        let _ema12_id = engine
+            .add_indicator_spec("ema12", IndicatorSpec::ema(12))
+            .unwrap();
+        let _macd_id = engine
+            .add_indicator_spec("macd", IndicatorSpec::macd(12, 26, 9))
+            .unwrap();
+        let _boll_id = engine
+            .add_indicator_spec("boll", IndicatorSpec::boll(20, 2.0))
+            .unwrap();
+        let _rsi_id = engine
+            .add_indicator_spec(
+                "rsi14",
+                IndicatorSpec::Rsi {
+                    period: 14,
+                    price_type: PriceType::Close,
+                },
+            )
+            .unwrap();
         // Standalone SMA(20) — should be shared with BOLL's SMA(20)
-        let _sma20_id = engine.add_indicator_spec("sma20", IndicatorSpec::sma(20)).unwrap();
+        let _sma20_id = engine
+            .add_indicator_spec("sma20", IndicatorSpec::sma(20))
+            .unwrap();
 
         // ── Verify dedup via graph summary ──
         let summary = engine.graph_summary();
@@ -423,8 +443,11 @@ mod tests {
         // BOLL adds: SMA(20), StdDev(20), BOLL composite → SMA(20) shared with standalone
         // RSI adds: RSI(14)
         // Total unique nodes: EMA(12), EMA(26), MACD, SMA(20), StdDev(20), BOLL, RSI(14) = 7
-        assert_eq!(summary.total_nodes, 7,
-            "Expected 7 unique nodes after dedup, got {}. Summary: {:?}", summary.total_nodes, summary);
+        assert_eq!(
+            summary.total_nodes, 7,
+            "Expected 7 unique nodes after dedup, got {}. Summary: {:?}",
+            summary.total_nodes, summary
+        );
 
         // ── Add strategies ──
         // RSI overbought/oversold
@@ -442,7 +465,7 @@ mod tests {
             .map(|i| {
                 let base = 100.0 + 10.0 * ((i as f64 * 0.15).sin());
                 Bar::new(
-                    i * 60_000,   // 1-minute bars
+                    i * 60_000, // 1-minute bars
                     base - 0.5,
                     base + 2.0,
                     base - 2.0,
@@ -454,14 +477,32 @@ mod tests {
 
         // ── Run backtest via load_history ──
         let all_signals = engine.load_history(&bars);
-        println!("[integration] Total signals generated: {}", all_signals.len());
+        println!(
+            "[integration] Total signals generated: {}",
+            all_signals.len()
+        );
 
         // ── Verify indicators produced values ──
-        assert!(engine.indicator_ready("ema12"), "EMA(12) should be ready after 100 bars");
-        assert!(engine.indicator_ready("rsi14"), "RSI(14) should be ready after 100 bars");
-        assert!(engine.indicator_ready("macd"),  "MACD should be ready after 100 bars");
-        assert!(engine.indicator_ready("boll"),  "BOLL should be ready after 100 bars");
-        assert!(engine.indicator_ready("sma20"), "SMA(20) should be ready after 100 bars");
+        assert!(
+            engine.indicator_ready("ema12"),
+            "EMA(12) should be ready after 100 bars"
+        );
+        assert!(
+            engine.indicator_ready("rsi14"),
+            "RSI(14) should be ready after 100 bars"
+        );
+        assert!(
+            engine.indicator_ready("macd"),
+            "MACD should be ready after 100 bars"
+        );
+        assert!(
+            engine.indicator_ready("boll"),
+            "BOLL should be ready after 100 bars"
+        );
+        assert!(
+            engine.indicator_ready("sma20"),
+            "SMA(20) should be ready after 100 bars"
+        );
 
         // All indicator values should be Some
         assert!(engine.indicator_value("ema12").is_some());
@@ -481,20 +522,32 @@ mod tests {
         // ── Verify shared values match ──
         // The standalone EMA(12) and MACD's internal EMA(12) should be the same node
         let ema12_val = engine.indicator_value("ema12").unwrap();
-        assert!(ema12_val.is_finite(), "EMA(12) should produce a finite value");
+        assert!(
+            ema12_val.is_finite(),
+            "EMA(12) should produce a finite value"
+        );
 
         // SMA(20) and BOLL's middle band should match
         let sma20_val = engine.indicator_value("sma20").unwrap();
         let boll_middle = engine.indicator_value("boll").unwrap();
-        assert!((sma20_val - boll_middle).abs() < 1e-10,
-            "SMA(20)={} should equal BOLL middle={}  (shared node)", sma20_val, boll_middle);
+        assert!(
+            (sma20_val - boll_middle).abs() < 1e-10,
+            "SMA(20)={} should equal BOLL middle={}  (shared node)",
+            sma20_val,
+            boll_middle
+        );
 
         // ── Verify backtest ran ──
         let stats = engine.backtest_result().unwrap();
-        println!("[integration] Backtest: trades={}, pnl={:.2}, drawdown={:.2}%, equity={:.2}",
-            stats.total_trades, stats.total_pnl, stats.max_drawdown_pct, stats.final_equity);
+        println!(
+            "[integration] Backtest: trades={}, pnl={:.2}, drawdown={:.2}%, equity={:.2}",
+            stats.total_trades, stats.total_pnl, stats.max_drawdown_pct, stats.final_equity
+        );
         // Stats should be coherent
-        assert_eq!(stats.winning_trades + stats.losing_trades, stats.total_trades);
+        assert_eq!(
+            stats.winning_trades + stats.losing_trades,
+            stats.total_trades
+        );
         assert!(stats.final_equity > 0.0, "Equity should remain positive");
 
         // Equity curve should have entries

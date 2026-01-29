@@ -1,7 +1,7 @@
 //! Builder pattern for indicators
 //! Provides fluent API for creating indicators
 
-use super::{Indicator, MA, MAType, RSI, MACD, ATR, BOLL, VRI, PriceType};
+use super::{Indicator, MAType, PriceType, ATR, BOLL, MA, MACD, RSI, VRI};
 use crate::HQuantResult;
 
 /// Trait for indicator builders
@@ -63,7 +63,11 @@ impl MABuilder {
 
 impl IndicatorBuilder for MABuilder {
     fn build(self) -> HQuantResult<Box<dyn Indicator>> {
-        Ok(Box::new(MA::with_price_type(self.period, self.ma_type, self.price_type)?))
+        Ok(Box::new(MA::with_price_type(
+            self.period,
+            self.ma_type,
+            self.price_type,
+        )?))
     }
 }
 
@@ -119,7 +123,10 @@ impl RSIBuilder {
 
 impl IndicatorBuilder for RSIBuilder {
     fn build(self) -> HQuantResult<Box<dyn Indicator>> {
-        Ok(Box::new(RSI::with_price_type(self.period, self.price_type)?))
+        Ok(Box::new(RSI::with_price_type(
+            self.period,
+            self.price_type,
+        )?))
     }
 }
 
@@ -335,7 +342,16 @@ mod tests {
 
     fn create_test_bars() -> Vec<Bar> {
         (0..50)
-            .map(|i| Bar::new(i * 1000, 100.0 + i as f64, 105.0 + i as f64, 98.0 + i as f64, 102.0 + i as f64, 1000.0))
+            .map(|i| {
+                Bar::new(
+                    i * 1000,
+                    100.0 + i as f64,
+                    105.0 + i as f64,
+                    98.0 + i as f64,
+                    102.0 + i as f64,
+                    1000.0,
+                )
+            })
             .collect()
     }
 

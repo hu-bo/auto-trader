@@ -1,8 +1,8 @@
 //! Moving Average indicators (SMA, EMA, WMA)
 
+use super::{Indicator, IndicatorValue, PriceType};
 use crate::common::F64RingBuffer;
 use crate::kline::Bar;
-use super::{Indicator, IndicatorValue, PriceType};
 use crate::{HQuantError, HQuantResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -39,7 +39,11 @@ impl MA {
         Self::with_price_type(period, ma_type, PriceType::Close)
     }
 
-    pub fn with_price_type(period: usize, ma_type: MAType, price_type: PriceType) -> HQuantResult<Self> {
+    pub fn with_price_type(
+        period: usize,
+        ma_type: MAType,
+        price_type: PriceType,
+    ) -> HQuantResult<Self> {
         if period == 0 {
             return Err(HQuantError::invalid_argument("MA period must be > 0"));
         }
@@ -47,11 +51,15 @@ impl MA {
         let wma_divisor = (period * (period + 1) / 2) as f64;
 
         Ok(Self {
-            name: format!("{}_{}", match ma_type {
-                MAType::SMA => "SMA",
-                MAType::EMA => "EMA",
-                MAType::WMA => "WMA",
-            }, period),
+            name: format!(
+                "{}_{}",
+                match ma_type {
+                    MAType::SMA => "SMA",
+                    MAType::EMA => "EMA",
+                    MAType::WMA => "WMA",
+                },
+                period
+            ),
             period,
             ma_type,
             price_type,
@@ -100,7 +108,8 @@ impl MA {
                     // First EMA value uses SMA
                     self.ema_value = self.calculate_sma();
                 } else if self.count > self.period {
-                    self.ema_value = (price - self.ema_value) * self.ema_multiplier + self.ema_value;
+                    self.ema_value =
+                        (price - self.ema_value) * self.ema_multiplier + self.ema_value;
                 }
                 self.ema_value
             }
@@ -157,7 +166,8 @@ impl Indicator for MA {
     }
 
     fn result(&self) -> Option<IndicatorValue> {
-        self.value().map(|v| IndicatorValue::new(v, self.last_timestamp))
+        self.value()
+            .map(|v| IndicatorValue::new(v, self.last_timestamp))
     }
 
     fn is_ready(&self) -> bool {
@@ -190,9 +200,11 @@ mod tests {
     use super::*;
 
     fn create_bars(prices: &[f64]) -> Vec<Bar> {
-        prices.iter().enumerate().map(|(i, &p)| {
-            Bar::new(i as i64 * 1000, p, p + 1.0, p - 1.0, p, 100.0)
-        }).collect()
+        prices
+            .iter()
+            .enumerate()
+            .map(|(i, &p)| Bar::new(i as i64 * 1000, p, p + 1.0, p - 1.0, p, 100.0))
+            .collect()
     }
 
     #[test]

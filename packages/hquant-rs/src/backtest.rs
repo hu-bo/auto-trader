@@ -2,13 +2,13 @@
 //! Supports spot and futures backtesting with fees, slippage, and liquidation simulation
 
 use crate::kline::Bar;
-use crate::strategy::{Signal, Side};
+use crate::strategy::{Side, Signal};
 
 /// Market type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MarketType {
-    Spot,     // Spot trading
-    Futures,  // Futures/Contract trading
+    Spot,    // Spot trading
+    Futures, // Futures/Contract trading
 }
 
 /// Position side
@@ -22,11 +22,11 @@ pub enum PositionSide {
 #[derive(Debug, Clone)]
 pub struct Position {
     pub side: PositionSide,
-    pub size: f64,           // Position size
-    pub entry_price: f64,    // Entry price
-    pub leverage: f64,       // Leverage (1 for spot)
+    pub size: f64,              // Position size
+    pub entry_price: f64,       // Entry price
+    pub leverage: f64,          // Leverage (1 for spot)
     pub liquidation_price: f64, // Liquidation price
-    pub unrealized_pnl: f64, // Unrealized P&L
+    pub unrealized_pnl: f64,    // Unrealized P&L
     pub timestamp: i64,
 }
 
@@ -53,12 +53,8 @@ impl Position {
         let margin_ratio = 1.0 / leverage;
 
         match side {
-            PositionSide::Long => {
-                entry_price * (1.0 - margin_ratio + maintenance_margin_rate)
-            }
-            PositionSide::Short => {
-                entry_price * (1.0 + margin_ratio - maintenance_margin_rate)
-            }
+            PositionSide::Long => entry_price * (1.0 - margin_ratio + maintenance_margin_rate),
+            PositionSide::Short => entry_price * (1.0 + margin_ratio - maintenance_margin_rate),
         }
     }
 
@@ -91,7 +87,7 @@ pub struct Trade {
     pub price: f64,
     pub size: f64,
     pub fee: f64,
-    pub pnl: f64,  // Realized P&L
+    pub pnl: f64, // Realized P&L
 }
 
 /// Backtest configuration
@@ -99,11 +95,11 @@ pub struct Trade {
 pub struct BacktestConfig {
     pub market_type: MarketType,
     pub initial_capital: f64,
-    pub leverage: f64,           // Futures leverage
-    pub maker_fee: f64,          // Maker fee rate
-    pub taker_fee: f64,          // Taker fee rate
-    pub slippage: f64,           // Slippage rate
-    pub position_size_pct: f64,  // Position size as % of capital
+    pub leverage: f64,          // Futures leverage
+    pub maker_fee: f64,         // Maker fee rate
+    pub taker_fee: f64,         // Taker fee rate
+    pub slippage: f64,          // Slippage rate
+    pub position_size_pct: f64, // Position size as % of capital
 }
 
 impl Default for BacktestConfig {
@@ -112,9 +108,9 @@ impl Default for BacktestConfig {
             market_type: MarketType::Spot,
             initial_capital: 10000.0,
             leverage: 1.0,
-            maker_fee: 0.001,  // 0.1%
-            taker_fee: 0.001,  // 0.1%
-            slippage: 0.0005,  // 0.05%
+            maker_fee: 0.001,       // 0.1%
+            taker_fee: 0.001,       // 0.1%
+            slippage: 0.0005,       // 0.05%
             position_size_pct: 0.1, // 10%
         }
     }
@@ -186,7 +182,10 @@ impl BacktestStats {
                 .collect();
 
             let mean_return = returns.iter().sum::<f64>() / returns.len() as f64;
-            let variance = returns.iter().map(|r| (r - mean_return).powi(2)).sum::<f64>()
+            let variance = returns
+                .iter()
+                .map(|r| (r - mean_return).powi(2))
+                .sum::<f64>()
                 / returns.len() as f64;
             let std_dev = variance.sqrt();
 
@@ -236,8 +235,76 @@ impl BacktestEngine {
         }
 
         match signal.side {
-            Side::Buy => self.handle_buy(bar),
-            Side::Sell => self.handle_sell(bar),
+            Side::Buy => {
+                let price = self.apply_slippage(bar.close, true);
+                match &self.position {
+                    None => {
+                        // Open long position
+                        let size = self.calculate_position_size(price);
+                        if self.open_position(price, size, PositionSide::Long) {
+                            let fee = self.calculate_fee(price * size);
+                            self.trades.push(Trade {
+                                timestamp: bar.timestamp,
+                                side: Side::Buy,
+                                price,
+                                size,
+                                fee,
+                                pnl: 0.0,
+                            });
+                        }
+                    }
+                    Some(pos) if pos.side == PositionSide::Short => {
+                        // Close short position
+                        if let Some(closed) = self.close_position(price, PositionSide::Short) {
+                            self.trades.push(Trade {
+                                timestamp: bar.timestamp,
+                                side: Side::Buy,
+                                price,
+                                size: closed.size,
+                                fee: closed.fee,
+                                pnl: closed.net_pnl,
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Side::Sell => {
+                let price = self.apply_slippage(bar.close, false);
+                match &self.position {
+                    None => {
+                        // Futures can open short position
+                        if self.config.market_type == MarketType::Futures {
+                            let size = self.calculate_position_size(price);
+                            if self.open_position(price, size, PositionSide::Short) {
+                                let fee = self.calculate_fee(price * size);
+                                self.trades.push(Trade {
+                                    timestamp: bar.timestamp,
+                                    side: Side::Sell,
+                                    price,
+                                    size,
+                                    fee,
+                                    pnl: 0.0,
+                                });
+                            }
+                        }
+                    }
+                    Some(pos) if pos.side == PositionSide::Long => {
+                        // Close long position
+                        if let Some(closed) = self.close_position(price, PositionSide::Long) {
+                            self.trades.push(Trade {
+                                timestamp: bar.timestamp,
+                                side: Side::Sell,
+                                price,
+                                size: closed.size,
+                                fee: closed.fee,
+                                pnl: closed.net_pnl,
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
             Side::Hold => {}
         }
 
@@ -245,110 +312,76 @@ impl BacktestEngine {
         self.update_equity(bar.close);
     }
 
-    fn handle_buy(&mut self, bar: &Bar) {
-        let price = self.apply_slippage(bar.close, true);
-
-        match &self.position {
-            None => {
-                // Open long position
-                let size = self.calculate_position_size(price);
-                if size > 0.0 {
-                    let fee = self.calculate_fee(price * size);
-                    self.equity -= fee;
-
-                    self.position = Some(Position::new(
-                        PositionSide::Long,
-                        size,
-                        price,
-                        self.config.leverage,
-                    ));
-
-                    self.trades.push(Trade {
-                        timestamp: bar.timestamp,
-                        side: Side::Buy,
-                        price,
-                        size,
-                        fee,
-                        pnl: 0.0,
-                    });
-                }
-            }
-            Some(pos) if pos.side == PositionSide::Short => {
-                // Close short position
-                self.close_position(bar, price);
-            }
-            _ => {}
+    /// Manual open position.
+    ///
+    /// - `position_side`: `Long` or `Short` (short is futures-only)
+    /// - returns `true` if opened, `false` otherwise
+    pub fn open_position(&mut self, price: f64, size: f64, position_side: PositionSide) -> bool {
+        if size <= 0.0 || self.position.is_some() {
+            return false;
         }
+        if position_side == PositionSide::Short && self.config.market_type != MarketType::Futures {
+            return false;
+        }
+
+        let fee = self.calculate_fee(price * size);
+        let required_margin = if self.config.leverage > 0.0 {
+            (price * size) / self.config.leverage
+        } else {
+            f64::INFINITY
+        };
+        if self.equity < required_margin + fee {
+            return false;
+        }
+
+        self.equity -= fee;
+        self.position = Some(Position::new(
+            position_side,
+            size,
+            price,
+            self.config.leverage,
+        ));
+        true
     }
 
-    fn handle_sell(&mut self, bar: &Bar) {
-        let price = self.apply_slippage(bar.close, false);
-
-        match &self.position {
-            None => {
-                // Futures can open short position
-                if self.config.market_type == MarketType::Futures {
-                    let size = self.calculate_position_size(price);
-                    if size > 0.0 {
-                        let fee = self.calculate_fee(price * size);
-                        self.equity -= fee;
-
-                        self.position = Some(Position::new(
-                            PositionSide::Short,
-                            size,
-                            price,
-                            self.config.leverage,
-                        ));
-
-                        self.trades.push(Trade {
-                            timestamp: bar.timestamp,
-                            side: Side::Sell,
-                            price,
-                            size,
-                            fee,
-                            pnl: 0.0,
-                        });
-                    }
-                }
-            }
-            Some(pos) if pos.side == PositionSide::Long => {
-                // Close long position
-                self.close_position(bar, price);
-            }
-            _ => {}
+    /// Manual close position.
+    ///
+    /// Returns close info if a position existed.
+    pub fn close_position(
+        &mut self,
+        price: f64,
+        position_side: PositionSide,
+    ) -> Option<ClosedPosition> {
+        let pos = self.position.as_ref()?;
+        if pos.side != position_side {
+            return None;
         }
-    }
+        let pos = self.position.take()?;
 
-    fn close_position(&mut self, bar: &Bar, price: f64) {
-        if let Some(pos) = self.position.take() {
-            let pnl = match pos.side {
-                PositionSide::Long => (price - pos.entry_price) * pos.size * pos.leverage,
-                PositionSide::Short => (pos.entry_price - price) * pos.size * pos.leverage,
-            };
+        let pnl = match pos.side {
+            PositionSide::Long => (price - pos.entry_price) * pos.size * pos.leverage,
+            PositionSide::Short => (pos.entry_price - price) * pos.size * pos.leverage,
+        };
 
-            let fee = self.calculate_fee(price * pos.size);
-            let net_pnl = pnl - fee;
+        let fee = self.calculate_fee(price * pos.size);
+        let net_pnl = pnl - fee;
 
-            self.equity += net_pnl;
-            self.stats.total_pnl += net_pnl;
+        self.equity += net_pnl;
+        self.stats.total_pnl += net_pnl;
+        self.stats.total_trades += 1;
 
-            if net_pnl > 0.0 {
-                self.stats.winning_trades += 1;
-            } else {
-                self.stats.losing_trades += 1;
-            }
-
-            self.trades.push(Trade {
-                timestamp: bar.timestamp,
-                side: if pos.side == PositionSide::Long { Side::Sell } else { Side::Buy },
-                price,
-                size: pos.size,
-                fee,
-                pnl: net_pnl,
-            });
-
-            self.stats.total_trades += 1;
+        if net_pnl > 0.0 {
+            self.stats.winning_trades += 1;
+        } else {
+            self.stats.losing_trades += 1;
         }
+
+        Some(ClosedPosition {
+            side: pos.side,
+            size: pos.size,
+            fee,
+            net_pnl,
+        })
     }
 
     fn liquidate(&mut self, bar: &Bar) {
@@ -362,7 +395,11 @@ impl BacktestEngine {
 
             self.trades.push(Trade {
                 timestamp: bar.timestamp,
-                side: if pos.side == PositionSide::Long { Side::Sell } else { Side::Buy },
+                side: if pos.side == PositionSide::Long {
+                    Side::Sell
+                } else {
+                    Side::Buy
+                },
                 price: pos.liquidation_price,
                 size: pos.size,
                 fee: 0.0,
@@ -402,7 +439,8 @@ impl BacktestEngine {
 
     /// Get backtest result
     pub fn result(&mut self) -> &BacktestStats {
-        self.stats.calculate(self.config.initial_capital, &self.equity_curve);
+        self.stats
+            .calculate(self.config.initial_capital, &self.equity_curve);
         &self.stats
     }
 
@@ -434,63 +472,507 @@ impl BacktestEngine {
         self.equity_curve = vec![self.equity];
         self.stats = BacktestStats::default();
     }
+}
 
-    /// Manual open long position
-    pub fn open_long(&mut self, price: f64, size: f64) {
-        if self.position.is_some() {
+#[derive(Debug, Clone, Copy)]
+pub struct ClosedPosition {
+    pub side: PositionSide,
+    pub size: f64,
+    pub fee: f64,
+    pub net_pnl: f64,
+}
+
+// ============================================================================
+// Decimal Rounding Utility
+// ============================================================================
+
+/// Round a f64 to specified decimal places
+#[inline]
+pub fn round_decimal(value: f64, decimals: u32) -> f64 {
+    if !value.is_finite() {
+        return value;
+    }
+    let factor = 10_f64.powi(decimals as i32);
+    (value * factor).round() / factor
+}
+
+/// Default decimal places for financial calculations
+pub const DEFAULT_DECIMALS: u32 = 4;
+
+// ============================================================================
+// FuturesBacktest - Standalone futures backtest engine
+// ============================================================================
+
+/// Futures backtest result
+#[derive(Debug, Clone, Default)]
+pub struct FuturesBacktestResult {
+    pub equity: f64,
+    pub profit: f64,
+    pub profit_rate: f64,
+    pub max_drawdown_rate: f64,
+    pub liquidated: bool,
+}
+
+/// Futures backtest configuration
+#[derive(Debug, Clone)]
+pub struct FuturesBacktestConfig {
+    pub initial_margin: f64,
+    pub leverage: f64,
+    pub contract_size: f64,
+    pub maker_fee_rate: f64,
+    pub taker_fee_rate: f64,
+    pub maintenance_margin_rate: f64,
+}
+
+/// Standalone futures backtest engine (compatible with jx-quant)
+/// Decoupled from HQuant, can be used independently with any signal source
+#[derive(Debug, Clone)]
+pub struct FuturesBacktest {
+    config: FuturesBacktestConfig,
+    // State
+    cash: f64,
+    position: f64, // positive = long, negative = short, 0 = no position
+    entry_price: f64,
+    position_margin: f64,
+    max_equity: f64,
+    liquidated: bool,
+    // Decimal precision
+    decimals: u32,
+    last_price: f64,
+}
+
+impl FuturesBacktest {
+    /// Create a new futures backtest engine
+    pub fn new(config: FuturesBacktestConfig) -> Self {
+        Self {
+            cash: config.initial_margin,
+            max_equity: config.initial_margin,
+            config,
+            position: 0.0,
+            entry_price: 0.0,
+            position_margin: 0.0,
+            liquidated: false,
+            decimals: DEFAULT_DECIMALS,
+            last_price: 0.0,
+        }
+    }
+
+    /// Set decimal precision for results (default: 8)
+    pub fn set_decimals(&mut self, decimals: u32) {
+        self.decimals = decimals;
+    }
+
+    /// Apply a trading signal
+    /// action: "BUY", "SELL", or "HOLD"
+    /// price: current market price
+    /// margin: margin amount to use for opening/closing positions
+    /// is_maker: if true, use maker_fee_rate; if false, use taker_fee_rate
+    pub fn apply_signal(
+        &mut self,
+        action: &str,
+        price: f64,
+        margin: f64,
+        position_side: Option<PositionSide>,
+        is_maker: bool,
+    ) {
+        if self.liquidated {
+            return;
+        }
+        if price > 0.0 {
+            self.last_price = price;
+        }
+
+        if let Some(position_side) = position_side {
+            self.apply_signal_with_side(action, price, margin, position_side, is_maker);
             return;
         }
 
-        let fee = self.calculate_fee(price * size);
-        self.equity -= fee;
-
-        self.position = Some(Position::new(
-            PositionSide::Long,
-            size,
-            price,
-            self.config.leverage,
-        ));
-    }
-
-    /// Manual open short position (futures only)
-    pub fn open_short(&mut self, price: f64, size: f64) {
-        if self.position.is_some() || self.config.market_type != MarketType::Futures {
-            return;
-        }
-
-        let fee = self.calculate_fee(price * size);
-        self.equity -= fee;
-
-        self.position = Some(Position::new(
-            PositionSide::Short,
-            size,
-            price,
-            self.config.leverage,
-        ));
-    }
-
-    /// Manual close position
-    pub fn close(&mut self, price: f64) {
-        if let Some(pos) = self.position.take() {
-            let pnl = match pos.side {
-                PositionSide::Long => (price - pos.entry_price) * pos.size * pos.leverage,
-                PositionSide::Short => (pos.entry_price - price) * pos.size * pos.leverage,
-            };
-
-            let fee = self.calculate_fee(price * pos.size);
-            let net_pnl = pnl - fee;
-
-            self.equity += net_pnl;
-            self.stats.total_pnl += net_pnl;
-            self.stats.total_trades += 1;
-
-            if net_pnl > 0.0 {
-                self.stats.winning_trades += 1;
-            } else {
-                self.stats.losing_trades += 1;
+        match action {
+            "BUY" => {
+                if self.position < 0.0 {
+                    self.close_position(price, margin, PositionSide::Short, is_maker);
+                }
+                if self.position == 0.0 {
+                    self.open_or_add_position(price, margin, PositionSide::Long, is_maker);
+                }
             }
+            "SELL" => {
+                if self.position > 0.0 {
+                    self.close_position(price, margin, PositionSide::Long, is_maker);
+                }
+                if self.position == 0.0 {
+                    self.open_or_add_position(price, margin, PositionSide::Short, is_maker);
+                }
+            }
+            _ => {}
         }
     }
+
+    /// Update position value on price change (for liquidation checking)
+    pub fn on_price(&mut self, price: f64) {
+        if self.liquidated || self.position == 0.0 {
+            return;
+        }
+        if price > 0.0 {
+            self.last_price = price;
+        }
+
+        let equity = self.equity_with_price(price);
+        if equity > self.max_equity {
+            self.max_equity = equity;
+        }
+
+        let maintenance_margin = self.maintenance_margin();
+        if equity < maintenance_margin {
+            self.liquidated = true;
+            self.cash = 0.0;
+            self.position = 0.0;
+            self.position_margin = 0.0;
+            self.entry_price = 0.0;
+        }
+    }
+
+    /// Get backtest result with rounded decimals
+    pub fn result(&self, price: f64) -> FuturesBacktestResult {
+        let unrealized_pnl = if self.position != 0.0 {
+            self.calculate_pnl(price)
+        } else {
+            0.0
+        };
+
+        let current_equity = if self.liquidated {
+            0.0
+        } else {
+            self.cash + self.position_margin + unrealized_pnl
+        };
+
+        let profit = current_equity - self.config.initial_margin;
+        let profit_rate = profit / self.config.initial_margin;
+        let max_drawdown_rate = if self.max_equity > 0.0 {
+            ((self.max_equity - current_equity) / self.max_equity).max(0.0)
+        } else {
+            0.0
+        };
+
+        FuturesBacktestResult {
+            equity: round_decimal(current_equity, self.decimals),
+            profit: round_decimal(profit, self.decimals),
+            profit_rate: round_decimal(profit_rate, self.decimals),
+            max_drawdown_rate: round_decimal(max_drawdown_rate, self.decimals),
+            liquidated: self.liquidated,
+        }
+    }
+
+    /// Get current equity
+    pub fn equity(&self) -> f64 {
+        let equity = if self.liquidated {
+            0.0
+        } else {
+            self.cash + self.position_margin
+        };
+        round_decimal(equity, self.decimals)
+    }
+
+    /// Get current position
+    pub fn position(&self) -> f64 {
+        self.position
+    }
+
+    /// Check if liquidated
+    pub fn is_liquidated(&self) -> bool {
+        self.liquidated
+    }
+
+    /// Reset backtest state
+    pub fn reset(&mut self) {
+        self.cash = self.config.initial_margin;
+        self.max_equity = self.config.initial_margin;
+        self.position = 0.0;
+        self.entry_price = 0.0;
+        self.position_margin = 0.0;
+        self.liquidated = false;
+        self.last_price = 0.0;
+    }
+
+    /// Get current positions (0 or 1 position for now).
+    pub fn positions(&self) -> Vec<FuturesPositionSnapshot> {
+        if self.position == 0.0 || self.liquidated {
+            return Vec::new();
+        }
+        let position_side = if self.position > 0.0 {
+            PositionSide::Long
+        } else {
+            PositionSide::Short
+        };
+        let mark_price = if self.last_price > 0.0 {
+            self.last_price
+        } else {
+            self.entry_price
+        };
+
+        vec![FuturesPositionSnapshot {
+            position_side,
+            entry_price: self.entry_price,
+            mark_price,
+            position_amt: self.position,
+            margin: self.position_margin,
+            unrealized_pnl: self.calculate_pnl(mark_price),
+        }]
+    }
+
+    // -- Private methods --
+
+    pub fn open_position(
+        &mut self,
+        price: f64,
+        margin: f64,
+        position_side: PositionSide,
+        is_maker: bool,
+    ) {
+        if self.liquidated || self.position != 0.0 || price <= 0.0 || margin <= 0.0 {
+            return;
+        }
+        if margin > self.cash {
+            return;
+        }
+
+        let fee_rate = if is_maker {
+            self.config.maker_fee_rate
+        } else {
+            self.config.taker_fee_rate
+        };
+        let notional = margin * self.config.leverage;
+        let fee = notional * fee_rate;
+        if self.cash < margin + fee {
+            return;
+        }
+        self.cash -= margin + fee;
+
+        let position_size = notional / price * self.config.contract_size;
+        self.position = match position_side {
+            PositionSide::Long => position_size,
+            PositionSide::Short => -position_size,
+        };
+        self.entry_price = price;
+        self.position_margin = margin;
+    }
+
+    fn apply_signal_with_side(
+        &mut self,
+        action: &str,
+        price: f64,
+        margin: f64,
+        position_side: PositionSide,
+        is_maker: bool,
+    ) {
+        match (action, position_side) {
+            // Open/increase LONG
+            ("BUY", PositionSide::Long) => {
+                if self.position < 0.0 {
+                    self.close_position(price, margin, PositionSide::Short, is_maker);
+                }
+                if self.position >= 0.0 {
+                    self.open_or_add_position(price, margin, PositionSide::Long, is_maker);
+                }
+            }
+            // Close/reduce LONG
+            ("SELL", PositionSide::Long) => {
+                self.close_position(price, margin, PositionSide::Long, is_maker);
+            }
+            // Open/increase SHORT
+            ("SELL", PositionSide::Short) => {
+                if self.position > 0.0 {
+                    self.close_position(price, margin, PositionSide::Long, is_maker);
+                }
+                if self.position <= 0.0 {
+                    self.open_or_add_position(price, margin, PositionSide::Short, is_maker);
+                }
+            }
+            // Close/reduce SHORT
+            ("BUY", PositionSide::Short) => {
+                self.close_position(price, margin, PositionSide::Short, is_maker);
+            }
+            _ => {}
+        }
+    }
+
+    fn open_or_add_position(
+        &mut self,
+        price: f64,
+        margin: f64,
+        position_side: PositionSide,
+        is_maker: bool,
+    ) {
+        if self.liquidated || price <= 0.0 || margin <= 0.0 {
+            return;
+        }
+        self.last_price = price;
+
+        let fee_rate = if is_maker {
+            self.config.maker_fee_rate
+        } else {
+            self.config.taker_fee_rate
+        };
+
+        let notional = margin * self.config.leverage;
+        let fee = notional * fee_rate;
+        if self.cash < margin + fee {
+            return;
+        }
+
+        let qty = notional / price * self.config.contract_size;
+        if qty <= 0.0 {
+            return;
+        }
+
+        if self.position == 0.0 {
+            self.cash -= margin + fee;
+            self.position = match position_side {
+                PositionSide::Long => qty,
+                PositionSide::Short => -qty,
+            };
+            self.entry_price = price;
+            self.position_margin = margin;
+            return;
+        }
+
+        let current_side = if self.position > 0.0 {
+            PositionSide::Long
+        } else {
+            PositionSide::Short
+        };
+        if current_side != position_side {
+            return;
+        }
+
+        let old_abs = self.position.abs();
+        let new_abs = old_abs + qty;
+        if new_abs <= 0.0 {
+            return;
+        }
+
+        self.cash -= margin + fee;
+        self.entry_price = (self.entry_price * old_abs + price * qty) / new_abs;
+        self.position_margin += margin;
+        self.position += match position_side {
+            PositionSide::Long => qty,
+            PositionSide::Short => -qty,
+        };
+    }
+
+    pub fn close_position(
+        &mut self,
+        price: f64,
+        margin: f64,
+        position_side: PositionSide,
+        is_maker: bool,
+    ) {
+        if self.position == 0.0 {
+            return;
+        }
+        if price > 0.0 {
+            self.last_price = price;
+        }
+        let current_side = if self.position > 0.0 {
+            PositionSide::Long
+        } else {
+            PositionSide::Short
+        };
+        if current_side != position_side {
+            return;
+        }
+
+        let eps = 1e-12;
+        let total_margin = self.position_margin;
+        if total_margin <= eps {
+            return;
+        }
+
+        let close_margin = if margin <= 0.0 {
+            total_margin
+        } else if margin > total_margin + eps {
+            return; // remaining margin not enough
+        } else {
+            margin
+        };
+
+        let total_abs = self.position.abs();
+        let close_abs = total_abs * (close_margin / total_margin);
+
+        let pnl = {
+            let price_diff = price - self.entry_price;
+            match current_side {
+                PositionSide::Long => price_diff * close_abs / self.config.contract_size,
+                PositionSide::Short => -price_diff * close_abs / self.config.contract_size,
+            }
+        };
+        let notional = close_abs * price / self.config.contract_size;
+        let fee_rate = if is_maker {
+            self.config.maker_fee_rate
+        } else {
+            self.config.taker_fee_rate
+        };
+        let fee = notional * fee_rate;
+
+        self.cash += close_margin + pnl - fee;
+        let equity = self.cash + (total_margin - close_margin);
+        if equity > self.max_equity {
+            self.max_equity = equity;
+        }
+
+        let close_signed = match current_side {
+            PositionSide::Long => close_abs,
+            PositionSide::Short => -close_abs,
+        };
+        self.position -= close_signed;
+        self.position_margin -= close_margin;
+        if self.position.abs() <= eps || self.position_margin <= eps {
+            self.position = 0.0;
+            self.entry_price = 0.0;
+            self.position_margin = 0.0;
+        }
+    }
+
+    fn equity_with_price(&self, price: f64) -> f64 {
+        if self.liquidated {
+            return 0.0;
+        }
+        self.cash + self.position_margin + self.calculate_pnl(price)
+    }
+
+    fn maintenance_margin(&self) -> f64 {
+        if self.position == 0.0 || self.liquidated {
+            return 0.0;
+        }
+        let margin_used = self.position.abs() * self.entry_price
+            / (self.config.leverage * self.config.contract_size);
+        margin_used * self.config.maintenance_margin_rate
+    }
+
+    fn calculate_pnl(&self, price: f64) -> f64 {
+        if self.position == 0.0 {
+            return 0.0;
+        }
+
+        let price_diff = price - self.entry_price;
+        if self.position > 0.0 {
+            // Long position
+            price_diff * self.position / self.config.contract_size
+        } else {
+            // Short position
+            -price_diff * self.position.abs() / self.config.contract_size
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FuturesPositionSnapshot {
+    pub position_side: PositionSide,
+    pub entry_price: f64,
+    pub mark_price: f64,
+    pub position_amt: f64,
+    pub margin: f64,
+    pub unrealized_pnl: f64,
 }
 
 #[cfg(test)]
@@ -538,14 +1020,65 @@ mod tests {
     }
 
     #[test]
+    fn test_futures_backtest_partial_close_by_margin() {
+        let config = FuturesBacktestConfig {
+            initial_margin: 1000.0,
+            leverage: 10.0,
+            contract_size: 1.0,
+            maker_fee_rate: 0.0,
+            taker_fee_rate: 0.0,
+            maintenance_margin_rate: 0.005,
+        };
+        let mut bt = FuturesBacktest::new(config);
+
+        // Open long with margin 100 at entry 100 => position = 10
+        bt.apply_signal("BUY", 100.0, 100.0, None, false);
+        assert!((bt.position() - 10.0).abs() < 1e-9);
+
+        // Partially close with margin 50 (based on entry price) => close 5, remaining 5
+        bt.apply_signal("SELL", 110.0, 50.0, Some(PositionSide::Long), false);
+        assert!((bt.position() - 5.0).abs() < 1e-9);
+
+        // Attempt to close more than remaining => ignored
+        bt.apply_signal("SELL", 110.0, 200.0, Some(PositionSide::Long), false);
+        assert!((bt.position() - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_futures_apply_signal_with_position_side() {
+        let config = FuturesBacktestConfig {
+            initial_margin: 1000.0,
+            leverage: 10.0,
+            contract_size: 1.0,
+            maker_fee_rate: 0.0,
+            taker_fee_rate: 0.0,
+            maintenance_margin_rate: 0.005,
+        };
+        let mut bt = FuturesBacktest::new(config);
+
+        // BUY + LONG => open long
+        bt.apply_signal("BUY", 100.0, 100.0, Some(PositionSide::Long), false);
+        assert!((bt.position() - 10.0).abs() < 1e-9);
+
+        // BUY + LONG again => add long
+        bt.apply_signal("BUY", 100.0, 50.0, Some(PositionSide::Long), false);
+        assert!((bt.position() - 15.0).abs() < 1e-9);
+
+        // BUY + SHORT => close short only (no-op here)
+        bt.apply_signal("BUY", 100.0, 50.0, Some(PositionSide::Short), false);
+        assert!((bt.position() - 15.0).abs() < 1e-9);
+
+        // SELL + LONG => reduce long
+        bt.apply_signal("SELL", 110.0, 50.0, Some(PositionSide::Long), false);
+        assert!((bt.position() - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
     fn test_futures_long() {
         let config = BacktestConfig::futures(10000.0, 10.0);
         let mut engine = BacktestEngine::new(config);
 
-        let bars = create_bars(&[
-            (100.0, 105.0, 99.0, 104.0),
-            (104.0, 110.0, 103.0, 109.0),
-        ]);
+        let bars = create_bars(&[(100.0, 105.0, 99.0, 104.0), (104.0, 110.0, 103.0, 109.0)]);
 
         let buy_signal = Signal::buy(1.0, "test", bars[0].timestamp);
         engine.process_signal(&buy_signal, &bars[0]);

@@ -1,9 +1,9 @@
 //! Volume Ratio Indicator (VRI)
 //! VRI = (Buy Volume / Total Volume) * 100
 
+use super::{Indicator, IndicatorValue};
 use crate::common::F64RingBuffer;
 use crate::kline::Bar;
-use super::{Indicator, IndicatorValue};
 use crate::{HQuantError, HQuantResult};
 
 #[derive(Debug)]
@@ -80,7 +80,8 @@ impl Indicator for VRI {
     }
 
     fn result(&self) -> Option<IndicatorValue> {
-        self.value().map(|v| IndicatorValue::new(v, self.last_timestamp))
+        self.value()
+            .map(|v| IndicatorValue::new(v, self.last_timestamp))
     }
 
     fn is_ready(&self) -> bool {

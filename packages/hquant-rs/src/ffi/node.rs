@@ -6,16 +6,43 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
 use crate::{
-    Bar, QuantEngine, Signal, Side, IndicatorGraph,
-    TimeFrame, Aggregator, MultiTimeFrameAggregator,
-    BacktestEngine, BacktestConfig, BacktestStats, MarketType, Position, PositionSide, Trade,
-    MABuilder, RSIBuilder, MACDBuilder, ATRBuilder, BOLLBuilder, VRIBuilder,
-    Strategy, RSIStrategy, MACrossStrategy, MACDStrategy, BollStrategy,
-    dsl::{DslEngine, DslContext, VectorStore, LabeledVector},
+    dsl::{DslContext, DslEngine, LabeledVector},
+    ATRBuilder,
+    BOLLBuilder,
+    BacktestConfig,
+    BacktestEngine,
+    BacktestStats,
+    Bar,
+    // FuturesBacktest from core
+    FuturesBacktest as CoreFuturesBacktest,
+    FuturesBacktestConfig as CoreFuturesBacktestConfig,
+    IndicatorGraph,
+    MABuilder,
+    MACDBuilder,
+    MarketType,
+    MultiTimeFrameAggregator,
+    PositionSide,
+    QuantEngine,
+    RSIBuilder,
+    Side,
+    Signal,
+    TimeFrame,
+    Trade,
+    VRIBuilder,
 };
 
 fn lock_poisoned_error() -> Error {
     Error::from_reason("lock poisoned".to_string())
+}
+
+fn parse_position_side(position_side: &str) -> napi::Result<PositionSide> {
+    match position_side.to_ascii_uppercase().as_str() {
+        "LONG" => Ok(PositionSide::Long),
+        "SHORT" => Ok(PositionSide::Short),
+        _ => Err(Error::from_reason(
+            "positionSide must be \"LONG\" or \"SHORT\"".to_string(),
+        )),
+    }
 }
 
 fn to_bar(input: &BarInput) -> Bar {
@@ -90,6 +117,18 @@ pub struct IndicatorResultOutput {
     pub extra: Option<Vec<f64>>,
 }
 
+/// Generic indicator config for FFI (mirrors Python's `add_indicator` dict).
+#[napi(object)]
+pub struct IndicatorConfigInput {
+    pub r#type: String,
+    pub period: Option<u32>,
+    pub fast: Option<u32>,
+    pub slow: Option<u32>,
+    pub signal: Option<u32>,
+    pub std_dev: Option<f64>,
+    pub multiplier: Option<f64>,
+}
+
 #[napi(object)]
 pub struct BacktestStatsOutput {
     pub total_trades: u32,
@@ -115,246 +154,91 @@ pub struct TradeOutput {
     pub pnl: f64,
 }
 
-// ============================================================================
-// Indicator Builders
-// ============================================================================
-
-/// MA Indicator Builder
-#[napi]
-pub struct MAIndicator {
-    inner: MABuilder,
-}
-
-#[napi]
-impl MAIndicator {
-    #[napi(constructor)]
-    pub fn new() -> Self {
-        Self {
-            inner: MABuilder::new(),
+fn add_indicator_from_config(
+    engine: &mut QuantEngine,
+    name: String,
+    config: IndicatorConfigInput,
+) -> napi::Result<()> {
+    let ind_type = config.r#type.to_lowercase();
+    match ind_type.as_str() {
+        "ma" | "sma" => {
+            let period = config.period.unwrap_or(20) as usize;
+            let builder = MABuilder::new().period(period).sma();
+            engine
+                .add_indicator(name, builder)
+                .map_err(|e| Error::from_reason(e.to_string()))?;
+        }
+        "ema" => {
+            let period = config.period.unwrap_or(20) as usize;
+            let builder = MABuilder::new().period(period).ema();
+            engine
+                .add_indicator(name, builder)
+                .map_err(|e| Error::from_reason(e.to_string()))?;
+        }
+        "wma" => {
+            let period = config.period.unwrap_or(20) as usize;
+            let builder = MABuilder::new().period(period).wma();
+            engine
+                .add_indicator(name, builder)
+                .map_err(|e| Error::from_reason(e.to_string()))?;
+        }
+        "rsi" => {
+            let period = config.period.unwrap_or(14) as usize;
+            let builder = RSIBuilder::new().period(period);
+            engine
+                .add_indicator(name, builder)
+                .map_err(|e| Error::from_reason(e.to_string()))?;
+        }
+        "macd" => {
+            let fast = config.fast.unwrap_or(12) as usize;
+            let slow = config.slow.unwrap_or(26) as usize;
+            let signal = config.signal.unwrap_or(9) as usize;
+            let builder = MACDBuilder::new().fast(fast).slow(slow).signal(signal);
+            engine
+                .add_indicator(name, builder)
+                .map_err(|e| Error::from_reason(e.to_string()))?;
+        }
+        "atr" => {
+            let period = config.period.unwrap_or(14) as usize;
+            let builder = ATRBuilder::new().period(period);
+            engine
+                .add_indicator(name, builder)
+                .map_err(|e| Error::from_reason(e.to_string()))?;
+        }
+        "boll" | "bollinger" => {
+            let period = config.period.unwrap_or(20) as usize;
+            let std_dev = config.std_dev.or(config.multiplier).unwrap_or(2.0);
+            let builder = BOLLBuilder::new().period(period).std_dev(std_dev);
+            engine
+                .add_indicator(name, builder)
+                .map_err(|e| Error::from_reason(e.to_string()))?;
+        }
+        "vri" => {
+            let period = config.period.unwrap_or(14) as usize;
+            let builder = VRIBuilder::new().period(period);
+            engine
+                .add_indicator(name, builder)
+                .map_err(|e| Error::from_reason(e.to_string()))?;
+        }
+        "vwap" => {
+            engine
+                .add_vwap(name)
+                .map_err(|e| Error::from_reason(e.to_string()))?;
+        }
+        "obv" => {
+            let capacity = engine.klines().capacity();
+            let indicator = crate::obv(capacity).map_err(|e| Error::from_reason(e.to_string()))?;
+            engine.add_indicator_boxed(name, Box::new(indicator));
+        }
+        _ => {
+            return Err(Error::from_reason(format!(
+                "Unknown indicator type: {}",
+                config.r#type
+            )));
         }
     }
 
-    /// Set period (default: 20)
-    #[napi]
-    pub fn period(&mut self, period: u32) -> &Self {
-        self.inner = std::mem::take(&mut self.inner).period(period as usize);
-        self
-    }
-
-    /// Set to SMA (Simple Moving Average)
-    #[napi]
-    pub fn sma(&mut self) -> &Self {
-        self.inner = std::mem::take(&mut self.inner).sma();
-        self
-    }
-
-    /// Set to EMA (Exponential Moving Average)
-    #[napi]
-    pub fn ema(&mut self) -> &Self {
-        self.inner = std::mem::take(&mut self.inner).ema();
-        self
-    }
-
-    /// Set to WMA (Weighted Moving Average)
-    #[napi]
-    pub fn wma(&mut self) -> &Self {
-        self.inner = std::mem::take(&mut self.inner).wma();
-        self
-    }
-}
-
-/// RSI Indicator Builder
-#[napi]
-pub struct RSIIndicator {
-    inner: RSIBuilder,
-}
-
-#[napi]
-impl RSIIndicator {
-    #[napi(constructor)]
-    pub fn new() -> Self {
-        Self {
-            inner: RSIBuilder::new(),
-        }
-    }
-
-    /// Set period (default: 14)
-    #[napi]
-    pub fn period(&mut self, period: u32) -> &Self {
-        self.inner = std::mem::take(&mut self.inner).period(period as usize);
-        self
-    }
-}
-
-/// MACD Indicator Builder
-#[napi]
-pub struct MACDIndicator {
-    inner: MACDBuilder,
-}
-
-#[napi]
-impl MACDIndicator {
-    #[napi(constructor)]
-    pub fn new() -> Self {
-        Self {
-            inner: MACDBuilder::new(),
-        }
-    }
-
-    /// Set fast period (default: 12)
-    #[napi]
-    pub fn fast(&mut self, period: u32) -> &Self {
-        self.inner = std::mem::take(&mut self.inner).fast(period as usize);
-        self
-    }
-
-    /// Set slow period (default: 26)
-    #[napi]
-    pub fn slow(&mut self, period: u32) -> &Self {
-        self.inner = std::mem::take(&mut self.inner).slow(period as usize);
-        self
-    }
-
-    /// Set signal period (default: 9)
-    #[napi]
-    pub fn signal(&mut self, period: u32) -> &Self {
-        self.inner = std::mem::take(&mut self.inner).signal(period as usize);
-        self
-    }
-}
-
-/// ATR Indicator Builder
-#[napi]
-pub struct ATRIndicator {
-    inner: ATRBuilder,
-}
-
-#[napi]
-impl ATRIndicator {
-    #[napi(constructor)]
-    pub fn new() -> Self {
-        Self {
-            inner: ATRBuilder::new(),
-        }
-    }
-
-    /// Set period (default: 14)
-    #[napi]
-    pub fn period(&mut self, period: u32) -> &Self {
-        self.inner = std::mem::take(&mut self.inner).period(period as usize);
-        self
-    }
-}
-
-/// BOLL Indicator Builder
-#[napi]
-pub struct BOLLIndicator {
-    inner: BOLLBuilder,
-}
-
-#[napi]
-impl BOLLIndicator {
-    #[napi(constructor)]
-    pub fn new() -> Self {
-        Self {
-            inner: BOLLBuilder::new(),
-        }
-    }
-
-    /// Set period (default: 20)
-    #[napi]
-    pub fn period(&mut self, period: u32) -> &Self {
-        self.inner = std::mem::take(&mut self.inner).period(period as usize);
-        self
-    }
-
-    /// Set standard deviation factor (default: 2.0)
-    #[napi]
-    pub fn std_dev(&mut self, factor: f64) -> &Self {
-        self.inner = std::mem::take(&mut self.inner).std_dev(factor);
-        self
-    }
-
-    /// Set standard deviation factor (alias)
-    #[napi]
-    pub fn multiplier(&mut self, factor: f64) -> &Self {
-        self.std_dev(factor)
-    }
-}
-
-/// VRI Indicator Builder
-#[napi]
-pub struct VRIIndicator {
-    inner: VRIBuilder,
-}
-
-#[napi]
-impl VRIIndicator {
-    #[napi(constructor)]
-    pub fn new() -> Self {
-        Self {
-            inner: VRIBuilder::new(),
-        }
-    }
-
-    /// Set period (default: 14)
-    #[napi]
-    pub fn period(&mut self, period: u32) -> &Self {
-        self.inner = std::mem::take(&mut self.inner).period(period as usize);
-        self
-    }
-}
-
-// ============================================================================
-// Indicators Factory
-// ============================================================================
-
-/// Indicator factory
-#[napi]
-pub struct Indicators;
-
-#[napi]
-impl Indicators {
-    #[napi(constructor)]
-    pub fn new() -> Self {
-        Self
-    }
-
-    /// Create MA indicator builder
-    #[napi]
-    pub fn ma(&self) -> MAIndicator {
-        MAIndicator::new()
-    }
-
-    /// Create RSI indicator builder
-    #[napi]
-    pub fn rsi(&self) -> RSIIndicator {
-        RSIIndicator::new()
-    }
-
-    /// Create MACD indicator builder
-    #[napi]
-    pub fn macd(&self) -> MACDIndicator {
-        MACDIndicator::new()
-    }
-
-    /// Create ATR indicator builder
-    #[napi]
-    pub fn atr(&self) -> ATRIndicator {
-        ATRIndicator::new()
-    }
-
-    /// Create BOLL indicator builder
-    #[napi]
-    pub fn boll(&self) -> BOLLIndicator {
-        BOLLIndicator::new()
-    }
-
-    /// Create VRI indicator builder
-    #[napi]
-    pub fn vri(&self) -> VRIIndicator {
-        VRIIndicator::new()
-    }
+    Ok(())
 }
 
 // ============================================================================
@@ -372,95 +256,18 @@ impl Engine {
     pub fn new(capacity: u32) -> napi::Result<Self> {
         Ok(Self {
             inner: Mutex::new(
-                QuantEngine::new(capacity as usize).map_err(|e| Error::from_reason(e.to_string()))?,
+                QuantEngine::new(capacity as usize)
+                    .map_err(|e| Error::from_reason(e.to_string()))?,
             ),
         })
     }
 
-    /// Add MA indicator
+    /// Add indicator from config object.
+    /// Example: engine.addIndicator("rsi", { type: "rsi", period: 14 })
     #[napi]
-    pub fn add_ma_indicator(&self, name: String, indicator: &MAIndicator) -> napi::Result<()> {
+    pub fn add_indicator(&self, name: String, config: IndicatorConfigInput) -> napi::Result<()> {
         let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let builder = indicator.inner.clone();
-        engine
-            .add_indicator(name, builder)
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Add RSI indicator
-    #[napi]
-    pub fn add_rsi_indicator(&self, name: String, indicator: &RSIIndicator) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let builder = indicator.inner.clone();
-        engine
-            .add_indicator(name, builder)
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Add MACD indicator
-    #[napi]
-    pub fn add_macd_indicator(&self, name: String, indicator: &MACDIndicator) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let builder = indicator.inner.clone();
-        engine
-            .add_indicator(name, builder)
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Add ATR indicator
-    #[napi]
-    pub fn add_atr_indicator(&self, name: String, indicator: &ATRIndicator) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let builder = indicator.inner.clone();
-        engine
-            .add_indicator(name, builder)
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Add BOLL indicator
-    #[napi]
-    pub fn add_boll_indicator(&self, name: String, indicator: &BOLLIndicator) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let builder = indicator.inner.clone();
-        engine
-            .add_indicator(name, builder)
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Add VRI indicator
-    #[napi]
-    pub fn add_vri_indicator(&self, name: String, indicator: &VRIIndicator) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let builder = indicator.inner.clone();
-        engine
-            .add_indicator(name, builder)
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Add predefined VWAP indicator
-    #[napi]
-    pub fn add_vwap(&self, name: String) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        engine
-            .add_vwap(name)
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Add predefined OBV indicator
-    #[napi]
-    pub fn add_obv(&self, name: String) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        engine
-            .add_obv(name)
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
+        add_indicator_from_config(&mut engine, name, config)
     }
 
     /// Setup multi-timeframe aggregator
@@ -517,13 +324,18 @@ impl Engine {
 
     /// Get indicator result with extra data
     #[napi]
-    pub fn get_indicator_result(&self, name: String) -> napi::Result<Option<IndicatorResultOutput>> {
+    pub fn get_indicator_result(
+        &self,
+        name: String,
+    ) -> napi::Result<Option<IndicatorResultOutput>> {
         let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.indicator_result(&name).map(|r| IndicatorResultOutput {
-            value: r.value,
-            timestamp: r.timestamp,
-            extra: r.extra,
-        }))
+        Ok(engine
+            .indicator_result(&name)
+            .map(|r| IndicatorResultOutput {
+                value: r.value,
+                timestamp: r.timestamp,
+                extra: r.extra,
+            }))
     }
 
     /// Get last bar
@@ -571,7 +383,8 @@ impl Engine {
                         // Only add if this is a newly completed candle
                         // (timestamp matches the aligned timestamp for this period)
                         let aligned = tf.align_timestamp(b.timestamp);
-                        if last.timestamp != aligned && b.timestamp >= last.timestamp + tf.millis() {
+                        if last.timestamp != aligned && b.timestamp >= last.timestamp + tf.millis()
+                        {
                             events.push(AggregatorEvent {
                                 kind: "KlineClosed".to_string(),
                                 period: timeframe_to_string(tf),
@@ -610,82 +423,7 @@ impl Engine {
         Ok(engine.klines().len() as u32)
     }
 
-    // -- Strategy methods --
-
-    /// Add RSI strategy (buy when oversold, sell when overbought)
-    #[napi]
-    pub fn add_rsi_strategy(
-        &self,
-        indicator_name: String,
-        oversold: Option<f64>,
-        overbought: Option<f64>,
-    ) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_strategy(Box::new(RSIStrategy::new(
-            indicator_name,
-            oversold.unwrap_or(30.0),
-            overbought.unwrap_or(70.0),
-        )));
-        Ok(())
-    }
-
-    /// Add MACD histogram crossover strategy
-    #[napi]
-    pub fn add_macd_strategy(&self, indicator_name: String) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_strategy(Box::new(MACDStrategy::new(indicator_name)));
-        Ok(())
-    }
-
-    /// Add Bollinger Band breakout strategy
-    #[napi]
-    pub fn add_boll_strategy(&self, indicator_name: String) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_strategy(Box::new(BollStrategy::new(indicator_name)));
-        Ok(())
-    }
-
-    /// Add MA crossover strategy (golden/death cross)
-    #[napi]
-    pub fn add_ma_cross_strategy(&self, fast_ma: String, slow_ma: String) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_strategy(Box::new(MACrossStrategy::new(fast_ma, slow_ma)));
-        Ok(())
-    }
-
-    // -- Backtest methods --
-
-    /// Setup backtest engine
-    #[napi]
-    pub fn setup_backtest(&self, config: BacktestConfigInput) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let bt_config = parse_backtest_config(&config);
-        engine.setup_backtest(bt_config);
-        Ok(())
-    }
-
-    /// Get backtest result
-    #[napi]
-    pub fn backtest_result(&self) -> napi::Result<Option<BacktestStatsOutput>> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.backtest_result().map(stats_to_output))
-    }
-
-    /// Get backtest trades
-    #[napi]
-    pub fn backtest_trades(&self) -> napi::Result<Vec<TradeOutput>> {
-        let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.backtest_trades().map(|trades| {
-            trades.iter().map(trade_to_output).collect()
-        }).unwrap_or_default())
-    }
-
-    /// Get backtest equity curve
-    #[napi]
-    pub fn backtest_equity_curve(&self) -> napi::Result<Vec<f64>> {
-        let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.backtest_equity_curve().map(|c| c.to_vec()).unwrap_or_default())
-    }
+    // Backtest APIs intentionally not exposed on Engine.
 }
 
 // ============================================================================
@@ -743,24 +481,29 @@ fn trade_to_output(t: &Trade) -> TradeOutput {
 // Multi-Period HQuant (combines Engine with built-in Aggregator)
 // ============================================================================
 
+/// Inner state for HQuant, protected by a single Mutex
+struct HQuantInner {
+    engine: QuantEngine,
+    aggregator: Option<MultiTimeFrameAggregator>,
+    base_tf: Option<TimeFrame>,
+    signal_queue: Vec<Signal>,
+    dsl_strategies: Vec<(u32, String, DslEngine)>,
+    next_strategy_id: u32,
+}
+
 /// Multi-period quantitative engine with built-in aggregator
 /// Ideal for production use with WebSocket data streams
 #[napi]
 pub struct HQuant {
-    engine: Mutex<QuantEngine>,
-    aggregator: Mutex<Option<MultiTimeFrameAggregator>>,
-    base_tf: Mutex<Option<TimeFrame>>,
-    signal_queue: Mutex<Vec<Signal>>,
-    dsl_strategies: Mutex<Vec<(u32, String, DslEngine)>>,
-    next_strategy_id: Mutex<u32>,
+    inner: Mutex<HQuantInner>,
 }
 
 #[napi]
 impl HQuant {
     #[napi(constructor)]
     pub fn new(capacity: u32, periods: Option<Vec<String>>) -> napi::Result<Self> {
-        let engine = QuantEngine::new(capacity as usize)
-            .map_err(|e| Error::from_reason(e.to_string()))?;
+        let engine =
+            QuantEngine::new(capacity as usize).map_err(|e| Error::from_reason(e.to_string()))?;
 
         let (aggregator, base_tf) = if let Some(ref period_strs) = periods {
             if period_strs.is_empty() {
@@ -786,86 +529,39 @@ impl HQuant {
         };
 
         Ok(Self {
-            engine: Mutex::new(engine),
-            aggregator: Mutex::new(aggregator),
-            base_tf: Mutex::new(base_tf),
-            signal_queue: Mutex::new(Vec::new()),
-            dsl_strategies: Mutex::new(Vec::new()),
-            next_strategy_id: Mutex::new(1),
+            inner: Mutex::new(HQuantInner {
+                engine,
+                aggregator,
+                base_tf,
+                signal_queue: Vec::new(),
+                dsl_strategies: Vec::new(),
+                next_strategy_id: 1,
+            }),
         })
     }
 
-    /// Add MA indicator
+    /// Add indicator from config object.
+    /// Example: hq.addIndicator("rsi_3", { type: "rsi", period: 3 })
     #[napi]
-    pub fn add_ma_indicator(&self, name: String, indicator: &MAIndicator) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_indicator(name, indicator.inner.clone())
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Add RSI indicator
-    #[napi]
-    pub fn add_rsi_indicator(&self, name: String, indicator: &RSIIndicator) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_indicator(name, indicator.inner.clone())
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Add MACD indicator
-    #[napi]
-    pub fn add_macd_indicator(&self, name: String, indicator: &MACDIndicator) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_indicator(name, indicator.inner.clone())
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Add BOLL indicator
-    #[napi]
-    pub fn add_boll_indicator(&self, name: String, indicator: &BOLLIndicator) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_indicator(name, indicator.inner.clone())
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Add ATR indicator
-    #[napi]
-    pub fn add_atr_indicator(&self, name: String, indicator: &ATRIndicator) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_indicator(name, indicator.inner.clone())
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Add VRI indicator
-    #[napi]
-    pub fn add_vri_indicator(&self, name: String, indicator: &VRIIndicator) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_indicator(name, indicator.inner.clone())
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
+    pub fn add_indicator(&self, name: String, config: IndicatorConfigInput) -> napi::Result<()> {
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        add_indicator_from_config(&mut inner.engine, name, config)
     }
 
     /// Feed raw K-line data from WebSocket stream
     /// Triggers multi-period aggregation internally
     #[napi]
     pub fn feed_kline(&self, bar: BarInput) -> napi::Result<Vec<AggregatorEvent>> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        let mut aggregator = self.aggregator.lock().map_err(|_| lock_poisoned_error())?;
-        let mut signal_queue = self.signal_queue.lock().map_err(|_| lock_poisoned_error())?;
-
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let b = to_bar(&bar);
 
         // Process through engine
-        let signals = engine.append_bar(&b);
-        signal_queue.extend(signals);
+        let signals = inner.engine.append_bar(&b);
+        inner.signal_queue.extend(signals);
 
         // Process through aggregator if available
         let mut events = Vec::new();
-        if let Some(ref mut agg) = *aggregator {
+        if let Some(ref mut agg) = inner.aggregator {
             let completed = agg.push(&b);
             for tf in completed {
                 if let Some(output) = agg.output(tf) {
@@ -895,23 +591,25 @@ impl HQuant {
     /// This method updates indicators and evaluates DSL strategies
     #[napi]
     pub fn push_bar(&self, bar: BarInput) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        let mut signal_queue = self.signal_queue.lock().map_err(|_| lock_poisoned_error())?;
-        let mut dsl_strategies = self.dsl_strategies.lock().map_err(|_| lock_poisoned_error())?;
-
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let b = to_bar(&bar);
 
         // Append bar to engine (updates indicators)
-        let _builtin_signals = engine.append_bar(&b);
+        let _builtin_signals = inner.engine.append_bar(&b);
 
-        // Evaluate DSL strategies
-        let graph = engine.graph();
-        let ctx = DslContext::new(&b, graph);
+        // Evaluate DSL strategies with field destructuring to enable split borrows
+        let HQuantInner {
+            engine,
+            dsl_strategies,
+            signal_queue,
+            ..
+        } = &mut *inner;
 
         for (strategy_id, _name, dsl_engine) in dsl_strategies.iter_mut() {
+            let graph = engine.graph();
+            let ctx = DslContext::new(&b, graph);
             if let Ok(signals) = dsl_engine.evaluate(&ctx) {
                 for mut sig in signals {
-                    // Encode strategy_id in the signal reason
                     sig.reason = format!("{}:{}", strategy_id, sig.reason);
                     signal_queue.push(sig);
                 }
@@ -932,13 +630,11 @@ impl HQuant {
     /// Update last K-line (for realtime price updates within same candle)
     #[napi]
     pub fn update_last(&self, bar: BarInput) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        let mut aggregator = self.aggregator.lock().map_err(|_| lock_poisoned_error())?;
-
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let b = to_bar(&bar);
-        engine.update_last_bar(&b);
+        inner.engine.update_last_bar(&b);
 
-        if let Some(ref mut agg) = *aggregator {
+        if let Some(ref mut agg) = inner.aggregator {
             agg.update_last(&b);
         }
 
@@ -949,63 +645,73 @@ impl HQuant {
     /// Returns signals with strategyId and action (BUY/SELL/HOLD)
     #[napi]
     pub fn poll_signals(&self) -> napi::Result<Vec<DslSignalOutput>> {
-        let mut signal_queue = self.signal_queue.lock().map_err(|_| lock_poisoned_error())?;
-        let signals: Vec<DslSignalOutput> = signal_queue.iter().map(|s| {
-            // Parse strategy_id from reason (format: "id:reason")
-            let strategy_id = s.reason.split(':').next()
-                .and_then(|id| id.parse::<u32>().ok())
-                .unwrap_or(0);
-            DslSignalOutput {
-                strategy_id,
-                action: match s.side {
-                    Side::Buy => "BUY".to_string(),
-                    Side::Sell => "SELL".to_string(),
-                    Side::Hold => "HOLD".to_string(),
-                },
-                timestamp: s.timestamp,
-            }
-        }).collect();
-        signal_queue.clear();
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        let signals: Vec<DslSignalOutput> = inner
+            .signal_queue
+            .iter()
+            .map(|s| {
+                // Parse strategy_id from reason (format: "id:reason")
+                let strategy_id = s
+                    .reason
+                    .split(':')
+                    .next()
+                    .and_then(|id| id.parse::<u32>().ok())
+                    .unwrap_or(0);
+                DslSignalOutput {
+                    strategy_id,
+                    action: match s.side {
+                        Side::Buy => "BUY".to_string(),
+                        Side::Sell => "SELL".to_string(),
+                        Side::Hold => "HOLD".to_string(),
+                    },
+                    timestamp: s.timestamp,
+                }
+            })
+            .collect();
+        inner.signal_queue.clear();
         Ok(signals)
     }
 
     /// Get indicator value
     #[napi]
     pub fn get_indicator_value(&self, name: String) -> napi::Result<Option<f64>> {
-        let engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.indicator_value(&name))
+        let inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(inner.engine.indicator_value(&name))
     }
 
     /// Get indicator result with extra data
     #[napi]
-    pub fn get_indicator_result(&self, name: String) -> napi::Result<Option<IndicatorResultOutput>> {
-        let engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.indicator_result(&name).map(|r| IndicatorResultOutput {
-            value: r.value,
-            timestamp: r.timestamp,
-            extra: r.extra,
-        }))
+    pub fn get_indicator_result(
+        &self,
+        name: String,
+    ) -> napi::Result<Option<IndicatorResultOutput>> {
+        let inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(inner
+            .engine
+            .indicator_result(&name)
+            .map(|r| IndicatorResultOutput {
+                value: r.value,
+                timestamp: r.timestamp,
+                extra: r.extra,
+            }))
     }
 
     /// Check if indicator is ready
     #[napi]
     pub fn is_indicator_ready(&self, name: String) -> napi::Result<bool> {
-        let engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.indicator_ready(&name))
+        let inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        Ok(inner.engine.indicator_ready(&name))
     }
 
     /// Reset engine
     #[napi]
     pub fn reset(&self) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        let mut aggregator = self.aggregator.lock().map_err(|_| lock_poisoned_error())?;
-        let mut signal_queue = self.signal_queue.lock().map_err(|_| lock_poisoned_error())?;
-
-        engine.reset();
-        if let Some(ref mut agg) = *aggregator {
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        inner.engine.reset();
+        if let Some(ref mut agg) = inner.aggregator {
             agg.reset();
         }
-        signal_queue.clear();
+        inner.signal_queue.clear();
 
         Ok(())
     }
@@ -1019,103 +725,17 @@ impl HQuant {
         let dsl_engine = DslEngine::new(&dsl)
             .map_err(|e| Error::from_reason(format!("DSL compile error: {}", e)))?;
 
-        let mut strategies = self.dsl_strategies.lock().map_err(|_| lock_poisoned_error())?;
-        let mut next_id = self.next_strategy_id.lock().map_err(|_| lock_poisoned_error())?;
-
-        let id = *next_id;
-        strategies.push((id, name, dsl_engine));
-        *next_id += 1;
+        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
+        let id = inner.next_strategy_id;
+        inner.dsl_strategies.push((id, name, dsl_engine));
+        inner.next_strategy_id += 1;
 
         Ok(id)
     }
 
-    /// Add RSI indicator with specified period
-    #[napi]
-    pub fn add_rsi(&self, period: u32) -> napi::Result<u32> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        let indicator_name = format!("rsi_{}", period);
-        engine
-            .add_indicator(&indicator_name, RSIBuilder::new().period(period as usize))
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(period)
-    }
+    // Built-in indicator/strategy adders intentionally not exposed via FFI.
 
-    // -- Built-in Strategy methods --
-
-    /// Add RSI strategy (buy when oversold, sell when overbought)
-    #[napi]
-    pub fn add_rsi_strategy(
-        &self,
-        indicator_name: String,
-        oversold: Option<f64>,
-        overbought: Option<f64>,
-    ) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_strategy(Box::new(RSIStrategy::new(
-            indicator_name,
-            oversold.unwrap_or(30.0),
-            overbought.unwrap_or(70.0),
-        )));
-        Ok(())
-    }
-
-    /// Add MACD histogram crossover strategy
-    #[napi]
-    pub fn add_macd_strategy(&self, indicator_name: String) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_strategy(Box::new(MACDStrategy::new(indicator_name)));
-        Ok(())
-    }
-
-    /// Add Bollinger Band breakout strategy
-    #[napi]
-    pub fn add_boll_strategy(&self, indicator_name: String) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_strategy(Box::new(BollStrategy::new(indicator_name)));
-        Ok(())
-    }
-
-    /// Add MA crossover strategy (golden/death cross)
-    #[napi]
-    pub fn add_ma_cross_strategy(&self, fast_ma: String, slow_ma: String) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        engine.add_strategy(Box::new(MACrossStrategy::new(fast_ma, slow_ma)));
-        Ok(())
-    }
-
-    // -- Backtest methods --
-
-    /// Setup backtest engine
-    #[napi]
-    pub fn setup_backtest(&self, config: BacktestConfigInput) -> napi::Result<()> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        let bt_config = parse_backtest_config(&config);
-        engine.setup_backtest(bt_config);
-        Ok(())
-    }
-
-    /// Get backtest result
-    #[napi]
-    pub fn backtest_result(&self) -> napi::Result<Option<BacktestStatsOutput>> {
-        let mut engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.backtest_result().map(stats_to_output))
-    }
-
-    /// Get backtest trades
-    #[napi]
-    pub fn backtest_trades(&self) -> napi::Result<Vec<TradeOutput>> {
-        let engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.backtest_trades().map(|trades| {
-            trades.iter().map(trade_to_output).collect()
-        }).unwrap_or_default())
-    }
-
-    /// Get backtest equity curve
-    #[napi]
-    pub fn backtest_equity_curve(&self) -> napi::Result<Vec<f64>> {
-        let engine = self.engine.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.backtest_equity_curve().map(|c| c.to_vec()).unwrap_or_default())
-    }
+    // Backtest APIs intentionally not exposed on HQuant.
 }
 
 // ============================================================================
@@ -1147,27 +767,21 @@ impl Backtest {
         }
     }
 
-    /// Open long position
+    /// Open position
     #[napi]
-    pub fn open_long(&self, price: f64, size: f64) -> napi::Result<()> {
+    pub fn open_position(&self, price: f64, size: f64, position_side: String) -> napi::Result<()> {
         let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        engine.open_long(price, size);
-        Ok(())
-    }
-
-    /// Open short position (futures only)
-    #[napi]
-    pub fn open_short(&self, price: f64, size: f64) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        engine.open_short(price, size);
+        let position_side = parse_position_side(&position_side)?;
+        engine.open_position(price, size, position_side);
         Ok(())
     }
 
     /// Close position
     #[napi]
-    pub fn close(&self, price: f64) -> napi::Result<()> {
+    pub fn close_position(&self, price: f64, position_side: String) -> napi::Result<()> {
         let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        engine.close(price);
+        let position_side = parse_position_side(&position_side)?;
+        engine.close_position(price, position_side);
         Ok(())
     }
 
@@ -1333,8 +947,7 @@ impl DslStrategy {
     /// ```
     #[napi(constructor)]
     pub fn new(source: String) -> napi::Result<Self> {
-        let engine = DslEngine::new(&source)
-            .map_err(|e| Error::from_reason(e.to_string()))?;
+        let engine = DslEngine::new(&source).map_err(|e| Error::from_reason(e.to_string()))?;
         Ok(Self {
             inner: Mutex::new(engine),
         })
@@ -1365,7 +978,11 @@ impl DslStrategy {
     /// Evaluate strategy with given bar data and indicators
     /// Returns generated signals
     #[napi]
-    pub fn evaluate(&self, bar: BarInput, indicators: std::collections::HashMap<String, f64>) -> napi::Result<Vec<SignalOutput>> {
+    pub fn evaluate(
+        &self,
+        bar: BarInput,
+        indicators: std::collections::HashMap<String, f64>,
+    ) -> napi::Result<Vec<SignalOutput>> {
         let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
         let b = to_bar(&bar);
 
@@ -1374,7 +991,8 @@ impl DslStrategy {
         let empty_graph = IndicatorGraph::new();
         let ctx = DslContext::new(&b, &empty_graph);
 
-        let signals = engine.evaluate(&ctx)
+        let signals = engine
+            .evaluate(&ctx)
             .map_err(|e| Error::from_reason(e.to_string()))?;
 
         Ok(signals.iter().map(signal_to_output).collect())
@@ -1410,6 +1028,7 @@ pub struct FuturesBacktestConfig {
     pub maker_fee_rate: f64,
     pub taker_fee_rate: f64,
     pub maintenance_margin_rate: f64,
+    pub decimals: Option<u32>,
 }
 
 #[napi(object)]
@@ -1421,164 +1040,168 @@ pub struct FuturesBacktestResult {
     pub liquidated: bool,
 }
 
+#[napi(object)]
+pub struct FuturesPositionOutput {
+    pub position_side: String,
+    pub entry_price: f64,
+    pub mark_price: f64,
+    pub position_amt: f64,
+    pub margin: f64,
+    pub unrealized_pnl: f64,
+}
+
 /// Standalone futures backtest engine (compatible with jx-quant FuturesBacktest)
 /// Decoupled from HQuant, can be used independently with any signal source
+/// Uses shared Rust core implementation for consistency across Python/Node.js
 #[napi]
 pub struct FuturesBacktest {
-    initial_margin: f64,
-    leverage: f64,
-    contract_size: f64,
-    maker_fee_rate: f64,
-    taker_fee_rate: f64,
-    maintenance_margin_rate: f64,
-    // State
-    equity: f64,
-    position: f64,  // positive = long, negative = short, 0 = no position
-    entry_price: f64,
-    max_equity: f64,
-    liquidated: bool,
+    inner: CoreFuturesBacktest,
 }
 
 #[napi]
 impl FuturesBacktest {
     #[napi(constructor)]
     pub fn new(config: FuturesBacktestConfig) -> Self {
-        Self {
+        let core_config = CoreFuturesBacktestConfig {
             initial_margin: config.initial_margin,
             leverage: config.leverage,
             contract_size: config.contract_size,
             maker_fee_rate: config.maker_fee_rate,
             taker_fee_rate: config.taker_fee_rate,
             maintenance_margin_rate: config.maintenance_margin_rate,
-            equity: config.initial_margin,
-            position: 0.0,
-            entry_price: 0.0,
-            max_equity: config.initial_margin,
-            liquidated: false,
+        };
+        let mut inner = CoreFuturesBacktest::new(core_config);
+        if let Some(d) = config.decimals {
+            inner.set_decimals(d);
         }
+        Self { inner }
+    }
+
+    /// Set decimal precision for results (default: 8)
+    #[napi]
+    pub fn set_decimals(&mut self, decimals: u32) {
+        self.inner.set_decimals(decimals);
     }
 
     /// Apply a trading signal
     /// action: "BUY", "SELL", or "HOLD"
     /// price: current market price
-    /// margin: margin amount to use for opening positions
+    /// margin: margin amount to use for opening/closing positions
+    /// is_maker: if true, use maker_fee_rate (limit order); if false, use taker_fee_rate (market order)
     #[napi]
-    pub fn apply_signal(&mut self, action: String, price: f64, margin: f64) {
-        if self.liquidated {
-            return;
-        }
+    pub fn apply_signal(
+        &mut self,
+        action: String,
+        price: f64,
+        margin: f64,
+        position_side: Option<String>,
+        is_maker: Option<bool>,
+    ) -> napi::Result<()> {
+        let use_maker = is_maker.unwrap_or(false);
+        let position_side = position_side
+            .as_deref()
+            .map(parse_position_side)
+            .transpose()?;
+        self.inner
+            .apply_signal(&action, price, margin, position_side, use_maker);
+        Ok(())
+    }
 
-        match action.as_str() {
-            "BUY" => {
-                if self.position < 0.0 {
-                    // Close short position
-                    self.close_position(price);
-                }
-                if self.position == 0.0 {
-                    // Open long position
-                    self.open_position(price, margin, true);
-                }
-            }
-            "SELL" => {
-                if self.position > 0.0 {
-                    // Close long position
-                    self.close_position(price);
-                }
-                if self.position == 0.0 {
-                    // Open short position
-                    self.open_position(price, margin, false);
-                }
-            }
-            "HOLD" | _ => {}
-        }
+    /// Open a position directly.
+    /// position_side: "LONG" | "SHORT"
+    #[napi]
+    pub fn open_position(
+        &mut self,
+        position_side: String,
+        price: f64,
+        margin: f64,
+        is_maker: Option<bool>,
+    ) -> napi::Result<()> {
+        let position_side = parse_position_side(&position_side)?;
+        let use_maker = is_maker.unwrap_or(false);
+        self.inner
+            .open_position(price, margin, position_side, use_maker);
+        Ok(())
+    }
+
+    /// Close a position directly.
+    /// position_side: "LONG" | "SHORT"
+    #[napi]
+    pub fn close_position(
+        &mut self,
+        position_side: String,
+        price: f64,
+        margin: f64,
+        is_maker: Option<bool>,
+    ) -> napi::Result<()> {
+        let position_side = parse_position_side(&position_side)?;
+        let use_maker = is_maker.unwrap_or(false);
+        self.inner
+            .close_position(price, margin, position_side, use_maker);
+        Ok(())
     }
 
     /// Update position value on price change (for liquidation checking)
     #[napi]
     pub fn on_price(&mut self, price: f64) {
-        if self.liquidated || self.position == 0.0 {
-            return;
-        }
-
-        // Check for liquidation
-        let unrealized_pnl = self.calculate_pnl(price);
-        let margin_used = self.position.abs() * self.entry_price / self.leverage;
-        let maintenance_margin = margin_used * self.maintenance_margin_rate;
-
-        if self.equity + unrealized_pnl < maintenance_margin {
-            self.liquidated = true;
-            self.equity = 0.0;
-            self.position = 0.0;
-        }
+        self.inner.on_price(price);
     }
 
     /// Get backtest result
     #[napi]
     pub fn result(&self, price: f64) -> FuturesBacktestResult {
-        let unrealized_pnl = if self.position != 0.0 {
-            self.calculate_pnl(price)
-        } else {
-            0.0
-        };
-
-        let current_equity = if self.liquidated {
-            0.0
-        } else {
-            self.equity + unrealized_pnl
-        };
-
-        let profit = current_equity - self.initial_margin;
-        let profit_rate = profit / self.initial_margin;
-        let max_drawdown_rate = if self.max_equity > 0.0 {
-            (self.max_equity - current_equity) / self.max_equity
-        } else {
-            0.0
-        };
-
+        let r = self.inner.result(price);
         FuturesBacktestResult {
-            equity: current_equity,
-            profit,
-            profit_rate,
-            max_drawdown_rate: max_drawdown_rate.max(0.0),
-            liquidated: self.liquidated,
+            equity: r.equity,
+            profit: r.profit,
+            profit_rate: r.profit_rate,
+            max_drawdown_rate: r.max_drawdown_rate,
+            liquidated: r.liquidated,
         }
     }
 
-    fn open_position(&mut self, price: f64, margin: f64, is_long: bool) {
-        let fee = margin * self.leverage * self.taker_fee_rate;
-        self.equity -= fee;
-
-        let position_size = (margin * self.leverage) / price * self.contract_size;
-        self.position = if is_long { position_size } else { -position_size };
-        self.entry_price = price;
+    /// Get current equity
+    #[napi]
+    pub fn get_equity(&self) -> f64 {
+        self.inner.equity()
     }
 
-    fn close_position(&mut self, price: f64) {
-        let pnl = self.calculate_pnl(price);
-        let notional = self.position.abs() * price / self.contract_size;
-        let fee = notional * self.taker_fee_rate;
-
-        self.equity += pnl - fee;
-        if self.equity > self.max_equity {
-            self.max_equity = self.equity;
-        }
-
-        self.position = 0.0;
-        self.entry_price = 0.0;
+    /// Get current position
+    #[napi]
+    pub fn get_position(&self) -> f64 {
+        self.inner.position()
     }
 
-    fn calculate_pnl(&self, price: f64) -> f64 {
-        if self.position == 0.0 {
-            return 0.0;
-        }
+    /// Get current positions (0 or 1).
+    #[napi]
+    pub fn get_positions(&self) -> Vec<FuturesPositionOutput> {
+        self.inner
+            .positions()
+            .into_iter()
+            .map(|p| FuturesPositionOutput {
+                position_side: match p.position_side {
+                    PositionSide::Long => "LONG",
+                    PositionSide::Short => "SHORT",
+                }
+                .to_string(),
+                entry_price: p.entry_price,
+                mark_price: p.mark_price,
+                position_amt: p.position_amt,
+                margin: p.margin,
+                unrealized_pnl: p.unrealized_pnl,
+            })
+            .collect()
+    }
 
-        let price_diff = price - self.entry_price;
-        if self.position > 0.0 {
-            // Long position
-            price_diff * self.position / self.contract_size
-        } else {
-            // Short position
-            -price_diff * self.position.abs() / self.contract_size
-        }
+    /// Check if liquidated
+    #[napi]
+    pub fn is_liquidated(&self) -> bool {
+        self.inner.is_liquidated()
+    }
+
+    /// Reset backtest state
+    #[napi]
+    pub fn reset(&mut self) {
+        self.inner.reset();
     }
 }

@@ -3,8 +3,8 @@
 //! `IndicatorSpec` uniquely describes an indicator's type + parameters.
 //! Two identical specs produce identical computations — the graph uses this for dedup.
 
-use std::hash::{Hash, Hasher};
 use super::PriceType;
+use std::hash::{Hash, Hasher};
 
 // ---------------------------------------------------------------------------
 // F64Key — hashable f64 wrapper
@@ -114,19 +114,31 @@ impl IndicatorSpec {
     // -- Convenience constructors (default PriceType::Close) --
 
     pub fn sma(period: usize) -> Self {
-        Self::Sma { period, price_type: PriceType::Close }
+        Self::Sma {
+            period,
+            price_type: PriceType::Close,
+        }
     }
 
     pub fn ema(period: usize) -> Self {
-        Self::Ema { period, price_type: PriceType::Close }
+        Self::Ema {
+            period,
+            price_type: PriceType::Close,
+        }
     }
 
     pub fn wma(period: usize) -> Self {
-        Self::Wma { period, price_type: PriceType::Close }
+        Self::Wma {
+            period,
+            price_type: PriceType::Close,
+        }
     }
 
     pub fn rsi(period: usize) -> Self {
-        Self::Rsi { period, price_type: PriceType::Close }
+        Self::Rsi {
+            period,
+            price_type: PriceType::Close,
+        }
     }
 
     pub fn atr(period: usize) -> Self {
@@ -138,7 +150,10 @@ impl IndicatorSpec {
     }
 
     pub fn stddev(period: usize) -> Self {
-        Self::StdDev { period, price_type: PriceType::Close }
+        Self::StdDev {
+            period,
+            price_type: PriceType::Close,
+        }
     }
 
     pub fn macd(fast: usize, slow: usize, signal: usize) -> Self {
@@ -171,16 +186,26 @@ impl IndicatorSpec {
                 price_type,
                 ..
             } => vec![
-                IndicatorSpec::Ema { period: *fast_period, price_type: *price_type },
-                IndicatorSpec::Ema { period: *slow_period, price_type: *price_type },
+                IndicatorSpec::Ema {
+                    period: *fast_period,
+                    price_type: *price_type,
+                },
+                IndicatorSpec::Ema {
+                    period: *slow_period,
+                    price_type: *price_type,
+                },
             ],
             IndicatorSpec::Boll {
-                period,
-                price_type,
-                ..
+                period, price_type, ..
             } => vec![
-                IndicatorSpec::Sma { period: *period, price_type: *price_type },
-                IndicatorSpec::StdDev { period: *period, price_type: *price_type },
+                IndicatorSpec::Sma {
+                    period: *period,
+                    price_type: *price_type,
+                },
+                IndicatorSpec::StdDev {
+                    period: *period,
+                    price_type: *price_type,
+                },
             ],
             _ => vec![],
         }
@@ -196,7 +221,11 @@ impl IndicatorSpec {
             IndicatorSpec::Atr { period } => format!("ATR_{}", period),
             IndicatorSpec::Vri { period } => format!("VRI_{}", period),
             IndicatorSpec::StdDev { period, .. } => format!("StdDev_{}", period),
-            IndicatorSpec::Macd { fast_period, slow_period, .. } => {
+            IndicatorSpec::Macd {
+                fast_period,
+                slow_period,
+                ..
+            } => {
                 format!("MACD_{}_{}", fast_period, slow_period)
             }
             IndicatorSpec::Boll { period, .. } => format!("BOLL_{}", period),
@@ -205,7 +234,10 @@ impl IndicatorSpec {
 
     /// Whether this is a composite indicator with dependencies.
     pub fn is_composite(&self) -> bool {
-        matches!(self, IndicatorSpec::Macd { .. } | IndicatorSpec::Boll { .. })
+        matches!(
+            self,
+            IndicatorSpec::Macd { .. } | IndicatorSpec::Boll { .. }
+        )
     }
 }
 

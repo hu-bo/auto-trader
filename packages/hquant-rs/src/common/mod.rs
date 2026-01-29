@@ -2,4 +2,4 @@
 
 mod ring_buffer;
 
-pub use ring_buffer::{RingBuffer, F64RingBuffer};
+pub use ring_buffer::{F64RingBuffer, RingBuffer};

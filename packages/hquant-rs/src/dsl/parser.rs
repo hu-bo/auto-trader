@@ -1,11 +1,11 @@
 //! Parser for the Strategy DSL using pest
 
-use std::collections::HashMap;
 use pest::Parser as PestParser;
 use pest_derive::Parser;
+use std::collections::HashMap;
 
+use super::ast::{Action, BinaryOperator, Expr, Statement, UnaryOperator};
 use crate::error::QuantError;
-use super::ast::{Statement, Expr, BinaryOperator, UnaryOperator, Action};
 
 #[derive(Parser)]
 #[grammar = "dsl/strategy.pest"]
@@ -36,7 +36,10 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>) -> Result<Statement, Quant
     match inner.as_rule() {
         Rule::assignment => parse_assignment(inner),
         Rule::if_then => parse_if_then(inner),
-        _ => Err(QuantError::DslParse(format!("Unexpected rule: {:?}", inner.as_rule()))),
+        _ => Err(QuantError::DslParse(format!(
+            "Unexpected rule: {:?}",
+            inner.as_rule()
+        ))),
     }
 }
 
@@ -87,12 +90,28 @@ fn parse_expr(pair: pest::iterators::Pair<Rule>) -> Result<Expr, QuantError> {
         Rule::and_expr => parse_binary_expr(pair, |r| r == Rule::and_op, |_| BinaryOperator::And),
         Rule::not_expr => parse_not_expr(pair),
         Rule::comparison => parse_comparison(pair),
-        Rule::additive => parse_binary_expr(pair, |r| r == Rule::add_op, |s| {
-            if s == "+" { BinaryOperator::Add } else { BinaryOperator::Sub }
-        }),
-        Rule::multiplicative => parse_binary_expr(pair, |r| r == Rule::mul_op, |s| {
-            if s == "*" { BinaryOperator::Mul } else { BinaryOperator::Div }
-        }),
+        Rule::additive => parse_binary_expr(
+            pair,
+            |r| r == Rule::add_op,
+            |s| {
+                if s == "+" {
+                    BinaryOperator::Add
+                } else {
+                    BinaryOperator::Sub
+                }
+            },
+        ),
+        Rule::multiplicative => parse_binary_expr(
+            pair,
+            |r| r == Rule::mul_op,
+            |s| {
+                if s == "*" {
+                    BinaryOperator::Mul
+                } else {
+                    BinaryOperator::Div
+                }
+            },
+        ),
         Rule::unary => parse_unary(pair),
         Rule::postfix => parse_postfix(pair),
         Rule::primary => parse_primary(pair),
@@ -100,7 +119,7 @@ fn parse_expr(pair: pest::iterators::Pair<Rule>) -> Result<Expr, QuantError> {
         Rule::string => {
             let s = pair.as_str();
             // Remove quotes
-            let inner = &s[1..s.len()-1];
+            let inner = &s[1..s.len() - 1];
             // Handle escape sequences
             let unescaped = inner
                 .replace("\\n", "\n")
@@ -125,7 +144,10 @@ fn parse_expr(pair: pest::iterators::Pair<Rule>) -> Result<Expr, QuantError> {
             }
         }
         Rule::function_call => parse_function_call(pair),
-        _ => Err(QuantError::DslParse(format!("Unexpected expression rule: {:?}", pair.as_rule()))),
+        _ => Err(QuantError::DslParse(format!(
+            "Unexpected expression rule: {:?}",
+            pair.as_rule()
+        ))),
     }
 }
 
@@ -175,15 +197,19 @@ fn parse_not_expr(pair: pest::iterators::Pair<Rule>) -> Result<Expr, QuantError>
 }
 
 fn parse_comparison(pair: pest::iterators::Pair<Rule>) -> Result<Expr, QuantError> {
-    parse_binary_expr(pair, |r| r == Rule::comp_op, |s| match s {
-        "<" => BinaryOperator::Lt,
-        ">" => BinaryOperator::Gt,
-        "<=" => BinaryOperator::Le,
-        ">=" => BinaryOperator::Ge,
-        "==" => BinaryOperator::Eq,
-        "!=" => BinaryOperator::Ne,
-        _ => BinaryOperator::Eq,
-    })
+    parse_binary_expr(
+        pair,
+        |r| r == Rule::comp_op,
+        |s| match s {
+            "<" => BinaryOperator::Lt,
+            ">" => BinaryOperator::Gt,
+            "<=" => BinaryOperator::Le,
+            ">=" => BinaryOperator::Ge,
+            "==" => BinaryOperator::Eq,
+            "!=" => BinaryOperator::Ne,
+            _ => BinaryOperator::Eq,
+        },
+    )
 }
 
 fn parse_unary(pair: pest::iterators::Pair<Rule>) -> Result<Expr, QuantError> {
@@ -322,23 +348,19 @@ mod tests {
         let stmts = parse("IF hit.label == 1 THEN BUY").unwrap();
         assert_eq!(stmts.len(), 1);
         match &stmts[0] {
-            Statement::IfThen { condition, .. } => {
-                match condition {
-                    Expr::BinaryOp { left, .. } => {
-                        match left.as_ref() {
-                            Expr::FieldAccess { object, field } => {
-                                assert_eq!(field, "label");
-                                match object.as_ref() {
-                                    Expr::Variable(name) => assert_eq!(name, "hit"),
-                                    _ => panic!("Expected variable"),
-                                }
-                            }
-                            _ => panic!("Expected field access"),
+            Statement::IfThen { condition, .. } => match condition {
+                Expr::BinaryOp { left, .. } => match left.as_ref() {
+                    Expr::FieldAccess { object, field } => {
+                        assert_eq!(field, "label");
+                        match object.as_ref() {
+                            Expr::Variable(name) => assert_eq!(name, "hit"),
+                            _ => panic!("Expected variable"),
                         }
                     }
-                    _ => panic!("Expected binary op"),
-                }
-            }
+                    _ => panic!("Expected field access"),
+                },
+                _ => panic!("Expected binary op"),
+            },
             _ => panic!("Expected if-then"),
         }
     }
@@ -367,14 +389,12 @@ mod tests {
         let stmts = parse("IF RSI(14) < 30 AND EMA(20) > 100 THEN BUY").unwrap();
         assert_eq!(stmts.len(), 1);
         match &stmts[0] {
-            Statement::IfThen { condition, .. } => {
-                match condition {
-                    Expr::BinaryOp { op, .. } => {
-                        assert_eq!(*op, BinaryOperator::And);
-                    }
-                    _ => panic!("Expected binary op"),
+            Statement::IfThen { condition, .. } => match condition {
+                Expr::BinaryOp { op, .. } => {
+                    assert_eq!(*op, BinaryOperator::And);
                 }
-            }
+                _ => panic!("Expected binary op"),
+            },
             _ => panic!("Expected if-then"),
         }
     }

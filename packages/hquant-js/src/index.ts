@@ -4,15 +4,9 @@
  * @example
  * ```ts
  * const engine = new Engine(1000)
- * const ind = new Indicators()
- *
- * engine.addMaIndicator('ma20', ind.ma().period(20).ema())
- * engine.addRsiIndicator('rsi', ind.rsi().period(14))
- * engine.addRsiStrategy('rsi', 30, 70)
- * engine.setupBacktest({ initialCapital: 10000 })
- *
+ * engine.addIndicator('ma20', { type: 'ema', period: 20 })
+ * engine.addIndicator('rsi', { type: 'rsi', period: 14 })
  * const signals = engine.pushKline({ timestamp: 1, open: 100, high: 105, low: 95, close: 102, volume: 1000 })
- * const result = engine.backtestResult()
  * ```
  */
 
@@ -94,6 +88,8 @@ export type LabeledVector = {
   vector: number[]
 }
 
+export type PositionSide = 'LONG' | 'SHORT'
+
 /** Futures backtest configuration (compatible with jx-quant) */
 export type FuturesBacktestConfig = {
   initialMargin: number
@@ -113,34 +109,27 @@ export type FuturesBacktestResult = {
   liquidated: boolean
 }
 
+export type FuturesPosition = {
+  positionSide: PositionSide
+  entryPrice: number
+  markPrice: number
+  positionAmt: number
+  margin: number
+  unrealizedPnl: number
+}
+
 // ============================================================================
-// Builder interfaces (methods return `this` for chaining)
+// Indicator Config
 // ============================================================================
 
-export interface IMAIndicator {
-  period(p: number): this
-  sma(): this
-  ema(): this
-  wma(): this
-}
-export interface IRSIIndicator {
-  period(p: number): this
-}
-export interface IMACDIndicator {
-  fast(p: number): this
-  slow(p: number): this
-  signal(p: number): this
-}
-export interface IATRIndicator {
-  period(p: number): this
-}
-export interface IBOLLIndicator {
-  period(p: number): this
-  stdDev(factor: number): this
-  multiplier(factor: number): this
-}
-export interface IVRIIndicator {
-  period(p: number): this
+export type IndicatorConfig = {
+  type: string
+  period?: number
+  fast?: number
+  slow?: number
+  signal?: number
+  stdDev?: number
+  multiplier?: number
 }
 
 // ============================================================================
@@ -148,30 +137,8 @@ export interface IVRIIndicator {
 // ============================================================================
 
 type Native = {
-  MaIndicator: new () => IMAIndicator
-  RsiIndicator: new () => IRSIIndicator
-  MacdIndicator: new () => IMACDIndicator
-  AtrIndicator: new () => IATRIndicator
-  BollIndicator: new () => IBOLLIndicator
-  VriIndicator: new () => IVRIIndicator
-  Indicators: new () => {
-    ma(): IMAIndicator
-    rsi(): IRSIIndicator
-    macd(): IMACDIndicator
-    atr(): IATRIndicator
-    boll(): IBOLLIndicator
-    vri(): IVRIIndicator
-  }
-
   Engine: new (capacity: number) => {
-    addMaIndicator(name: string, indicator: IMAIndicator): void
-    addRsiIndicator(name: string, indicator: IRSIIndicator): void
-    addMacdIndicator(name: string, indicator: IMACDIndicator): void
-    addAtrIndicator(name: string, indicator: IATRIndicator): void
-    addBollIndicator(name: string, indicator: IBOLLIndicator): void
-    addVriIndicator(name: string, indicator: IVRIIndicator): void
-    addVwap(name: string): void
-    addObv(name: string): void
+    addIndicator(name: string, config: IndicatorConfig): void
     setupAggregator(baseTf: string, targetTfs: string[], capacity: number): void
     pushKline(bar: Bar): Signal[]
     updateLast(bar: Bar): void
@@ -181,26 +148,12 @@ type Native = {
     getIndicatorValue(name: string): number | null
     getIndicatorResult(name: string): IndicatorResult | null
     isIndicatorReady(name: string): boolean
-    addRsiStrategy(indicatorName: string, oversold?: number, overbought?: number): void
-    addMacdStrategy(indicatorName: string): void
-    addBollStrategy(indicatorName: string): void
-    addMaCrossStrategy(fastMa: string, slowMa: string): void
-    setupBacktest(config: BacktestConfig): void
-    backtestResult(): BacktestStats | null
-    backtestTrades(): Trade[]
-    backtestEquityCurve(): number[]
     pollSignals(): Signal[]
     reset(): void
   }
 
   HQuant: new (capacity: number, periods?: string[]) => {
-    addMaIndicator(name: string, indicator: IMAIndicator): void
-    addRsiIndicator(name: string, indicator: IRSIIndicator): void
-    addMacdIndicator(name: string, indicator: IMACDIndicator): void
-    addAtrIndicator(name: string, indicator: IATRIndicator): void
-    addBollIndicator(name: string, indicator: IBOLLIndicator): void
-    addVriIndicator(name: string, indicator: IVRIIndicator): void
-    addRsi(period: number): number
+    addIndicator(name: string, config: IndicatorConfig): void
     addStrategy(name: string, dsl: string): number
     feedKline(bar: Bar): AggregatorEvent[]
     pushBar(bar: Bar): void
@@ -210,21 +163,12 @@ type Native = {
     getIndicatorValue(name: string): number | null
     getIndicatorResult(name: string): IndicatorResult | null
     isIndicatorReady(name: string): boolean
-    addRsiStrategy(indicatorName: string, oversold?: number, overbought?: number): void
-    addMacdStrategy(indicatorName: string): void
-    addBollStrategy(indicatorName: string): void
-    addMaCrossStrategy(fastMa: string, slowMa: string): void
-    setupBacktest(config: BacktestConfig): void
-    backtestResult(): BacktestStats | null
-    backtestTrades(): Trade[]
-    backtestEquityCurve(): number[]
     reset(): void
   }
 
   Backtest: new (config: BacktestConfig) => {
-    openLong(price: number, size: number): void
-    openShort(price: number, size: number): void
-    close(price: number): void
+    openPosition(price: number, size: number, positionSide: PositionSide): void
+    closePosition(price: number, positionSide: PositionSide): void
     result(): BacktestStats
     getTrades(): Trade[]
     getEquityCurve(): number[]
@@ -247,9 +191,12 @@ type Native = {
   }
 
   FuturesBacktest: new (config: FuturesBacktestConfig) => {
-    applySignal(action: 'BUY' | 'SELL' | 'HOLD', price: number, margin: number): void
+    applySignal(action: 'BUY' | 'SELL' | 'HOLD', price: number, margin: number, positionSide?: PositionSide, isMaker?: boolean): void
+    openPosition(positionSide: PositionSide, price: number, margin: number, isMaker?: boolean): void
+    closePosition(positionSide: PositionSide, price: number, margin: number, isMaker?: boolean): void
     onPrice(price: number): void
     result(price: number): FuturesBacktestResult
+    getPositions(): FuturesPosition[]
   }
 
   validateDsl(source: string): boolean
@@ -262,13 +209,6 @@ type Native = {
 const native = require('../native/hquant.node') as Native
 
 // Re-export native classes
-export class MAIndicator extends native.MaIndicator {}
-export class RSIIndicator extends native.RsiIndicator {}
-export class MACDIndicator extends native.MacdIndicator {}
-export class ATRIndicator extends native.AtrIndicator {}
-export class BOLLIndicator extends native.BollIndicator {}
-export class VRIIndicator extends native.VriIndicator {}
-export class Indicators extends native.Indicators {}
 export class Engine extends native.Engine {}
 export class HQuant extends native.HQuant {}
 export class Backtest extends native.Backtest {}

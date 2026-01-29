@@ -150,20 +150,42 @@ console.log('RSI:', rsi);
 
 // --- 回测 ---
 const backtest = new Backtest({
-  initialMargin: 10000,
-  leverage: 10,
-  makerFeeRate: 0.0002,
-  takerFeeRate: 0.0005,
   marketType: 'futures',
+  initialCapital: 10000,
+  leverage: 10,
+  makerFee: 0.0002,
+  takerFee: 0.0005,
 });
 
 // 模拟交易
-backtest.openLong(42000, 1.0);
-backtest.close(43000);
+backtest.openPosition(42000, 1.0, 'LONG');
+backtest.closePosition(43000, 'LONG');
 
 // 获取结果
 const result = backtest.result();
 console.log('回测结果:', result);
+```
+
+### FuturesBacktest（独立合约回测）
+
+```typescript
+import { FuturesBacktest } from 'hquant-rs';
+
+const bt = new FuturesBacktest({
+  initialMargin: 1000,
+  leverage: 10,
+  contractSize: 1,
+  makerFeeRate: 0.0004,
+  takerFeeRate: 0.0004,
+  maintenanceMarginRate: 0.005,
+});
+
+// 支持 positionSide（可选），用于明确开/平多空
+bt.applySignal('BUY', 100, 100, 'LONG'); // 开/加多
+bt.applySignal('SELL', 110, 50, 'LONG'); // 按 margin 部分平多
+
+console.log(bt.getPositions());
+console.log(bt.result(110));
 ```
 
 ### Python
@@ -217,8 +239,8 @@ backtest = PyBacktest(
     market_type='futures'
 )
 
-backtest.open_long(42000, 1.0)
-backtest.close(43000)
+backtest.open_position(42000, 1.0, "LONG")
+backtest.close_position(43000, "LONG")
 
 result = backtest.backtest_result()
 print(f'总交易: {result["total_trades"]}')

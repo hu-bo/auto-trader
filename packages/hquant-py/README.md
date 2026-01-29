@@ -75,14 +75,36 @@ bt = Backtest(
 )
 
 # Execute trades
-bt.open_long(price=100.0, size=1.0)
-bt.close(price=110.0)
+bt.open_position(price=100.0, size=1.0, position_side="LONG")
+bt.close_position(price=110.0, position_side="LONG")
 
 # Get results
 result = bt.backtest_result()
 print(f"Total PnL: {result['total_pnl']}")
 print(f"Win Rate: {result['win_rate']:.2%}")
 print(f"Max Drawdown: {result['max_drawdown_pct']:.2%}")
+```
+
+## Futures Backtesting
+
+```python
+from hquant import FuturesBacktest
+
+bt = FuturesBacktest(
+    initial_margin=1000,
+    leverage=10,
+    contract_size=1,
+    maker_fee_rate=0.0004,
+    taker_fee_rate=0.0004,
+    maintenance_margin_rate=0.005,
+)
+
+# apply_signal supports optional position_side: "LONG" | "SHORT"
+bt.apply_signal("BUY", 100, 100, position_side="LONG")
+bt.apply_signal("SELL", 110, 50, position_side="LONG")
+
+print(bt.get_positions())
+print(bt.result(110))
 ```
 
 ## Multi-Timeframe Aggregation
@@ -127,6 +149,9 @@ pip install maturin
 # Build and install locally
 cd packages/hquant-py
 maturin develop --features ffi-python
+
+# Test
+python -m pytest --capture=no tests/test_e2e.py
 ```
 
 ## License

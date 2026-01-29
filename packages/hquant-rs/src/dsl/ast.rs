@@ -12,15 +12,9 @@ pub struct Program {
 #[derive(Debug, Clone)]
 pub enum Statement {
     /// Variable assignment: `ema20 = EMA(close, period=20)`
-    Assignment {
-        name: String,
-        value: Expr,
-    },
+    Assignment { name: String, value: Expr },
     /// Conditional: `IF condition THEN action`
-    IfThen {
-        condition: Expr,
-        action: Action,
-    },
+    IfThen { condition: Expr, action: Action },
 }
 
 /// Expression types
@@ -46,10 +40,7 @@ pub enum Expr {
         kwargs: HashMap<String, Expr>,
     },
     /// Field access: `hit.label`
-    FieldAccess {
-        object: Box<Expr>,
-        field: String,
-    },
+    FieldAccess { object: Box<Expr>, field: String },
     /// Binary operation: `RSI(14) < 30`
     BinaryOp {
         left: Box<Expr>,
@@ -67,20 +58,20 @@ pub enum Expr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOperator {
     // Comparison
-    Lt,      // <
-    Gt,      // >
-    Le,      // <=
-    Ge,      // >=
-    Eq,      // ==
-    Ne,      // !=
+    Lt, // <
+    Gt, // >
+    Le, // <=
+    Ge, // >=
+    Eq, // ==
+    Ne, // !=
     // Logical
-    And,     // AND
-    Or,      // OR
+    And, // AND
+    Or,  // OR
     // Arithmetic
-    Add,     // +
-    Sub,     // -
-    Mul,     // *
-    Div,     // /
+    Add, // +
+    Sub, // -
+    Mul, // *
+    Div, // /
 }
 
 impl BinaryOperator {
@@ -99,8 +90,8 @@ impl BinaryOperator {
 /// Unary operators
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOperator {
-    Not,     // NOT
-    Neg,     // -
+    Not, // NOT
+    Neg, // -
 }
 
 /// Actions (signal generation)

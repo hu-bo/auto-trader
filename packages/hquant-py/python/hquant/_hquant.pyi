@@ -1,6 +1,8 @@
 """Type stubs for hquant native module"""
 
-from typing import Dict, List, Optional, Any, TypedDict
+from typing import Dict, List, Optional, Any, TypedDict, Literal
+
+PositionSide = Literal["LONG", "SHORT"]
 
 class BarDict(TypedDict, total=False):
     timestamp: int
@@ -16,6 +18,26 @@ class SignalDict(TypedDict):
     strength: float
     reason: str
     timestamp: int
+
+class DslSignalDict(TypedDict):
+    strategy_id: int
+    action: str  # "BUY" | "SELL" | "HOLD"
+    timestamp: int
+
+class FuturesBacktestResultDict(TypedDict):
+    equity: float
+    profit: float
+    profit_rate: float
+    max_drawdown_rate: float
+    liquidated: bool
+
+class FuturesPositionDict(TypedDict):
+    position_side: str  # "LONG" | "SHORT"
+    entry_price: float
+    mark_price: float
+    position_amt: float
+    margin: float
+    unrealized_pnl: float
 
 class IndicatorConfig(TypedDict, total=False):
     type: str  # "ma", "sma", "ema", "wma", "rsi", "macd", "atr", "boll", "vri", "vwap", "obv"
@@ -140,102 +162,39 @@ class HQuant:
         """Reset the engine, clearing all data."""
         ...
 
-    # -- Strategy methods --
+    # -- DSL Strategy methods --
 
-    def add_rsi_strategy(
-        self,
-        indicator_name: str,
-        oversold: float = 30.0,
-        overbought: float = 70.0,
-    ) -> None:
+    def add_strategy(self, name: str, dsl: str) -> int:
         """
-        Add RSI strategy (buy when oversold, sell when overbought).
+        Add a DSL-based strategy.
 
         Args:
-            indicator_name: Name of the RSI indicator to use
-            oversold: Buy threshold (default: 30.0)
-            overbought: Sell threshold (default: 70.0)
-        """
-        ...
-
-    def add_macd_strategy(self, indicator_name: str) -> None:
-        """
-        Add MACD histogram crossover strategy.
-
-        Args:
-            indicator_name: Name of the MACD indicator to use
-        """
-        ...
-
-    def add_boll_strategy(self, indicator_name: str) -> None:
-        """
-        Add Bollinger Band breakout strategy.
-
-        Args:
-            indicator_name: Name of the BOLL indicator to use
-        """
-        ...
-
-    def add_ma_cross_strategy(self, fast_ma: str, slow_ma: str) -> None:
-        """
-        Add MA crossover strategy (golden/death cross).
-
-        Args:
-            fast_ma: Name of the fast moving average indicator
-            slow_ma: Name of the slow moving average indicator
-        """
-        ...
-
-    # -- Backtest methods --
-
-    def setup_backtest(
-        self,
-        initial_capital: float,
-        market_type: str = "spot",
-        leverage: float = 1.0,
-        maker_fee: float = 0.001,
-        taker_fee: float = 0.001,
-        slippage: float = 0.0005,
-        position_size_pct: float = 0.1,
-    ) -> None:
-        """
-        Setup backtest engine.
-
-        Args:
-            initial_capital: Initial capital for backtesting
-            market_type: "spot" or "futures" (default: "spot")
-            leverage: Leverage ratio (default: 1.0)
-            maker_fee: Maker fee rate (default: 0.1%)
-            taker_fee: Taker fee rate (default: 0.1%)
-            slippage: Slippage rate (default: 0.05%)
-            position_size_pct: Position size as fraction of capital (default: 0.1)
-        """
-        ...
-
-    def backtest_result(self) -> Optional[BacktestResult]:
-        """
-        Get backtest statistics.
+            name: Strategy name
+            dsl: DSL source code
 
         Returns:
-            Backtest result dict or None if backtest not configured
+            Strategy ID (>0 on success)
+
+        Raises:
+            ValueError: If DSL compilation fails
         """
         ...
 
-    def backtest_trades(self) -> List[Dict[str, Any]]:
+    def push_bar(self, bar: BarDict) -> None:
         """
-        Get backtest trade records.
+        Push bar and evaluate DSL strategies.
 
-        Returns:
-            List of trade dicts with keys: timestamp, side, price, size, fee, pnl
+        Args:
+            bar: K-line data dict
         """
         ...
 
-    def backtest_equity_curve(self) -> List[float]:
+    def poll_signals(self) -> List[DslSignalDict]:
         """
-        Get backtest equity curve.
+        Poll accumulated signals from DSL strategies.
 
         Returns:
-            List of equity values over time
+            List of signal dicts with keys: strategy_id, action, timestamp
         """
         ...
 
@@ -262,15 +221,11 @@ class PyBacktest:
         """
         ...
 
-    def open_long(self, price: float, size: float) -> None:
-        """Open a long position."""
+    def open_position(self, price: float, size: float, position_side: PositionSide) -> None:
+        """Open a position."""
         ...
 
-    def open_short(self, price: float, size: float) -> None:
-        """Open a short position (futures only)."""
-        ...
-
-    def close(self, price: float) -> None:
+    def close_position(self, price: float, position_side: PositionSide) -> None:
         """Close current position."""
         ...
 
@@ -386,3 +341,79 @@ def validate_dsl(source: str) -> bool:
         ValueError: If DSL has syntax errors
     """
     ...
+
+class FuturesBacktest:
+    """Standalone futures backtest engine (compatible with jx-quant)"""
+
+    def __init__(
+        self,
+        initial_margin: float,
+        leverage: float,
+        contract_size: float,
+        maker_fee_rate: float,
+        taker_fee_rate: float,
+        maintenance_margin_rate: float,
+    ) -> None:
+        """
+        Create a futures backtest engine.
+
+        Args:
+            initial_margin: Initial margin (capital)
+            leverage: Leverage ratio
+            contract_size: Contract size
+            maker_fee_rate: Maker fee rate
+            taker_fee_rate: Taker fee rate
+            maintenance_margin_rate: Maintenance margin rate
+        """
+        ...
+
+    def apply_signal(
+        self,
+        action: str,
+        price: float,
+        margin: float,
+        position_side: Optional[PositionSide] = ...,
+        is_maker: bool = ...,
+    ) -> None:
+        """
+        Apply a trading signal.
+
+        Args:
+            action: "BUY", "SELL", or "HOLD"
+            price: Current market price
+            margin: Margin amount to use for opening/closing positions
+        """
+        ...
+
+    def open_position(self, position_side: PositionSide, price: float, margin: float, is_maker: bool = ...) -> None:
+        """Open a position directly."""
+        ...
+
+    def close_position(self, position_side: PositionSide, price: float, margin: float, is_maker: bool = ...) -> None:
+        """Close a position directly."""
+        ...
+
+    def on_price(self, price: float) -> None:
+        """
+        Update position value on price change (for liquidation checking).
+
+        Args:
+            price: Current market price
+        """
+        ...
+
+    def result(self, price: float) -> FuturesBacktestResultDict:
+        """
+        Get backtest result.
+
+        Args:
+            price: Current market price (for unrealized PnL calculation)
+
+        Returns:
+            Result dict with keys: equity, profit, profit_rate, max_drawdown_rate, liquidated
+        """
+        ...
+
+    def get_positions(self) -> List[FuturesPositionDict]:
+        """Get current positions (0 or 1)."""
+        ...

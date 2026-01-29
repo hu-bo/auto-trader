@@ -22,13 +22,12 @@
 
 use std::collections::HashMap;
 
+use super::{
+    spec::{IndicatorId, IndicatorSpec},
+    Indicator, IndicatorValue, MAType, StdDev, ATR, BOLL, MA, MACD, RSI, VRI,
+};
 use crate::kline::Bar;
 use crate::HQuantResult;
-use super::{
-    Indicator, IndicatorValue,
-    MA, MAType, RSI, MACD, ATR, BOLL, VRI, StdDev,
-    spec::{IndicatorSpec, IndicatorId},
-};
 
 // ---------------------------------------------------------------------------
 // IndicatorNode — single node in the graph
@@ -172,11 +171,8 @@ impl IndicatorGraph {
 
         for &id in &order {
             // Collect dependency values from already-computed nodes
-            let dep_values: Vec<Option<f64>> = self.nodes[id.0]
-                .deps
-                .iter()
-                .map(|d| values[d.0])
-                .collect();
+            let dep_values: Vec<Option<f64>> =
+                self.nodes[id.0].deps.iter().map(|d| values[d.0]).collect();
 
             let node = &mut self.nodes[id.0];
             if dep_values.is_empty() {
@@ -196,11 +192,8 @@ impl IndicatorGraph {
         let mut values: Vec<Option<f64>> = vec![None; self.nodes.len()];
 
         for &id in &order {
-            let dep_values: Vec<Option<f64>> = self.nodes[id.0]
-                .deps
-                .iter()
-                .map(|d| values[d.0])
-                .collect();
+            let dep_values: Vec<Option<f64>> =
+                self.nodes[id.0].deps.iter().map(|d| values[d.0]).collect();
 
             let node = &mut self.nodes[id.0];
             if dep_values.is_empty() {
@@ -238,7 +231,10 @@ impl IndicatorGraph {
 
     /// Check if indicator is ready by ID.
     pub fn is_ready(&self, id: IndicatorId) -> bool {
-        self.nodes.get(id.0).map(|n| n.indicator.is_ready()).unwrap_or(false)
+        self.nodes
+            .get(id.0)
+            .map(|n| n.indicator.is_ready())
+            .unwrap_or(false)
     }
 
     /// Check if indicator is ready by name.
@@ -374,24 +370,26 @@ impl std::fmt::Display for GraphSummary {
 
 fn build_indicator(spec: &IndicatorSpec, has_deps: bool) -> HQuantResult<Box<dyn Indicator>> {
     match spec {
-        IndicatorSpec::Sma { period, price_type } => {
-            Ok(Box::new(MA::with_price_type(*period, MAType::SMA, *price_type)?))
-        }
-        IndicatorSpec::Ema { period, price_type } => {
-            Ok(Box::new(MA::with_price_type(*period, MAType::EMA, *price_type)?))
-        }
-        IndicatorSpec::Wma { period, price_type } => {
-            Ok(Box::new(MA::with_price_type(*period, MAType::WMA, *price_type)?))
-        }
+        IndicatorSpec::Sma { period, price_type } => Ok(Box::new(MA::with_price_type(
+            *period,
+            MAType::SMA,
+            *price_type,
+        )?)),
+        IndicatorSpec::Ema { period, price_type } => Ok(Box::new(MA::with_price_type(
+            *period,
+            MAType::EMA,
+            *price_type,
+        )?)),
+        IndicatorSpec::Wma { period, price_type } => Ok(Box::new(MA::with_price_type(
+            *period,
+            MAType::WMA,
+            *price_type,
+        )?)),
         IndicatorSpec::Rsi { period, price_type } => {
             Ok(Box::new(RSI::with_price_type(*period, *price_type)?))
         }
-        IndicatorSpec::Atr { period } => {
-            Ok(Box::new(ATR::new(*period)?))
-        }
-        IndicatorSpec::Vri { period } => {
-            Ok(Box::new(VRI::new(*period)?))
-        }
+        IndicatorSpec::Atr { period } => Ok(Box::new(ATR::new(*period)?)),
+        IndicatorSpec::Vri { period } => Ok(Box::new(VRI::new(*period)?)),
         IndicatorSpec::StdDev { period, price_type } => {
             Ok(Box::new(StdDev::with_price_type(*period, *price_type)?))
         }
@@ -404,11 +402,17 @@ fn build_indicator(spec: &IndicatorSpec, has_deps: bool) -> HQuantResult<Box<dyn
             if has_deps {
                 // Graph mode: EMAs provided by dependencies
                 Ok(Box::new(MACD::new_graph_mode(
-                    *fast_period, *slow_period, *signal_period, *price_type,
+                    *fast_period,
+                    *slow_period,
+                    *signal_period,
+                    *price_type,
                 )?))
             } else {
                 Ok(Box::new(MACD::with_price_type(
-                    *fast_period, *slow_period, *signal_period, *price_type,
+                    *fast_period,
+                    *slow_period,
+                    *signal_period,
+                    *price_type,
                 )?))
             }
         }
@@ -420,11 +424,15 @@ fn build_indicator(spec: &IndicatorSpec, has_deps: bool) -> HQuantResult<Box<dyn
             if has_deps {
                 // Graph mode: SMA and StdDev provided by dependencies
                 Ok(Box::new(BOLL::new_graph_mode(
-                    *period, std_dev_factor.value(), *price_type,
+                    *period,
+                    std_dev_factor.value(),
+                    *price_type,
                 )?))
             } else {
                 Ok(Box::new(BOLL::with_price_type(
-                    *period, std_dev_factor.value(), *price_type,
+                    *period,
+                    std_dev_factor.value(),
+                    *price_type,
                 )?))
             }
         }
@@ -441,15 +449,19 @@ mod tests {
     use crate::kline::Bar;
 
     fn create_bars(prices: &[f64]) -> Vec<Bar> {
-        prices.iter().enumerate().map(|(i, &p)| {
-            Bar::new(i as i64 * 1000, p, p + 1.0, p - 1.0, p, 100.0)
-        }).collect()
+        prices
+            .iter()
+            .enumerate()
+            .map(|(i, &p)| Bar::new(i as i64 * 1000, p, p + 1.0, p - 1.0, p, 100.0))
+            .collect()
     }
 
     #[test]
     fn test_graph_basic() {
         let mut graph = IndicatorGraph::new();
-        graph.add_with_name("ema20", IndicatorSpec::ema(20)).unwrap();
+        graph
+            .add_with_name("ema20", IndicatorSpec::ema(20))
+            .unwrap();
 
         let prices: Vec<f64> = (0..30).map(|i| 100.0 + i as f64).collect();
         let bars = create_bars(&prices);
@@ -479,11 +491,15 @@ mod tests {
         let mut graph = IndicatorGraph::new();
 
         // Add MACD — should auto-create EMA(12) and EMA(26)
-        graph.add_with_name("macd", IndicatorSpec::macd(12, 26, 9)).unwrap();
+        graph
+            .add_with_name("macd", IndicatorSpec::macd(12, 26, 9))
+            .unwrap();
         assert_eq!(graph.len(), 3); // EMA(12) + EMA(26) + MACD
 
         // Add standalone EMA(12) — should reuse existing node
-        let ema_id = graph.add_with_name("ema12", IndicatorSpec::ema(12)).unwrap();
+        let ema_id = graph
+            .add_with_name("ema12", IndicatorSpec::ema(12))
+            .unwrap();
         assert_eq!(graph.len(), 3); // No new node
 
         // Verify the EMA(12) is the same node the MACD depends on
@@ -512,11 +528,15 @@ mod tests {
         let mut graph = IndicatorGraph::new();
 
         // Add BOLL — should auto-create SMA(20) and StdDev(20)
-        graph.add_with_name("boll", IndicatorSpec::boll(20, 2.0)).unwrap();
+        graph
+            .add_with_name("boll", IndicatorSpec::boll(20, 2.0))
+            .unwrap();
         assert_eq!(graph.len(), 3); // SMA(20) + StdDev(20) + BOLL
 
         // Add standalone SMA(20) — should reuse
-        graph.add_with_name("sma20", IndicatorSpec::sma(20)).unwrap();
+        graph
+            .add_with_name("sma20", IndicatorSpec::sma(20))
+            .unwrap();
         assert_eq!(graph.len(), 3); // No new node
 
         let prices: Vec<f64> = (0..30).map(|i| 100.0 + i as f64 * 0.5).collect();
@@ -538,7 +558,9 @@ mod tests {
         let mut graph = IndicatorGraph::new();
 
         // Spec-based (deduplicated)
-        graph.add_with_name("rsi14", IndicatorSpec::rsi(14)).unwrap();
+        graph
+            .add_with_name("rsi14", IndicatorSpec::rsi(14))
+            .unwrap();
 
         // Opaque (not deduplicated)
         let custom = Box::new(MA::sma(10).unwrap());
@@ -560,10 +582,18 @@ mod tests {
         let mut graph = IndicatorGraph::new();
 
         // Scenario: MACD(12,26,9) + BOLL(20,2) + standalone EMA(12) + SMA(20)
-        graph.add_with_name("macd", IndicatorSpec::macd(12, 26, 9)).unwrap();
-        graph.add_with_name("boll", IndicatorSpec::boll(20, 2.0)).unwrap();
-        graph.add_with_name("ema12", IndicatorSpec::ema(12)).unwrap();
-        graph.add_with_name("sma20", IndicatorSpec::sma(20)).unwrap();
+        graph
+            .add_with_name("macd", IndicatorSpec::macd(12, 26, 9))
+            .unwrap();
+        graph
+            .add_with_name("boll", IndicatorSpec::boll(20, 2.0))
+            .unwrap();
+        graph
+            .add_with_name("ema12", IndicatorSpec::ema(12))
+            .unwrap();
+        graph
+            .add_with_name("sma20", IndicatorSpec::sma(20))
+            .unwrap();
 
         // MACD creates: EMA(12), EMA(26), MACD = 3 nodes
         // BOLL creates: SMA(20), StdDev(20), BOLL = 3 nodes
@@ -625,7 +655,9 @@ mod tests {
     #[test]
     fn test_graph_summary() {
         let mut graph = IndicatorGraph::new();
-        graph.add_with_name("macd", IndicatorSpec::macd(12, 26, 9)).unwrap();
+        graph
+            .add_with_name("macd", IndicatorSpec::macd(12, 26, 9))
+            .unwrap();
 
         let summary = graph.summary();
         assert_eq!(summary.total_nodes, 3);

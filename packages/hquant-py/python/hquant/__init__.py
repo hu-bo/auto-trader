@@ -2,15 +2,24 @@
 HQuant - High-performance quantitative trading engine powered by Rust
 
 Example usage:
-    >>> from hquant import HQuant
-    >>> engine = HQuant(capacity=1000)
-    >>> engine.add_indicator("rsi", {"type": "rsi", "period": 14})
-    >>> engine.add_indicator("ma20", {"type": "ema", "period": 20})
+    >>> from hquant import HQuant, FuturesBacktest
+    >>> hq = HQuant(capacity=64)
+    >>> hq.add_indicator("rsi_3", {"type": "rsi", "period": 3})
+    >>> sid = hq.add_strategy("s", "IF RSI(3) < 30 THEN BUY\\nIF RSI(3) > 70 THEN SELL")
     >>>
-    >>> bar = {"timestamp": 1000, "open": 100, "high": 105, "low": 95, "close": 102, "volume": 1000}
-    >>> signals = engine.push_kline(bar)
+    >>> bt = FuturesBacktest(
+    ...     initial_margin=1000,
+    ...     leverage=10,
+    ...     contract_size=1,
+    ...     maker_fee_rate=0.0004,
+    ...     taker_fee_rate=0.0004,
+    ...     maintenance_margin_rate=0.005,
+    ... )
     >>>
-    >>> rsi_value = engine.get_indicator("rsi")
+    >>> bar = {"timestamp": 1, "open": 100, "high": 100, "low": 100, "close": 100, "volume": 1}
+    >>> hq.push_bar(bar)
+    >>> for sig in hq.poll_signals():
+    ...     bt.apply_signal(sig["action"], bar["close"], 100)
 """
 
 from hquant._hquant import (
@@ -18,6 +27,7 @@ from hquant._hquant import (
     PyBacktest as Backtest,
     PyAggregator as Aggregator,
     PyDslStrategy as DslStrategy,
+    FuturesBacktest,
     validate_dsl,
 )
 
@@ -26,6 +36,7 @@ __all__ = [
     "Backtest",
     "Aggregator",
     "DslStrategy",
+    "FuturesBacktest",
     "validate_dsl",
 ]
 

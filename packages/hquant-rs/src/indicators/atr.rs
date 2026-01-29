@@ -2,9 +2,9 @@
 //! TR = max(high - low, |high - prev_close|, |low - prev_close|)
 //! ATR = Smoothed average of TR
 
+use super::{Indicator, IndicatorValue};
 use crate::common::F64RingBuffer;
 use crate::kline::Bar;
-use super::{Indicator, IndicatorValue};
 use crate::{HQuantError, HQuantResult};
 
 #[derive(Debug)]
@@ -105,7 +105,8 @@ impl Indicator for ATR {
     }
 
     fn result(&self) -> Option<IndicatorValue> {
-        self.value().map(|v| IndicatorValue::new(v, self.last_timestamp))
+        self.value()
+            .map(|v| IndicatorValue::new(v, self.last_timestamp))
     }
 
     fn is_ready(&self) -> bool {
@@ -145,14 +146,7 @@ mod tests {
         // Create volatile data
         for i in 0..20 {
             let base = 100.0 + (i as f64);
-            let bar = Bar::new(
-                i * 1000,
-                base,
-                base + 5.0,
-                base - 3.0,
-                base + 2.0,
-                1000.0,
-            );
+            let bar = Bar::new(i * 1000, base, base + 5.0, base - 3.0, base + 2.0, 1000.0);
             atr.push(&bar);
         }
 

@@ -22,14 +22,14 @@
 //! ```
 
 mod ast;
-mod parser;
 mod eval;
+mod parser;
 mod vector_store;
 
 pub use ast::*;
+pub use eval::{DslContext, DslEngine};
 pub use parser::parse;
-pub use eval::{DslEngine, DslContext};
-pub use vector_store::{VectorStore, LabeledVector};
+pub use vector_store::{LabeledVector, VectorStore};
 
 use crate::error::QuantError;
 

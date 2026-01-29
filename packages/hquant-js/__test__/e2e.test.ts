@@ -2,7 +2,7 @@ import { FuturesBacktest, HQuant } from '../src/index'
 
 test('e2e: addStrategy + futures backtest', () => {
   const hq = new HQuant(64)
-  hq.addRsi(3)
+  hq.addIndicator('rsi_3', { type: 'rsi', period: 3 })
 
   const dsl = `
     IF RSI(3) < 30 THEN BUY

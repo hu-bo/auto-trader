@@ -7,9 +7,9 @@
 //! - **Standalone**: computes its own internal EMAs (default)
 //! - **Graph mode**: receives EMA values from graph dependencies, avoiding duplicate computation
 
+use super::{Indicator, IndicatorSpec, IndicatorValue, PriceType};
 use crate::common::F64RingBuffer;
 use crate::kline::Bar;
-use super::{Indicator, IndicatorValue, IndicatorSpec, PriceType};
 use crate::{HQuantError, HQuantResult};
 
 #[derive(Debug)]
@@ -73,7 +73,9 @@ impl MACD {
             return Err(HQuantError::invalid_argument("MACD periods must be > 0"));
         }
         if fast_period >= slow_period {
-            return Err(HQuantError::invalid_argument("MACD fast period must be < slow period"));
+            return Err(HQuantError::invalid_argument(
+                "MACD fast period must be < slow period",
+            ));
         }
 
         let capacity = slow_period * 2;
@@ -138,7 +140,8 @@ impl MACD {
             self.values.push(macd_line);
         } else if self.macd_buffer.len() > self.signal_period {
             // Update signal EMA
-            self.signal_ema = (macd_line - self.signal_ema) * self.signal_multiplier + self.signal_ema;
+            self.signal_ema =
+                (macd_line - self.signal_ema) * self.signal_multiplier + self.signal_ema;
             self.values.push(macd_line);
         }
     }
@@ -196,7 +199,9 @@ impl Indicator for MACD {
         if self.count > self.slow_period {
             let prev_fast = self.values.get_from_end(2).unwrap_or(self.fast_ema);
             let prev_slow = if self.count > self.slow_period + 1 {
-                self.slow_ema - (self.slow_ema - prev_fast) * self.slow_multiplier / (1.0 - self.slow_multiplier)
+                self.slow_ema
+                    - (self.slow_ema - prev_fast) * self.slow_multiplier
+                        / (1.0 - self.slow_multiplier)
             } else {
                 self.slow_ema
             };
@@ -259,8 +264,14 @@ impl Indicator for MACD {
     fn deps(&self) -> Vec<IndicatorSpec> {
         if self.graph_mode {
             vec![
-                IndicatorSpec::Ema { period: self.fast_period, price_type: self.price_type },
-                IndicatorSpec::Ema { period: self.slow_period, price_type: self.price_type },
+                IndicatorSpec::Ema {
+                    period: self.fast_period,
+                    price_type: self.price_type,
+                },
+                IndicatorSpec::Ema {
+                    period: self.slow_period,
+                    price_type: self.price_type,
+                },
             ]
         } else {
             vec![]
@@ -319,7 +330,8 @@ impl Indicator for MACD {
             self.macd_buffer.update_last(macd_line);
             // Recalculate signal from current state
             if self.macd_buffer.len() > self.signal_period {
-                self.signal_ema = (macd_line - self.signal_ema) * self.signal_multiplier + self.signal_ema;
+                self.signal_ema =
+                    (macd_line - self.signal_ema) * self.signal_multiplier + self.signal_ema;
             }
             self.values.update_last(macd_line);
         }
@@ -331,9 +343,11 @@ mod tests {
     use super::*;
 
     fn create_bars(prices: &[f64]) -> Vec<Bar> {
-        prices.iter().enumerate().map(|(i, &p)| {
-            Bar::new(i as i64 * 1000, p, p + 1.0, p - 1.0, p, 100.0)
-        }).collect()
+        prices
+            .iter()
+            .enumerate()
+            .map(|(i, &p)| Bar::new(i as i64 * 1000, p, p + 1.0, p - 1.0, p, 100.0))
+            .collect()
     }
 
     #[test]
@@ -416,8 +430,20 @@ mod tests {
         let macd = MACD::new_graph_mode(12, 26, 9, PriceType::Close).unwrap();
         let deps = macd.deps();
         assert_eq!(deps.len(), 2);
-        assert_eq!(deps[0], IndicatorSpec::Ema { period: 12, price_type: PriceType::Close });
-        assert_eq!(deps[1], IndicatorSpec::Ema { period: 26, price_type: PriceType::Close });
+        assert_eq!(
+            deps[0],
+            IndicatorSpec::Ema {
+                period: 12,
+                price_type: PriceType::Close
+            }
+        );
+        assert_eq!(
+            deps[1],
+            IndicatorSpec::Ema {
+                period: 26,
+                price_type: PriceType::Close
+            }
+        );
     }
 
     #[test]

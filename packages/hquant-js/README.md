@@ -21,18 +21,17 @@ pnpm add @hquant/js
 ## Quick Start
 
 ```typescript
-import { HQuant, Indicators } from '@hquant/js'
+import { HQuant } from '@hquant/js'
 
 // Create engine with multi-timeframe support
 const engine = new HQuant(1000, ['15m', '1h', '4h'])
-const ind = new Indicators()
 
 // Add indicators
-engine.addRsiIndicator('rsi', ind.rsi().period(14))
-engine.addMaIndicator('ma_fast', ind.ma().period(5).ema())
-engine.addMaIndicator('ma_slow', ind.ma().period(20).ema())
-engine.addMacdIndicator('macd', ind.macd().fast(12).slow(26).signal(9))
-engine.addBollIndicator('boll', ind.boll().period(20).stdDev(2))
+engine.addIndicator('rsi', { type: 'rsi', period: 14 })
+engine.addIndicator('ma_fast', { type: 'ema', period: 5 })
+engine.addIndicator('ma_slow', { type: 'ema', period: 20 })
+engine.addIndicator('macd', { type: 'macd', fast: 12, slow: 26, signal: 9 })
+engine.addIndicator('boll', { type: 'boll', period: 20, stdDev: 2 })
 
 // Feed K-line data (from WebSocket)
 const bar = {
@@ -94,8 +93,8 @@ const bt = new Backtest({
 })
 
 // Execute trades
-bt.openLong(100, 1.0)
-bt.close(110)
+bt.openPosition(100, 1.0, 'LONG')
+bt.closePosition(110, 'LONG')
 
 // Get results
 const result = bt.result()
@@ -103,6 +102,28 @@ console.log(`Total PnL: ${result.totalPnl}`)
 console.log(`Win Rate: ${(result.winRate * 100).toFixed(2)}%`)
 console.log(`Max Drawdown: ${(result.maxDrawdownPct).toFixed(2)}%`)
 console.log(`Sharpe Ratio: ${result.sharpeRatio.toFixed(2)}`)
+```
+
+## Futures Backtesting
+
+```typescript
+import { FuturesBacktest } from '@hquant/js'
+
+const bt = new FuturesBacktest({
+  initialMargin: 1000,
+  leverage: 10,
+  contractSize: 1,
+  makerFeeRate: 0.0004,
+  takerFeeRate: 0.0004,
+  maintenanceMarginRate: 0.005,
+})
+
+// applySignal supports optional positionSide: 'LONG' | 'SHORT'
+bt.applySignal('BUY', 100, 100, 'LONG')
+bt.applySignal('SELL', 110, 50, 'LONG')
+
+console.log(bt.getPositions())
+console.log(bt.result(110))
 ```
 
 ## Multi-Timeframe Aggregation

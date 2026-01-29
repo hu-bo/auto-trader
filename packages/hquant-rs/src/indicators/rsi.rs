@@ -2,9 +2,9 @@
 //! RSI = 100 - 100 / (1 + RS)
 //! RS = Average Gain / Average Loss
 
+use super::{Indicator, IndicatorValue, PriceType};
 use crate::common::F64RingBuffer;
 use crate::kline::Bar;
-use super::{Indicator, IndicatorValue, PriceType};
 use crate::{HQuantError, HQuantResult};
 
 #[derive(Debug)]
@@ -121,13 +121,17 @@ impl Indicator for RSI {
         let loss = (-change).max(0.0);
 
         if self.count > self.period + 1 {
-            let temp_avg_gain = (self.avg_gain * self.period as f64 - self.avg_gain + gain)
-                / self.period as f64;
-            let temp_avg_loss = (self.avg_loss * self.period as f64 - self.avg_loss + loss)
-                / self.period as f64;
+            let temp_avg_gain =
+                (self.avg_gain * self.period as f64 - self.avg_gain + gain) / self.period as f64;
+            let temp_avg_loss =
+                (self.avg_loss * self.period as f64 - self.avg_loss + loss) / self.period as f64;
 
             let rs = if temp_avg_loss == 0.0 {
-                if temp_avg_gain == 0.0 { 1.0 } else { f64::MAX }
+                if temp_avg_gain == 0.0 {
+                    1.0
+                } else {
+                    f64::MAX
+                }
             } else {
                 temp_avg_gain / temp_avg_loss
             };
@@ -142,7 +146,8 @@ impl Indicator for RSI {
     }
 
     fn result(&self) -> Option<IndicatorValue> {
-        self.value().map(|v| IndicatorValue::new(v, self.last_timestamp))
+        self.value()
+            .map(|v| IndicatorValue::new(v, self.last_timestamp))
     }
 
     fn is_ready(&self) -> bool {
@@ -178,9 +183,11 @@ mod tests {
     use super::*;
 
     fn create_bars(prices: &[f64]) -> Vec<Bar> {
-        prices.iter().enumerate().map(|(i, &p)| {
-            Bar::new(i as i64 * 1000, p, p + 1.0, p - 1.0, p, 100.0)
-        }).collect()
+        prices
+            .iter()
+            .enumerate()
+            .map(|(i, &p)| Bar::new(i as i64 * 1000, p, p + 1.0, p - 1.0, p, 100.0))
+            .collect()
     }
 
     #[test]

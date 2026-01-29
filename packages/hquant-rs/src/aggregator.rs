@@ -6,17 +6,29 @@ use crate::{HQuantError, HQuantResult};
 
 use std::fmt;
 
+impl Bar {
+    /// Merge two K-lines (for timeframe aggregation)
+    pub fn merge(&mut self, other: &Bar) {
+        self.high = self.high.max(other.high);
+        self.low = self.low.min(other.low);
+        self.close = other.close;
+        self.volume += other.volume;
+        self.buy_volume += other.buy_volume;
+        // timestamp and open remain unchanged
+    }
+}
+
 /// Timeframe definition (milliseconds)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TimeFrame {
-    M1,   // 1 minute
-    M5,   // 5 minutes
-    M15,  // 15 minutes
-    M30,  // 30 minutes
-    H1,   // 1 hour
-    H4,   // 4 hours
-    D1,   // 1 day
-    W1,   // 1 week
+    M1,  // 1 minute
+    M5,  // 5 minutes
+    M15, // 15 minutes
+    M30, // 30 minutes
+    H1,  // 1 hour
+    H4,  // 4 hours
+    D1,  // 1 day
+    W1,  // 1 week
 }
 
 impl TimeFrame {
@@ -90,8 +102,6 @@ impl fmt::Display for TimeFrame {
 pub struct Aggregator {
     source_tf: TimeFrame,
     target_tf: TimeFrame,
-    #[allow(dead_code)]
-    ratio: usize,
     current_bar: Option<Bar>,
     bar_count: usize,
     output: KlineSeries,
@@ -109,7 +119,6 @@ impl Aggregator {
         Ok(Self {
             source_tf,
             target_tf,
-            ratio: target_tf.ratio(&source_tf),
             current_bar: None,
             bar_count: 0,
             output: KlineSeries::new(capacity)?,
@@ -223,13 +232,15 @@ impl Aggregator {
 /// Supports maintaining multiple timeframe K-line data simultaneously
 #[derive(Debug)]
 pub struct MultiTimeFrameAggregator {
-    #[allow(dead_code)]
-    base_tf: TimeFrame,
     aggregators: Vec<Aggregator>,
 }
 
 impl MultiTimeFrameAggregator {
-    pub fn new(base_tf: TimeFrame, target_tfs: &[TimeFrame], capacity: usize) -> HQuantResult<Self> {
+    pub fn new(
+        base_tf: TimeFrame,
+        target_tfs: &[TimeFrame],
+        capacity: usize,
+    ) -> HQuantResult<Self> {
         for tf in target_tfs {
             if *tf == base_tf {
                 return Err(HQuantError::invalid_argument(format!(
@@ -250,10 +261,7 @@ impl MultiTimeFrameAggregator {
             aggregators.push(Aggregator::new(base_tf, *tf, capacity)?);
         }
 
-        Ok(Self {
-            base_tf,
-            aggregators,
-        })
+        Ok(Self { aggregators })
     }
 
     /// Input base timeframe K-line, update all aggregators
@@ -310,6 +318,21 @@ impl MultiTimeFrameAggregator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_bar_merge() {
+        let mut bar1 = Bar::new(1000, 100.0, 105.0, 99.0, 104.0, 1000.0);
+        let bar2 = Bar::new(2000, 104.0, 108.0, 103.0, 107.0, 1200.0);
+
+        bar1.merge(&bar2);
+
+        assert_eq!(bar1.timestamp, 1000);
+        assert_eq!(bar1.open, 100.0);
+        assert_eq!(bar1.high, 108.0);
+        assert_eq!(bar1.low, 99.0);
+        assert_eq!(bar1.close, 107.0);
+        assert_eq!(bar1.volume, 2200.0);
+    }
 
     #[test]
     fn test_timeframe_millis() {
@@ -415,12 +438,9 @@ mod tests {
 
     #[test]
     fn test_multi_timeframe() {
-        let mut mtf = MultiTimeFrameAggregator::new(
-            TimeFrame::M15,
-            &[TimeFrame::H1, TimeFrame::H4],
-            100,
-        )
-        .unwrap();
+        let mut mtf =
+            MultiTimeFrameAggregator::new(TimeFrame::M15, &[TimeFrame::H1, TimeFrame::H4], 100)
+                .unwrap();
 
         // Input 16 15-minute K-lines (4 hours)
         for i in 0..16 {
