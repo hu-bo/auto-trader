@@ -73,264 +73,152 @@ Module Map:
 - 由于覆盖语义，超过 `capacity` 的历史不可恢复；任何“全量回放”需要外部保存源数据
 - `update_last` 在 `len==0` 时无效（不会插入）
 
-### 3.2 `F64RingBuffer`：带缓存统计量的浮点缓冲区
+### `KlineBuffer` (`packages/hquant-rs/src/kline_buffer.rs`)
+- SoA ring for `Bar` columns:
+  - `timestamp: CircularColumn<i64>`
+  - `open/high/low/close/volume/buy_volume: CircularColumn<f64>`
+- methods:
+  - `new(capacity) -> Self`
+  - `capacity()`, `len()`, `is_empty()`
+  - `push(bar)`
+  - `update_last(bar) -> Option<Bar>` (returns previous last)
+  - `get(i) -> Option<Bar>` (index from oldest)
+  - `last() -> Option<Bar>`
+  - `get_f64(field, i) -> Option<f64>`
+  - `last_f64(field) -> Option<f64>`
+  - column accessors: `close()/open()/high()/low()/volume()/buy_volume()/timestamp() -> &CircularColumn<_>`
 
-实现同在 `packages/hquant-rs/src/common/ring_buffer.rs`。
-
-- 在 `push/update_last` 时维护 `sum/sum_sq`，以 O(1) 计算 `mean/variance/std_dev`
-- 覆盖最旧元素时会先从缓存中扣除旧值（通过 `inner.get(0)` 获取逻辑最旧值）
-
-### 3.3 `Bar` 与 `KlineSeries`：列式（SoA）时间序列
-
-实现见 `packages/hquant-rs/src/kline.rs`。
-
-`Bar`（输入/输出结构）：
-
-- 字段：`timestamp/open/high/low/close/volume/buy_volume`
-- 典型/中位/平均价格：`typical_price/median_price/average_price`
-
-`KlineSeries`（SoA 存储）：
-
-- 每个字段是一条 `RingBuffer` 列：`timestamp/open/high/low/close/volume/buy_volume`
-- `append(&Bar)`：逐列 `push`
-- `update_last(&Bar)`：逐列 `update_last`
-- `get(index)`：按列组装回 `Bar`
-- `get_from_end(n)`：从尾部取第 n 个（`n=1` 最新）
-
-设计意图：
-
-- 与 TODO 中“基础数据不可变（append-only）”一致：常规推进用 `append`，实时修正用 `update_last`
 
 ## 4. 指标系统：`Indicator` / `IndicatorGraph` / `IndicatorSpec`
+  - MA (SMA/EMA/WMA) - 移动平均线
+  - RSI - 相对强弱指标
+  - MACD - 指数平滑异同移动平均线
+  - ATR - 平均真实波幅
+  - BOLL - 布林带
+  - VRI - 成交量比率指标
+  - VWAP - 成交量加权平均价格
+  - OBV - 能量潮指标
 
-### 4.1 `Indicator` trait 与 `IndicatorValue`
+- `IndicatorSpec` (hashable, used for auto-dedup):
+  - `Sma { field: Field, period: usize }`
+  - `Ema { field: Field, period: usize }`
+  - `StdDev { field: Field, period: usize }`
+  - `Rsi { period: usize }` (close only)
+  - `Boll { period: usize, k_bits: u64 }` (uses `SMA(close,period)` + `StdDev(close,period)`)
+  - `Macd { fast: usize, slow: usize, signal: usize }`
 
-定义见 `packages/hquant-rs/src/indicators/mod.rs`。
-
-`Indicator` 的关键约定：
-
-- 状态型对象：内部保存历史（通常用 `F64RingBuffer` 或 `RingBuffer`）
-- 两套更新 API：
-  - `push(&Bar)`：追加新 bar，对应 `KlineSeries.append`
-  - `update_last(&Bar)`：更新最后一个 bar，对应 `KlineSeries.update_last`
-- 读取：
-  - `value() -> Option<f64>`：当前值
-  - `result() -> Option<IndicatorValue>`：可携带 `extra`（例如 BOLL 上下轨、MACD 的 signal/hist）
-  - `get/get_from_end/len`：历史访问（供策略/DSL 用）
-- 就绪判断：
-  - `min_periods()`：最小样本数
-  - `is_ready()`：是否可以稳定输出
-
-`IndicatorValue`：
-
-- `value/timestamp/extra`
-- `extra: Option<Vec<f64>>` 用于组合指标的附加序列
-
-### 4.2 `PriceType`：指标输入字段选择
-
-定义见 `packages/hquant-rs/src/indicators/mod.rs`：
-
-- `Open/High/Low/Close/Volume/Typical/Median/Average`
-- `extract(&Bar) -> f64`：从 bar 取对应输入
-
-### 4.3 两种“注册指标”的方式：Builder vs Spec
-
-#### Builder（不去重）
-
-在 `packages/hquant-rs/src/indicators/builder.rs` 中提供 `MABuilder/RSIBuilder/...`，并在 `lib.rs` 里 re-export 了便捷函数（例如 `ma().period(20).sma()`）。
-
-特点：
-
-- API 友好，构建 `Box<dyn Indicator>`
-- 进入 `IndicatorGraph.add_boxed(...)` 时属于 “opaque node”，**不会去重**
-
-#### `IndicatorSpec`（会去重 + 支持组合指标共享依赖）
-
-定义见 `packages/hquant-rs/src/indicators/spec.rs`，并由 `IndicatorGraph.add(...)` 使用：
-
-- `IndicatorSpec` 是可 Hash/Eq 的“指标参数描述”
-- `dependencies()` 定义组合指标依赖：  
-  - `Macd` 依赖 `Ema(fast)` 与 `Ema(slow)`  
-  - `Boll` 依赖 `Sma(period)` 与 `StdDev(period)`
-- `F64Key` 用 bit-level hash 解决 `f64` 作为参数的可哈希问题（用于 BOLL 的 std_dev_factor）
-
-### 4.4 `IndicatorGraph`：DAG 去重与拓扑执行
-
-实现见 `packages/hquant-rs/src/indicators/graph.rs`。
-
-核心职责：
-
+### `IndicatorGraph`：DAG 去重与拓扑执行 
+- role: indicator DAG + output ring columns; auto-dedup by `IndicatorSpec`
 - **去重**：`spec_map: HashMap<IndicatorSpec, IndicatorId>`，同 spec 复用同一 node
 - **依赖建图**：添加组合 spec 时先递归添加依赖 spec，得到 `deps: Vec<IndicatorId>`
-- **拓扑执行**：使用 Kahn 算法计算 `execution_order`
+- **拓扑执行**：使用 Kahn 算法计算
 
-push/update_last 的执行模型（重要）：
+## Strategy DSL
+### High-level 
+- input: multi-line DSL; each non-empty, non-comment line is a rule:
+  - format: `IF <condition> THEN <action>`
+- actions:
+  - `BUY(meta?)|SELL(meta?)|HOLD()` (also accepts `BUY(hit)` etc) hit = {"symbol": "BTC-USDT", "label": 1, ts: 17000000090}
+- evaluation:
+  - rules evaluated top-down per bar; first match emits `Signal`
+  - if indicator value is `NaN`, comparisons are `false`
+- compile API:
+  - `compile_strategy(id, name, dsl, graph: &mut IndicatorGraph) -> Result<CompiledStrategy, StrategyError>`
+  - multi-period compile (internal): `compile_multi_strategy(id, name, dsl, resolver) -> Result<CompiledStrategyT<MultiIndicatorRef>, StrategyError>`
+- multi-period field suffix:
+  - series refs may include `@<period>` (e.g. `close@4h` | `close@15m`)
 
-- 每次 `push(&Bar)` / `update_last(&Bar)`：
-  - 确保拓扑序已计算
-  - 按拓扑序遍历 node
-  - 对于有依赖的 node：先从 `values[dep]` 收集依赖输出，再调用
-    - `indicator.push_with_deps(bar, dep_values)` 或 `update_last_with_deps`
-  - 将当前 node 的 `indicator.value()` 缓存到 `values[id]` 供后续依赖使用
+- 向量类：
+  - `NORMALIZE(close@4h, length=30)` 4h周期的close数据归一化
+  - `VEC_STORE("name")`：要求 store 已存在，否则报错
+  - `SIMILARITY(store, vector, 0.9)`：余弦相似度，阈值由 `VectorStore.threshold` 控制（默认 0.9）, 只返回 top, not topk
 
-组合指标的两种运行模式：
+### Condition grammar
+- boolean ops: `AND`, `OR`, `NOT` (also `!`)
+- precedence: `NOT` > `AND` > `OR`
+- parentheses supported
+- comparison: `< <= > >= == !=`
+- indicator call: `IDENT("(" arg_list? ")")` 
 
-- Graph mode（有 deps）：例如 `MACD::new_graph_mode(...)`、`BOLL::new_graph_mode(...)`
-- Standalone mode（无 deps）：例如 `MACD::with_price_type(...)`，内部自己持有子指标
+### Supported indicator calls in conditions
+- `RSI(<period>)` or `RSI(close@15m, period=<n>)`
+  - series field restriction: close only
+- `SMA(<series>, <period>)` or kwargs `SMA(close@4h, period=20)`
+- `EMA(<series>, <period>)`
+- `STDDEV(<series>, <period>)`
+- series field names: `open|high|low|close|volume|buy_volume`
 
-命名访问（alias）：
-
-- `add_with_name(name, spec)` / `add_boxed(name, ...)` 会记录 `aliases[name] = id`
-- 策略侧通过 `IndicatorSnapshot.value("name")` / `value_from_end("name", n)` 读取
-
-## 5. 引擎编排：`QuantEngine`
-
-实现见 `packages/hquant-rs/src/lib.rs`。
-
-`QuantEngine` 的核心字段：
-
-- `klines: KlineSeries`
-- `graph: IndicatorGraph`
-- `strategies: Vec<Box<dyn Strategy>>`（Rust 策略）
-- `aggregator: Option<MultiTimeFrameAggregator>`
-- `backtest: Option<BacktestEngine>`
-
-关键流程：`append_bar(&Bar) -> Vec<Signal>`
-
-1. `klines.append(bar)`
-2. `graph.push(bar)`：指标 DAG 更新
-3. `aggregator.push(bar)`（可选）
-4. `evaluate_strategies(bar)`：遍历 Rust `Strategy::evaluate(...)`
-5. `backtest.process_signal(signal, bar)`（可选）
-
-实时更新：`update_last_bar(&Bar)`
-
-- `klines.update_last(bar)`
-- `graph.update_last(bar)`
-- `aggregator.update_last(bar)`（可选）
-
-数据读取：
-
-- `indicator_value(name)` / `indicator_result(name)` / `indicator_ready(name)`
-- `graph_summary()`：辅助调试去重效果（node 数、composite 数等）
-
-## 6. 策略系统（Rust trait）
-
-实现见 `packages/hquant-rs/src/strategy.rs`。
-
-核心类型：
-
-- `Signal { side, strength, reason, timestamp }`（strength 会 clamp 到 `[0,1]`）
-- `StrategyContext { bar, indicators: IndicatorSnapshot }`
-- `Strategy` trait：
-  - `fn evaluate(&mut self, ctx: &StrategyContext) -> Option<Signal>`
-  - 可持有内部状态（例如 MA crossover 需要记忆上一根的快慢线）
-
-内置策略示例（可复用或参考实现）：
-
-- `RSIStrategy`
-- `MACrossStrategy`
-- `MACDStrategy`
-- `BollStrategy`
-- `FnStrategy`：用闭包快速拼策略
-
-## 7. Strategy DSL（pest + 解释执行）
-
-模块位置：`packages/hquant-rs/src/dsl/*`
-
-### 7.1 语法（`strategy.pest`）
-
-语法定义见 `packages/hquant-rs/src/dsl/strategy.pest`，支持：
-
-- 赋值：`x = expr`
-- 条件动作：`IF expr THEN BUY(...) | SELL(...) | HOLD`
-- 逻辑：`AND/OR/NOT`（也支持 `!`）
-- 比较：`< <= > >= == !=`
-- 四则：`+ - * /`
-- 字段访问：`hit.label`、`hit.score`
-- 多周期后缀：`close@4h`（仅语法与上下文接口；实际多周期喂入尚未贯通）
-
-### 7.2 AST 与执行模型
-
-- AST：`packages/hquant-rs/src/dsl/ast.rs`
-- 解析：`packages/hquant-rs/src/dsl/parser.rs`（pest）
-- 执行：`packages/hquant-rs/src/dsl/eval.rs`
-
-执行上下文 `DslContext`（重要）：
-
-- `bar: &Bar`
-- `indicators: &IndicatorGraph`
-- `period_bars: HashMap<String, &Bar>`
-- `period_indicators: HashMap<String, &IndicatorGraph>`
-
-解释器 `DslEngine`：
-
-- 运行时变量：`variables: HashMap<String, Value>`
-- 向量库：`vector_store: VectorStore`
-- 输出信号缓冲：`signals: Vec<Signal>`
-- 每次 `evaluate(ctx)` 会清空变量与 signals，逐条执行 statements
-
-### 7.3 内置函数（当前实现）
-
-在 `packages/hquant-rs/src/dsl/eval.rs::eval_function` 中：
-
-指标类（返回当前值，依赖 `IndicatorGraph` 中的 alias 命名）：
-
-- `EMA/SMA/WMA/MA`：默认尝试读取 `"{name_lower}_{period}"`（例如 `ema_20`）
-- `RSI(period?)`：尝试 `rsi_{period}` 或 `rsi`
-- `MACD()`：读取 `macd`
-- `ATR(period?)`：尝试 `atr_{period}` 或 `atr`
-- `BOLL()`：读取 `boll`
-
-向量类：
-
-- `NORMALIZE(x, length=30)`
-  - 若参数是 `Variable(name)`：会尝试 `ctx.get_indicator_history(name, ..., length)` 并做 `min_max_normalize`
-  - 若参数是 `Series(close/open/...)`：当前实现为 stub（返回全 0 向量），因为 `DslContext` 目前只拿到 `&Bar`，没有拿到 `&KlineSeries`
-- `VEC_STORE("name")`：要求 store 已存在，否则报错
-- `SIMILARITY(store, vector)`：余弦相似度，阈值由 `VectorStore.threshold` 控制（默认 0.9）
-
-动作：
-
-- `BUY(meta?)` / `SELL(meta?)` / `HOLD`
-- `meta` 目前只读取 `reason="..."` 作为 `Signal.reason`；强度固定为 `0.8`
-
-### 7.4 向量库 `VectorStore`
-
-实现见 `packages/hquant-rs/src/dsl/vector_store.rs`：
-
+### 向量库 `VectorStore`
 - `VectorStore::load(name, Vec<LabeledVector>)`
 - `find_similar(name, query) -> Option<SimilarityResult>`
 - 相似度：`cosine_similarity`
 - 归一化：`min_max_normalize/normalize_vector/z_score_normalize`
 
-与 TODO 的关系：
 
-- TODO 规划将外部向量作为“一等时间序列输入”，并与回测/实盘共用事件流；当前实现仅在 DSL 内提供 store + similarity 的最小闭环
+## Aggregation (multi-period candles)
 
-## 8. 聚合器（多周期 K 线）
+## Period
+### `Period`
+- `Period::parse("15m"|"4h"|"500ms"|...) -> Result<Period>`
+  - units supported: `ms|s|m|h|d`
+- `as_ms() -> i64`
 
-实现见 `packages/hquant-rs/src/aggregator.rs`。
-
-### 8.1 `TimeFrame`
-
-- 枚举：`M1/M5/M15/M30/H1/H4/D1/W1`
-- `millis()`：时间跨度（ms）
-- `from_str("15m"/"H4"/...)`
-- `align_timestamp(ts)`：对齐到周期起点
-- `is_multiple_of` 与 `ratio`
-
-### 8.2 `Aggregator`：单对周期聚合
-
-- 构造：`Aggregator::new(source_tf, target_tf, capacity)`
+### `Aggregator`：单对周期聚合
+- 支持周期流向： 15m -> 1h -> 4h -> 1d
+- 构造：`Aggregator::new(periods: Vec<Period>)` Aggregator::new(vec![Period::parse("15m"), Period::parse("4h")] 多周期，
 - `push(&Bar) -> bool`：喂入源周期 bar；当检测到新周期开始时，会把上一周期聚合结果 append 到 output，并返回 `true`
-- `flush()`：强制把当前未完结周期写入 output（回测结束时使用）
-- 合并规则与 TODO 一致：`open=first, high=max, low=min, close=last, volume+=, buy_volume+=`
+- `flush()` closes all in-progress candles
+- `poll_events() -> Vec<AggregatorEvent>` drains queue
+- `AggregateCandle` fields:
+  - `open_time`, `open/high/low/close`, `volume`, `buy_volume`
+- 合并规则：`open=first, high=max, low=min, close=last, volume+=, buy_volume+=`
+- 注意：周期结束延迟2个周期删除，避免缓存爆炸
 
-### 8.3 `MultiTimeFrameAggregator`
 
-- 管理多个 `Aggregator`，允许一次维护多条目标周期序列
-- 当前 `QuantEngine` 仅负责 push/update_last；多周期结果通过 `aggregator.output(tf)`（实现见文件后半部分）读取
+## 引擎编排：`QuantEngine`
+
+`HQuant` 的核心字段：
+
+- state:
+  - `bars: KlineBuffer` (SoA ring)
+  - `indicators: IndicatorGraph` (dedup + outputs)
+  - `strategies: Vec<CompiledStrategy>`
+  - `signals: VecDeque<Signal>`
+
+- API:
+  - `HQuant::new(capacity: usize) -> Self`
+  - `capacity() -> usize`
+  - `len() -> usize`
+  - `bars() -> &KlineBuffer` (read-only view)
+  - `add_indicator(spec: IndicatorSpec) -> IndicatorId`
+  - `indicator_last(id: IndicatorId) -> Option<IndicatorValue>`
+  - `add_strategy(name: &str, dsl: &str) -> Result<u32, StrategyError>` (allocates monotonically increasing ids)
+  - `push_kline(bar: Bar)`:
+    - push to `bars`
+    - `indicators.on_push(&bars)`
+    - eval all strategies (emit 0..N signals)
+  - `feed_kline(bar: Bar)`   dep `Aggregation` close bar
+  - `update_last(bar: Bar)`:
+    - replace last bar if exists
+    - `indicators.on_update_last(old_bar, new_bar, &bars)`
+    - eval strategies
+  - `poll_signals() -> Vec<Signal>` (drain all)
+
+### `MultiHQuant` (`packages/hquant-rs/src/multi.rs`)
+- constructor: `MultiHQuant::new(capacity, periods: Vec<Period>)`
+  - creates `HQuant` per period (keyed by `period_ms`)
+  - period index mapping: `idx=1..` for per-period engines; `idx=0` reserved for multi-strategies
+- ingestion:
+  - `feed_bar(bar)`:
+    - `Aggregator::push(bar)` => events
+    - routes events into each period engine:
+      - `KlineUpdated`: `update_last` if same `open_time` else `push_kline`
+      - `KlineClosed`: ensures final candle written (update_last/push_kline)
+    - collects per-period signals and encodes ids
+    - evaluates cross-period strategies after routing events
+  - `flush()` => closes all buckets then routes
+- output:
+  - `poll_signals() -> Vec<Signal>` drains multi queue
 
 ## 9. 回测引擎
 
@@ -431,14 +319,4 @@ Feature gate（见 `packages/hquant-rs/Cargo.toml`）：
 - 引擎/FFI 在聚合器“周期闭合”时生成对应周期的 bar + 该周期的指标图
 - 在调用 `DslEngine.evaluate(&ctx)` 前，把对应 `period_bars/period_indicators` 填进去
 
-## 12. TODO.md 中的规划要点（与现状对照）
-
-摘取 `packages/hquant-rs/TODO.md` 的关键方向（此处仅做对齐，不承诺已实现）：
-
-- SoA + RingBuffer 的核心存储模型（已实现）
-- 指标可增量计算、组合指标共享依赖（已实现：`IndicatorGraph + IndicatorSpec`）
-- Strategy DSL（已实现：parser + eval；但部分功能仍是 stub）
-- 聚合器（已实现：`Aggregator/MultiTimeFrameAggregator`）
-- 回测（已实现：`BacktestEngine` + `FuturesBacktest`）
-- FFI（已实现：Python/Node 包装；零拷贝与多周期“生产级事件流”仍待补齐）
 
