@@ -23,11 +23,6 @@
   - python: `pyo3` (`extension-module`), `numpy`
 - entry: `packages/hquant-rs/src/lib.rs`
 
-非目标（当前代码现状）：
-
-- TODO 中提到的“零拷贝 ndarray / NumPy 列式传递”目前并未在 FFI 输出中实现（现在多为 dict/list/Vec 形式）
-- DSL 中 `NORMALIZE(close, length=...)` 对原始 KlineSeries 历史访问目前是 stub（返回全 0 向量）；只有基于“变量名=指标名”的 history 才能工作
-- DSL 的 `close@4h` 语法与 `DslContext.period_bars/period_indicators` 已具备接口，但 FFI/引擎侧尚未填充多周期上下文
 
 ## 2. 目录与模块速览
 
@@ -38,30 +33,41 @@
 Module Map:
 
 - `packages/hquant-rs/src/types.rs`: `Bar`, `Field`, `Action`, `Signal`
-- `packages/hquant-rs/src/circular.rs`: `CircularColumn<T>` fixed-cap ring
+- `packages/hquant-rs/src/commom/mod.rs`: common
+- `packages/hquant-rs/src/commom/circular.rs`: `CircularColumn<T>` fixed-cap ring
 - `packages/hquant-rs/src/kline_buffer.rs`: `KlineBuffer` SoA ring of bars
-- `packages/hquant-rs/src/indicators/*`：`IndicatorGraph` 指标实现、构建器、图执行与去重
-- `packages/hquant-rs/src/strategy/mod.rs`: strategy DSL compile/eval
-- `packages/hquant-rs/src/dsl/*`：DSL AST / parser / eval / vector_store
+- `packages/hquant-rs/src/indicators/*`：`IndicatorGraph` boll,ema，等指标实现、构建器、图执行与去重
+- `packages/hquant-rs/src/strategy/mod.ts`: strategy compile
+- `packages/hquant-rs/src/strategy/vector_store.ts`: strategy vector_store
+- `packages/hquant-rs/src/dsl/*`：DSL AST / parser / eval
+- `packages/hquant-rs/src/hquant.rs`: `HQuant` runtime
+- `packages/hquant-rs/src/multi-hquant.rs`: `MultiHQuant` runtime
+- `packages/hquant-rs/src/period.rs`: `Period`
 - `packages/hquant-rs/src/aggregator.rs`：`Aggregator` multi-period candle aggregation
-- `packages/hquant-rs/src/backtest.rs`：`FuturesBacktest` futures backtest
+- `packages/hquant-rs/src/backtest.rs`：`FuturesBacktest` USDM futures backtest
 - `packages/hquant-rs/src/ffi/node.rs`: Node addon (feature `ffi-node`)
 - `packages/hquant-rs/src/ffi/python.rs`: Python module (feature `ffi-python`)
 
-## 3. 核心数据结构：RingBuffer / KlineSeries
+## 3. Core Types：RingBuffer / KlineSeries
 
-### 3.1 `RingBuffer<T>`：固定容量环形缓冲区
+### 3.1 `CircularBuffer<T>`：固定容量环形缓冲区
 
-实现见 `packages/hquant-rs/src/common/ring_buffer.rs`。
-
-特性与语义：
-
-- 固定容量 `capacity`，内部 `Vec<T>` 预分配并以 `T::default()` 初始化（要求 `T: Default + Clone`）
-- `push(value)`：O(1) 追加；满了会覆盖最旧元素
-- `get(index)`：逻辑索引（`0` 最旧，`len-1` 最新）；满载后通过 `head` 映射到实际下标
-- `update_last(value)`：O(1) 覆盖最新元素（用于实时 K线“未收盘更新”）
-- `as_slices()`：返回最多两段 slice（处理 ring 断点），便于批量计算
-
+### `CircularBuffer<T>` (`packages/hquant-rs/src/circular.rs`)
+- generic: `T: Copy + Default`
+- ring metadata:
+  - `capacity: usize` (fixed; `>0`)
+  - `len: usize` (`<= capacity`)
+  - `head: usize` (next write index into backing storage)
+- methods:
+  - `new(capacity) -> Self`
+  - `capacity()`, `len()`, `is_empty()`, `is_full()`
+  - `push(v)` (overwrites oldest when full)
+  - `update_last(v)` (no-op if empty)
+  - `get(i)` (index from oldest, `0..len`)
+  - `get_from_end(i)` (index from newest)
+  - `raw_parts() -> (*const T, capacity, len, head)` (order may wrap)
+  - `to_vec_ordered() -> Vec<T>` (copy, chronological oldest->newest)
+- Iterator trait
 注意：
 
 - 由于覆盖语义，超过 `capacity` 的历史不可恢复；任何“全量回放”需要外部保存源数据
