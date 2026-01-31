@@ -37,7 +37,8 @@
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
     "build:native": "cd ../hquant-rs && cargo build --release --features ffi-node && cp target/release/libhquant.dylib ../hquant-js/native/hquant.node || cp target/release/libhquant.so ../hquant-js/native/hquant.node",
-    "test": "jest --colors --onlyChanged"
+    "test": "jest --colors --onlyChanged",
+    "test:e2e": "jest --colors __test__/e2e.test.ts"
   },
   "devDependencies": {
     "@swc/core": "^1.6.3",

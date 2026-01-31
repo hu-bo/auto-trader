@@ -73,19 +73,20 @@ pytest -q test_e2e.py
 
 ## 多周期（feed_bar 流）
 
-当前 FFI 侧主要用 “聚合器 + 单周期引擎” 组合实现多周期流：
+多周期有两种常用方式：
 
-- 聚合器：
-  - Node：`KlineAggregator`
-  - Python：`Aggregator`（对应 Rust `PyAggregator`）
-- 引擎：Node/Python 均为 `HQuant`（单周期策略）
+- **方式 A（推荐：多周期 DSL）**：`MultiHQuant`
+  - Node：`MultiHQuant`
+  - Python：`MultiHQuant`
+  - 适用：需要在 DSL 里使用 `close@4h` 这种跨周期引用（`addMultiStrategy/add_multi_strategy`）
+- **方式 B（聚合器 + 单周期引擎）**：`KlineAggregator/Aggregator` + `HQuant`
+  - 适用：只想拿到聚合后的 K 线事件、或者策略只跑在单一周期，上层自行组织
 
 典型流程：
 
-1) `1m` 实时 bar 喂给聚合器；
-2) 聚合器在 `15m/1h/...` 闭合时吐出事件（`kind=KlineClosed` + `period` + `candle`）；
-3) 同时把 `1m` bar 喂给 `HQuant`，用 DSL 策略生成信号；
-4) 将信号喂给回测器或真实下单逻辑。
+1) base 周期 bar 喂给 `MultiHQuant.feedBar/feed_bar`（内部会完成多周期聚合与路由）；
+2) `MultiHQuant.pollSignals/poll_signals` 拉取信号；
+3) 将信号喂给回测器或真实下单逻辑（合约回测推荐 `FuturesBacktest`）。
 
 > `period` 字符串可能是 `15m/1h` 或 `M15/H1`（取决于 native 模块版本）；e2e 测试里对两种格式都做了兼容。
 
@@ -118,5 +119,4 @@ pytest -q test_e2e.py
 - 变量：`LET v = <表达式>`
 - 支持：`AND/OR/NOT`、比较运算、括号
 - 指标/函数：`RSI/SMA/EMA/STDDEV/MACD/BOLL/NORMALIZE/SIMILARITY/VEC_STORE`
-- `@<period>`：仅在 Rust `MultiHQuant` 下可用（例如 `close@4h`）；单周期 `HQuant` 会拒绝带 `@` 的字段引用。
-
+- `@<period>`：在 `MultiHQuant` 下可用（Rust/Node/Python），例如 `close@4h`；单周期 `HQuant` 会拒绝带 `@` 的字段引用。

@@ -203,8 +203,8 @@ Repo 内 e2e 用例：`packages/hquant-js/__test__/e2e.test.ts`
 
 ```bash
 cd packages/hquant-js
-npm test
-# 或仅跑单文件
+npm run test:e2e
+# 或直接跑单文件
 npx jest __test__/e2e.test.ts
 ```
 
