@@ -102,6 +102,41 @@ async def _recover_instance()  # 恢复单个实例
 
 ---
 
+### 8. NATS 客户端 ✅
+**文件**: [app/nats/client.py](app/nats/client.py)
+
+**核心功能**:
+- ✅ NATS 连接管理
+- ✅ 自动重连处理
+- ✅ 消息订阅/发布
+- ✅ 订阅管理和重连后自动重新订阅
+- ✅ 占位符模式（fallback when nats-py not installed）
+
+**关键方法**:
+```python
+async def connect()  # 连接到 NATS 服务器
+async def subscribe(subject, queue_group, callback)  # 订阅主题
+async def publish(subject, payload, headers)  # 发布消息
+async def _on_reconnected()  # 重连后自动重新订阅所有主题
+```
+
+### 9. 信号发布器 ✅
+**文件**: [app/nats/signal_publisher.py](app/nats/signal_publisher.py)
+
+**核心功能**:
+- ✅ 发布信号到 `strategy.signals.{userId}.{symbol}.{tradeType}`
+- ✅ 发布实例状态更新
+- ✅ 批量信号发布
+
+**关键方法**:
+```python
+async def publish_signal(user_id, symbol, trade_type, signal_data)
+async def publish_instance_status(instance_key, status, message)
+async def publish_signals_batch(signals)
+```
+
+---
+
 ## 待实现 ⏳
 
 ### 1. 数据库模型
@@ -109,21 +144,11 @@ async def _recover_instance()  # 恢复单个实例
 - SQLAlchemy 模型定义（`StrategyInstanceState`, `StrategyRecoveryLog`）
 - 数据库连接池实现
 
-### 2. NATS 客户端
-- `/apps/strategy-engine/app/nats/client.py`
-- NATS 连接管理
-- 自动重连处理
-- 消息订阅/发布
-
-### 3. 信号发布器
-- `/apps/strategy-engine/app/nats/signal_publisher.py`
-- 发布信号到 `strategy.signals.{userId}.{symbol}.{tradeType}`
-
-### 4. 状态对账服务
+### 2. 状态对账服务
 - `/apps/strategy-engine/app/core/state_reconciliation.py`
 - 定期检查内存与数据库一致性
 
-### 5. 配置管理
+### 3. 配置管理
 - `/apps/strategy-engine/app/config.py`
 - 环境变量配置
 - 数据库/NATS/gRPC 配置
@@ -154,8 +179,9 @@ apps/strategy-engine/
 │   ├── db/
 │   │   └── models.py                   ⏳ 待实现
 │   ├── nats/
-│   │   ├── client.py                   ⏳ 待实现
-│   │   └── signal_publisher.py         ⏳ 待实现
+│   │   ├── __init__.py                 ✅
+│   │   ├── client.py                   ✅ 已实现
+│   │   └── signal_publisher.py         ✅ 已实现
 │   └── config.py                       ⏳ 待实现
 ├── scripts/
 │   └── generate_proto.sh               ✅ 已实现
@@ -180,12 +206,15 @@ cd apps/strategy-engine
 pip install grpcio grpcio-tools asyncpg nats-py
 ```
 
-### 3. 启动服务（占位符模式）
+### 3. 启动服务
 ```bash
 python -m app.main
 ```
 
-**注意**: 当前使用占位符数据库和 NATS 客户端，需要实现实际连接逻辑
+**注意**:
+- NATS 客户端已实现，如果未安装 nats-py 会自动使用占位符模式
+- 数据库使用占位符，需要实现实际连接逻辑
+- 设置环境变量 `NATS_SERVERS` 可指定 NATS 服务器地址（默认: nats://localhost:4222）
 
 ---
 
@@ -251,12 +280,18 @@ logs = await recovery.get_recovery_logs()
 ### 优先级排序：
 
 1. **实现数据库模型和连接** - 替换占位符，支持实际数据持久化
-2. **实现 NATS 客户端** - 替换占位符，连接实际 NATS 服务器
-3. **实现配置管理** - 环境变量配置
-4. **完善 gRPC 服务** - 实现 GetSubscription/ListSubscriptions
-5. **实现状态对账服务** - 定期检查一致性
+   - 创建 SQLAlchemy 模型 (`StrategyInstanceState`, `StrategyRecoveryLog`)
+   - 实现 asyncpg 数据库连接池
+   - 更新 main.py 中的数据库初始化
+2. **实现配置管理** - 环境变量配置
+   - 数据库配置 (host, port, database, user, password)
+   - NATS 配置 (servers, reconnect settings)
+   - gRPC 配置 (host, port)
+3. **完善 gRPC 服务** - 实现 GetSubscription/ListSubscriptions
+4. **实现状态对账服务** - 定期检查一致性
+5. **生成 proto 代码并测试** - 运行 `./scripts/generate_proto.sh` 并启用 gRPC 服务
 
 ---
 
-**当前进度**: 6/10 核心模块完成（60%）
-**下一里程碑**: 数据库和 NATS 实际连接
+**当前进度**: 9/12 核心模块完成（75%）
+**下一里程碑**: 数据库模型实现和实际数据库连接
