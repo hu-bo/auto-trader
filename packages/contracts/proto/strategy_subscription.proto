@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package strategy_subscription.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// 策略订阅服务
+service SubscriptionService {
+  // 订阅策略（启动实时运行）
+  rpc Subscribe(SubscribeRequest) returns (SubscriptionResponse);
+
+  // 取消订阅
+  rpc Unsubscribe(UnsubscribeRequest) returns (google.protobuf.Empty);
+
+  // 获取订阅状态
+  rpc GetSubscription(GetSubscriptionRequest) returns (SubscriptionResponse);
+
+  // 列出用户订阅
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse);
+
+  // 获取实例统计信息（用于监控）
+  rpc GetInstanceStats(google.protobuf.Empty) returns (InstanceStatsResponse);
+}
+
+// ========== 消息定义 ==========
+
+// 订阅状态枚举
+enum SubscriptionStatus {
+  SUBSCRIPTION_STATUS_UNSPECIFIED = 0;
+  SUBSCRIPTION_STATUS_RUNNING = 1;
+  SUBSCRIPTION_STATUS_STOPPED = 2;
+  SUBSCRIPTION_STATUS_ERROR = 3;
+}
+
+// 订阅请求
+message SubscribeRequest {
+  string user_id = 1;                   // 用户ID
+  string subscription_id = 2;            // 订阅ID（strategy_order.id）
+  string strategy_id = 3;                // 策略ID
+  string symbol = 4;                     // 交易对（如 BTC-USDT）
+  string exchange = 5;                   // 交易所（binance, okx）
+  string trade_type = 6;                 // 交易类型（spot, futures, delivery）
+  string period = 7;                     // K线周期（15m, 1h, 1d）
+  string parameters = 8;                 // 策略参数（JSON 字符串）
+}
+
+// 订阅响应
+message SubscriptionResponse {
+  string subscription_id = 1;            // 订阅ID
+  string user_id = 2;                    // 用户ID
+  string instance_key = 3;               // 实例Key（用于取消订阅）
+  SubscriptionStatus status = 4;         // 订阅状态
+  int32 ref_count = 5;                   // 实例引用计数
+  string nats_subject = 6;               // NATS 主题
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp stopped_at = 8;
+}
+
+// 取消订阅请求
+message UnsubscribeRequest {
+  string subscription_id = 1;            // 订阅ID
+  string instance_key = 2;               // 实例Key
+}
+
+// 获取订阅请求
+message GetSubscriptionRequest {
+  string subscription_id = 1;            // 订阅ID
+}
+
+// 列出订阅请求
+message ListSubscriptionsRequest {
+  string user_id = 1;                    // 用户ID（可选，为空则返回所有）
+  int32 page_size = 2;                   // 分页大小
+  string page_token = 3;                 // 分页令牌
+}
+
+// 列出订阅响应
+message ListSubscriptionsResponse {
+  repeated SubscriptionResponse subscriptions = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// 实例统计响应
+message InstanceStatsResponse {
+  int32 total_instances = 1;             // 总实例数
+  int32 running_instances = 2;           // 运行中实例数
+  int32 stopped_instances = 3;           // 已停止实例数
+  int32 error_instances = 4;             // 错误实例数
+  int32 total_subscriptions = 5;         // 总订阅数
+  map<string, int32> instances_by_exchange = 6;  // 按交易所分组
+  map<string, int32> instances_by_strategy = 7;  // 按策略分组
+}
