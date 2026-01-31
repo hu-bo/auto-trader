@@ -158,25 +158,31 @@ class StrategyEngineApp:
         return PlaceholderPool()
 
     async def _init_nats(self):
-        """初始化 NATS 客户端（占位符）"""
-        # TODO: 实现实际的 NATS 连接逻辑
-        # import nats
-        # nc = await nats.connect("nats://localhost:4222")
-        # return nc
+        """初始化 NATS 客户端"""
+        from app.nats import NATSClientWrapper
 
-        logger.warning("Using placeholder NATS client")
+        # 从环境变量读取配置（可选）
+        import os
 
-        class PlaceholderNats:
-            async def subscribe(self, subject, queue_group=None, callback=None):
-                logger.info(f"[Placeholder] Subscribed to {subject}")
+        nats_servers = os.getenv("NATS_SERVERS", "nats://localhost:4222")
 
-            async def unsubscribe(self, subject):
-                logger.info(f"[Placeholder] Unsubscribed from {subject}")
+        # 创建 NATS 客户端
+        nats_client = NATSClientWrapper(
+            servers=nats_servers,
+            name="strategy-engine",
+            max_reconnect_attempts=-1,  # 无限重试
+            reconnect_time_wait=2,  # 2秒重连间隔
+        )
 
-            async def close(self):
-                pass
+        # 连接到 NATS
+        try:
+            await nats_client.connect()
+            logger.info(f"NATS client initialized and connected to {nats_servers}")
+        except Exception as e:
+            logger.warning(f"Failed to connect to NATS, using placeholder mode: {e}")
+            # 如果连接失败，客户端会自动使用占位符模式
 
-        return PlaceholderNats()
+        return nats_client
 
 
 async def main():
