@@ -42,7 +42,7 @@
 
 | 主题 | 说明 | 数据格式 |
 |------|------|----------|
-| `strategy.signals.{symbol}.{tradeType}` | 交易信号 | Signal |
+| `signals.{echange}.{symbol}.{tradeType}` | 交易信号 | Signal |
 
 
 ## 策略复用
@@ -103,7 +103,7 @@ C用户 使用向量策略 量化交易 BTC-USDT/ETH-USDT
 #### 1. Strategy Manager（策略管理器）
 
 **职责**：
-- 策略生命周期管理（创建、启动、停止、销毁）
+- 策略生命周期管理（创建、启动、停止、删除）
 - 用户策略订阅管理（用户-策略-交易对绑定关系）
 - 策略实例池管理（复用机制）
 - 资源动态分配与回收
@@ -159,12 +159,11 @@ C用户 使用向量策略 量化交易 BTC-USDT/ETH-USDT
 6. 发布信号到 NATS（多用户分发）
 ```
 
-#### 3. Indicator Calculator（指标计算器）
+#### 3. Indicator Calculator（E:\Project\my-project\auto-trader\packages\hquant-py）
 
 **职责**：
 - 技术指标计算（基于 hquant-py）
-- K 线数据聚合（1m → 5m/15m/1h/1d）
-- 指标结果缓存管理
+- K 线数据聚合（15m -> 4h/1d）MultiHQuant(capacity=256, periods=["15m", "4h", "1d"])
 
 **支持的指标**：
 - 趋势类：SMA、EMA、MACD、Bollinger Bands
@@ -210,11 +209,11 @@ NATS (K 线数据)
   │
   ├─▶ strategy.BTC-USDT.EMA  ──▶ 计算指标 ──▶ 执行策略 ──▶ NATS (信号)
   │         ├─▶ User A 订阅                           │
-  │         └─▶ User B 订阅                           ├─▶ strategy.signals.BTC-USDT.spot (User A)
-  │                                                    └─▶ strategy.signals.BTC-USDT.spot (User B)
+  │         └─▶ User B 订阅                           ├─▶ signals.biance.BTC-USDT.spot (User A)
+  │                                                    └─▶ signals.biance.BTC-USDT.spot (User B)
   │
   └─▶ strategy.ETH-USDT.RSI  ──▶ 计算指标 ──▶ 执行策略 ──▶ NATS (信号)
-            └─▶ User C 订阅                           └─▶ strategy.signals.ETH-USDT.spot (User C)
+            └─▶ User C 订阅                           └─▶ signals.biance.ETH-USDT.spot (User C)
 ```
 
 ### 回测数据流
@@ -242,8 +241,8 @@ PostgreSQL (历史 K 线)
 
 | 接口类型 | 适用场景 | 端口 | 协议 |
 |---------|---------|------|------|
-| **REST API** | Web 前端、第三方集成 | 8002 | HTTP/HTTPS |
-| **gRPC API** | 内部微服务调用（高性能） | 50051 | gRPC/TLS |
+| **REST API** | Web 前端、第三方集成 | 9001 | HTTP/HTTPS |
+| **gRPC API** | 内部微服务调用（高性能） | 50001 | gRPC/TLS |
 
 ### gRPC 接口设计
 
@@ -461,7 +460,7 @@ credentials = grpc.ssl_channel_credentials(
     certificate_chain=open('certs/client.crt', 'rb').read()
 )
 
-channel = grpc.secure_channel('strategy-engine:50051', credentials)
+channel = grpc.secure_channel('strategy-engine:50001', credentials)
 stub = strategy_service_pb2_grpc.StrategyServiceStub(channel)
 
 # 创建策略
@@ -527,7 +526,7 @@ func main() {
     })
 
     // 建立连接
-    conn, err := grpc.Dial("strategy-engine:50051", grpc.WithTransportCredentials(creds))
+    conn, err := grpc.Dial("strategy-engine:50001", grpc.WithTransportCredentials(creds))
     if err != nil {
         log.Fatalf("Failed to connect: %v", err)
     }
@@ -986,9 +985,9 @@ def serve():
     )
 
     # 绑定端口（TLS）
-    server.add_secure_port('[::]:50051', server_credentials)
+    server.add_secure_port('[::]:50001', server_credentials)
 
-    print("gRPC server started on port 50051 (TLS)")
+    print("gRPC server started on port 50001 (TLS)")
     server.start()
     server.wait_for_termination()
 
@@ -1012,7 +1011,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=8002,
+        port=9001,
         ssl_keyfile="/app/certs/server.key",
         ssl_certfile="/app/certs/server.crt",
         ssl_ca_certs="/app/certs/ca.crt"
@@ -1154,7 +1153,7 @@ COPY . .
 RUN mkdir -p /app/certs
 
 # 暴露端口
-EXPOSE 8002 50051
+EXPOSE 9001 50001
 
 # 启动脚本（同时启动 REST API 和 gRPC）
 COPY scripts/start.sh /start.sh
@@ -1175,7 +1174,7 @@ python -m app.grpc.server &
 # 启动 FastAPI（前台）
 uvicorn app.main:app \
   --host 0.0.0.0 \
-  --port 8002 \
+  --port 9001 \
   --ssl-keyfile /app/certs/server.key \
   --ssl-certfile /app/certs/server.crt
 
@@ -1191,8 +1190,8 @@ services:
   strategy-engine:
     build: .
     ports:
-      - "8002:8002"   # REST API (HTTPS)
-      - "50051:50051" # gRPC (TLS)
+      - "9001:9001"   # REST API (HTTPS)
+      - "50001:50001" # gRPC (TLS)
     environment:
       - DATABASE_URL=postgresql://user:pass@postgres:5432/trading
       - NATS_URL=nats://nats:4222
@@ -1285,10 +1284,10 @@ spec:
         image: your-registry/strategy-engine:latest
         ports:
         - name: http
-          containerPort: 8002
+          containerPort: 9001
           protocol: TCP
         - name: grpc
-          containerPort: 50051
+          containerPort: 50001
           protocol: TCP
         env:
         - name: DATABASE_URL
@@ -1323,14 +1322,14 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 8002
+            port: 9001
             scheme: HTTPS  # 使用 HTTPS
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /ready
-            port: 8002
+            port: 9001
             scheme: HTTPS
           initialDelaySeconds: 10
           periodSeconds: 5
@@ -1353,12 +1352,12 @@ spec:
     app: strategy-engine
   ports:
   - name: http
-    port: 8002
-    targetPort: 8002
+    port: 9001
+    targetPort: 9001
     protocol: TCP
   - name: grpc
-    port: 50051
-    targetPort: 50051
+    port: 50001
+    targetPort: 50001
     protocol: TCP
 ---
 # Ingress 配置（可选，用于外部访问）
@@ -1386,7 +1385,7 @@ spec:
           service:
             name: strategy-engine
             port:
-              number: 8002
+              number: 9001
 ```
 
 ## 性能优化方案
@@ -1916,7 +1915,7 @@ poetry run alembic upgrade head
 
 # 同时启动 REST API 和 gRPC
 poetry run python -m app.grpc.server &  # 后台启动 gRPC
-poetry run uvicorn app.main:app --reload --port 8002  # 启动 FastAPI
+poetry run uvicorn app.main:app --reload --port 9001  # 启动 FastAPI
 ```
 
 #### 生产环境（Docker）
@@ -1938,10 +1937,10 @@ docker-compose logs -f strategy-engine
 
 ```bash
 # 健康检查
-curl https://localhost:8002/health
+curl https://localhost:9001/health
 
 # 创建策略（需要 JWT Token）
-curl -X POST https://localhost:8002/api/v1/strategies \
+curl -X POST https://localhost:9001/api/v1/strategies \
   -H "Authorization: Bearer <JWT>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1958,7 +1957,7 @@ curl -X POST https://localhost:8002/api/v1/strategies \
 grpcurl -insecure \
   -d '{"name": "Test Strategy", "type": 1, "code": "IF RSI < 30 THEN BUY"}' \
   -H "authorization: Bearer <JWT>" \
-  localhost:50051 \
+  localhost:50001 \
   strategy_engine.v1.StrategyService/CreateStrategy
 ```
 
@@ -1978,7 +1977,7 @@ with open('certs/client.crt', 'rb') as f:
     client_cert = f.read()
 
 credentials = grpc.ssl_channel_credentials(ca_cert, client_key, client_cert)
-channel = grpc.secure_channel('localhost:50051', credentials)
+channel = grpc.secure_channel('localhost:50001', credentials)
 stub = strategy_service_pb2_grpc.StrategyServiceStub(channel)
 
 # 调用服务
@@ -2033,56 +2032,7 @@ openssl verify -CAfile certs/ca.crt certs/client.crt
 openssl x509 -in certs/server.crt -text | grep -A1 "Subject Alternative Name"
 ```
 
-### Q5: 如何监控 gRPC 性能？
 
-使用 Prometheus + Grafana：
-```python
-from prometheus_client import Counter, Histogram
-
-grpc_requests_total = Counter(
-    'grpc_requests_total',
-    'Total gRPC requests',
-    ['method', 'status']
-)
-
-grpc_request_duration = Histogram(
-    'grpc_request_duration_seconds',
-    'gRPC request latency',
-    ['method']
-)
-```
-
-## 性能基准
-
-### gRPC vs REST API
-
-| 指标 | gRPC (TLS) | REST (HTTPS) | 提升 |
-|------|-----------|--------------|------|
-| 平均延迟 | 5ms | 15ms | 3x |
-| 吞吐量 | 10k req/s | 4k req/s | 2.5x |
-| 连接复用 | 是（HTTP/2） | 否（HTTP/1.1） | - |
-| 流式传输 | 原生支持 | 需要 WebSocket | - |
-| 消息体积 | Protobuf（小） | JSON（大） | ~30% |
-
-### 压力测试
-
-```bash
-# 使用 ghz 进行 gRPC 压测
-ghz --insecure \
-  --proto protos/strategy_engine.proto \
-  --call strategy_engine.v1.StrategyService/GetStrategy \
-  -d '{"strategy_id": "xxx"}' \
-  -c 100 \
-  -n 10000 \
-  localhost:50051
-
-# 输出结果
-# Requests: 10000
-# Duration: 2.5s
-# RPS: 4000
-# Average: 25ms
-# P95: 45ms
-# P99: 80ms
 ```
 
 ## 参考文档

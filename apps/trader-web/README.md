@@ -24,7 +24,7 @@ trader-web 是量化交易系统的前端应用，提供：
 | React Router | 6.x | 路由管理 |
 | Zustand | 4.x | 状态管理 |
 | TanStack Query | 5.x | 数据请求 |
-| Casdoor React SDK | latest | 统一认证 |
+| Casdoor React SDK | latest | 统一认证 packages\casdoor |
 | KLineCharts Pro | custom | K线图表 |
 
 ## 目录结构
@@ -45,7 +45,7 @@ trader-web/
 │   │   │   └── Dashboard.tsx
 │   │   ├── trading/                  # 交易相关
 │   │   │   ├── TradingView.tsx       # 交易主页
-│   │   │   ├── OrderBook.tsx         # 订单簿
+│   │   │   ├── OrderBook.tsx         # OrderBook
 │   │   │   └── TradeHistory.tsx      # 交易历史
 │   │   ├── strategy/                 # 策略管理
 │   │   │   ├── StrategyList.tsx      # 策略列表
@@ -57,9 +57,6 @@ trader-web/
 │   │   │   └── Orders.tsx
 │   │   ├── exchange/                 # 交易所配置
 │   │   │   └── ExchangeConfig.tsx
-│   │   ├── stats/                    # 统计报表
-│   │   │   ├── Overview.tsx
-│   │   │   └── PnLReport.tsx
 │   │   ├── settings/                 # 设置
 │   │   │   └── Settings.tsx
 │   │   └── admin/                    # 后台管理
@@ -76,7 +73,8 @@ trader-web/
 │   │   │   ├── PnLChart.tsx          # 收益曲线
 │   │   │   └── PieChart.tsx          # 饼图
 │   │   ├── trading/                  # 交易组件
-│   │   │   ├── OrderForm.tsx         # 下单表单
+│   │   │   ├── OrderForm.tsx         # 下单表单(现货/U本位合约/币本位)
+│   │   │   ├── StrategyOrderForm.tsx # 策略下单（risk配置）
 │   │   │   ├── PositionCard.tsx      # 仓位卡片
 │   │   │   └── OrderTable.tsx        # 订单表格
 │   │   └── common/                   # 通用组件
@@ -86,19 +84,15 @@ trader-web/
 │   ├── hooks/                        # 自定义 Hooks
 │   │   ├── useAuth.ts                # 认证相关
 │   │   ├── useWebSocket.ts           # WebSocket
-│   │   ├── useMarketData.ts          # 行情数据
-│   │   └── useNotification.ts        # 通知
 │   ├── stores/                       # 状态管理
 │   │   ├── authStore.ts              # 认证状态
-│   │   ├── marketStore.ts            # 行情状态
-│   │   └── notificationStore.ts      # 通知状态
-│   ├── services/                     # API 服务
+│   ├── api/                     # API 服务
 │   │   ├── api.ts                    # Axios 实例
-│   │   ├── auth.service.ts           # 认证服务
-│   │   ├── strategy.service.ts       # 策略服务
-│   │   ├── order.service.ts          # 订单服务
-│   │   ├── position.service.ts       # 仓位服务
-│   │   └── stats.service.ts          # 统计服务
+│   │   ├── auth.ts           # 认证服务
+│   │   ├── strategy.ts       # 策略服务
+│   │   ├── exchange.ts          # 交易所账户绑定
+│   │   ├── order.ts          # 订单服务
+│   │   ├── position.ts       # 仓位服务
 │   ├── utils/                        # 工具函数
 │   │   ├── format.ts                 # 格式化
 │   │   ├── storage.ts                # 本地存储
@@ -107,6 +101,7 @@ trader-web/
 │   │   ├── index.ts
 │   │   ├── auth.ts
 │   │   ├── order.ts
+│   │   ├── exchange.ts
 │   │   └── strategy.ts
 │   └── styles/                       # 样式
 │       ├── global.scss
@@ -127,16 +122,16 @@ trader-web/
 // src/main.tsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { CasdoorProvider } from 'casdoor-react-sdk';
+import { CasdoorProvider } from '@hquant/casdoor/client';
 import App from './App';
 
 const casdoorConfig = {
-  serverUrl: import.meta.env.VITE_CASDOOR_ENDPOINT,
-  clientId: import.meta.env.VITE_CASDOOR_CLIENT_ID,
-  appName: import.meta.env.VITE_CASDOOR_APP_NAME,
-  organizationName: import.meta.env.VITE_CASDOOR_ORG_NAME,
-  redirectPath: '/callback',
-};
+  endpoint: 'https://auth.example.com',
+  clientId: 'your-client-id',
+  orgName: 'your-org',
+  appName: 'your-app',
+  redirectUri: 'http://localhost:3000/callback',
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -150,100 +145,25 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 ### 2. 认证 Hook
 
 ```typescript
-// src/hooks/useAuth.ts
-import { useCallback } from 'react';
-import { useCasdoor } from 'casdoor-react-sdk';
-import { useAuthStore } from '../stores/authStore';
-import { authService } from '../services/auth.service';
+// LoginButton.tsx
+import { useCasdoorReact } from '@hquant/casdoor/client';
 
-export function useAuth() {
-  const { signin, signout, getAccessToken } = useCasdoor();
-  const { user, setUser, clearUser, isAuthenticated } = useAuthStore();
+function LoginButton() {
+  const { isAuthenticated, user, login, logout } = useCasdoorReact();
 
-  const login = useCallback(() => {
-    signin();
-  }, [signin]);
+  if (isAuthenticated) {
+    return (
+      <>
+        <span>{user?.displayName}</span>
+        <button onClick={logout}>Logout</button>
+      </>
+    );
+  }
 
-  const logout = useCallback(async () => {
-    await authService.logout();
-    clearUser();
-    signout();
-  }, [signout, clearUser]);
-
-  const handleCallback = useCallback(async (code: string, state: string) => {
-    try {
-      const { user, token } = await authService.callback(code, state);
-      setUser(user);
-      localStorage.setItem('token', token.accessToken);
-      localStorage.setItem('refreshToken', token.refreshToken);
-      return true;
-    } catch (error) {
-      console.error('Auth callback failed:', error);
-      return false;
-    }
-  }, [setUser]);
-
-  const refreshToken = useCallback(async () => {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) return false;
-
-    try {
-      const newToken = await authService.refreshToken(refreshToken);
-      localStorage.setItem('token', newToken.accessToken);
-      return true;
-    } catch (error) {
-      clearUser();
-      return false;
-    }
-  }, [clearUser]);
-
-  return {
-    user,
-    isAuthenticated,
-    login,
-    logout,
-    handleCallback,
-    refreshToken,
-  };
+  return <button onClick={login}>Login</button>;
 }
 ```
 
-### 3. 认证状态管理
-
-```typescript
-// src/stores/authStore.ts
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-
-interface User {
-  id: string;
-  username: string;
-  email: string;
-  role: 'user' | 'admin';
-  avatar?: string;
-}
-
-interface AuthState {
-  user: User | null;
-  isAuthenticated: boolean;
-  setUser: (user: User) => void;
-  clearUser: () => void;
-}
-
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      isAuthenticated: false,
-      setUser: (user) => set({ user, isAuthenticated: true }),
-      clearUser: () => set({ user: null, isAuthenticated: false }),
-    }),
-    {
-      name: 'auth-storage',
-    }
-  )
-);
-```
 
 ### 4. API 服务配置
 
@@ -280,18 +200,8 @@ api.interceptors.response.use(
       // Token 过期，尝试刷新
       const refreshToken = localStorage.getItem('refreshToken');
       if (refreshToken) {
-        try {
-          const { data } = await axios.post('/api/auth/refresh', { refreshToken });
-          localStorage.setItem('token', data.accessToken);
-          // 重试原请求
-          return api.request(error.config!);
-        } catch {
-          // 刷新失败，清除认证状态
-          useAuthStore.getState().clearUser();
-          localStorage.removeItem('token');
-          localStorage.removeItem('refreshToken');
-          window.location.href = '/login';
-        }
+        const casdoorClient = createCasdoorClient()
+        window.location.href = casdoorClient.buildAuthUrl("signin");
       }
     }
     return Promise.reject(error);
@@ -346,178 +256,12 @@ export const strategyService = {
 };
 ```
 
-### 6. WebSocket Hook
-
-```typescript
-// src/hooks/useWebSocket.ts
-import { useEffect, useRef, useCallback } from 'react';
-import { useAuthStore } from '../stores/authStore';
-
-interface WebSocketMessage {
-  type: string;
-  data: any;
-}
-
-export function useWebSocket(
-  onMessage: (msg: WebSocketMessage) => void,
-  topics: string[] = []
-) {
-  const wsRef = useRef<WebSocket | null>(null);
-  const { isAuthenticated } = useAuthStore();
-
-  const connect = useCallback(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-
-    const wsUrl = `${import.meta.env.VITE_WS_URL}?token=${token}`;
-    const ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      console.log('WebSocket connected');
-      // 订阅主题
-      topics.forEach(topic => {
-        ws.send(JSON.stringify({ action: 'subscribe', topic }));
-      });
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        onMessage(msg);
-      } catch (e) {
-        console.error('Failed to parse WebSocket message:', e);
-      }
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket disconnected');
-      // 自动重连
-      setTimeout(connect, 3000);
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    wsRef.current = ws;
-  }, [topics, onMessage]);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      connect();
-    }
-
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
-  }, [isAuthenticated, connect]);
-
-  const send = useCallback((data: any) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(data));
-    }
-  }, []);
-
-  return { send };
-}
-```
+### 6. WebSocket
+use socket.io
 
 ### 7. K线图表组件
 
-```typescript
-// src/components/charts/KLineChart.tsx
-import React, { useEffect, useRef } from 'react';
-import { init, dispose, Chart } from '@anthropic/klinecharts-pro';
-import { useMarketData } from '../../hooks/useMarketData';
-
-interface KLineChartProps {
-  symbol: string;
-  interval: string;
-  height?: number;
-}
-
-export const KLineChart: React.FC<KLineChartProps> = ({
-  symbol,
-  interval,
-  height = 500,
-}) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<Chart | null>(null);
-  const { klineData, subscribe, unsubscribe } = useMarketData();
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    // 初始化图表
-    chartRef.current = init(containerRef.current, {
-      locale: 'zh-CN',
-      styles: {
-        candle: {
-          priceMark: {
-            last: {
-              show: true,
-              text: {
-                show: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    // 添加技术指标
-    chartRef.current.createIndicator('MA', false, { id: 'candle_pane' });
-    chartRef.current.createIndicator('VOL');
-    chartRef.current.createIndicator('MACD');
-
-    return () => {
-      if (chartRef.current) {
-        dispose(containerRef.current!);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    // 订阅行情
-    subscribe(symbol, interval);
-
-    return () => {
-      unsubscribe(symbol, interval);
-    };
-  }, [symbol, interval, subscribe, unsubscribe]);
-
-  useEffect(() => {
-    if (chartRef.current && klineData.length > 0) {
-      chartRef.current.applyNewData(klineData);
-    }
-  }, [klineData]);
-
-  // 实时更新
-  useEffect(() => {
-    const updateHandler = (data: any) => {
-      if (chartRef.current && data.symbol === symbol) {
-        chartRef.current.updateData(data);
-      }
-    };
-
-    // 监听实时数据
-    window.addEventListener('kline_update', updateHandler as any);
-
-    return () => {
-      window.removeEventListener('kline_update', updateHandler as any);
-    };
-  }, [symbol]);
-
-  return (
-    <div
-      ref={containerRef}
-      style={{ width: '100%', height }}
-    />
-  );
-};
-```
+packages\klinecharts-pro
 
 ### 8. 交易主页
 
@@ -1114,90 +858,6 @@ VITE_CASDOOR_ORG_NAME=built-in
 }
 ```
 
-## Nginx 配置
-
-```nginx
-# /etc/nginx/conf.d/trader-web.conf
-server {
-    listen 80;
-    server_name trader.example.com;
-
-    root /data/app/trader-web/dist;
-    index index.html;
-
-    # Gzip 压缩
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
-
-    # 静态资源缓存
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    # API 代理
-    location /api {
-        proxy_pass http://127.0.0.1:9103;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    # WebSocket 代理
-    location /ws {
-        proxy_pass http://127.0.0.1:9103;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-    }
-
-    # SPA 路由
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
-```
-
-## 开发与构建
-
-### 安装依赖
-
-```bash
-# 项目根目录
-pnpm install
-
-# 或指定应用
-pnpm -w install --filter "trader-web..."
-```
-
-### 开发模式
-
-```bash
-cd apps/trader-web
-pnpm run dev
-```
-
-### 生产构建
-
-```bash
-cd apps/trader-web
-pnpm run build
-```
-
-### 类型检查
-
-```bash
-pnpm run type-check
-```
-
-### 代码检查
-
-```bash
-pnpm run lint
-```
-
 ## 参考文档
 
 - [React 文档](https://react.dev/)
@@ -1205,11 +865,7 @@ pnpm run lint
 - [Vite 文档](https://vitejs.dev/)
 - [TanStack Query](https://tanstack.com/query)
 - [Zustand](https://zustand-demo.pmnd.rs/)
-- [Casdoor React SDK](https://github.com/casdoor/casdoor-react-sdk)
-- [KLineCharts](https://klinecharts.com/)
+- [Casdoor React SDK](packages\casdoor)
+- [KLineCharts](packages\klinecharts-pro)
 
 ---
-
-**版本**: 1.0.0
-**端口**: 80 (Nginx)
-**最后更新**: 2026-01-23
