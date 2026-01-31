@@ -137,6 +137,48 @@ console.log(bt.getPositions())
 console.log(bt.result(110))
 ```
 
+## Multi-Period Strategy (MultiHQuant)
+
+`MultiHQuant` 支持多周期路由（`feedBar`）以及多周期 DSL（`addMultiStrategy`，支持 `close@4h` 这种写法）。
+
+```typescript
+import { FuturesBacktest, MultiHQuant, type Bar } from '@hquant/js'
+
+const mh = new MultiHQuant(256, ['15m', '4h'])
+const strategyId = mh.addMultiStrategy(
+  'm',
+  [
+    'IF close@4h <= 105 AND close@15m <= 105 THEN BUY',
+    'IF close@4h >= 115 AND close@15m >= 115 THEN SELL',
+  ].join('\n')
+)
+
+const bt = new FuturesBacktest({
+  initialMargin: 1000,
+  leverage: 10,
+  contractSize: 1,
+  makerFeeRate: 0,
+  takerFeeRate: 0,
+  maintenanceMarginRate: 0.005,
+})
+
+const margin = 100
+let lastPrice = 0
+
+for (const bar of bars15m as Bar[]) {
+  lastPrice = bar.close
+  mh.feedBar(bar)
+  for (const s of mh.pollSignals()) {
+    if (s.strategyId === strategyId) {
+      bt.applySignal(s.action, bar.close, margin, 'LONG')
+    }
+  }
+  bt.onPrice(bar.close)
+}
+
+console.log(bt.result(lastPrice))
+```
+
 ## Multi-Timeframe Aggregation
 
 ```typescript

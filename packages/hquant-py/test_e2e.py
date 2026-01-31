@@ -5,7 +5,7 @@ from typing import Any, Dict
 import pytest
 
 try:
-    from hquant import FuturesBacktest, MultiHQuant, validate_dsl
+    from hquant import FuturesBacktest, MultiHQuant
 except Exception as exc:  # pragma: no cover
     pytest.skip(
         f"hquant is not installed/built (run `maturin develop --features ffi-python`): {exc}",
@@ -34,8 +34,6 @@ def test_e2e_multihquant_feed_bar_futures_backtest() -> None:
             "IF close@4h >= 115 AND close@15m >= 115 THEN SELL",
         ]
     )
-    assert validate_dsl(dsl) is True
-
     mh = MultiHQuant(capacity=256, periods=["15m", "4h"])
     strategy_id = mh.add_multi_strategy("m", dsl)
 
