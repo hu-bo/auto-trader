@@ -39,6 +39,11 @@ class StrategyManager:
         self.nats = nats_client
         self.instance_registry: Dict[str, InstanceInfo] = {}
         self._lock = asyncio.Lock()  # 并发保护锁
+
+        # 初始化信号发布器
+        from ..nats.signal_publisher import SignalPublisher
+        self.signal_publisher = SignalPublisher(nats_client)
+
         logger.info("StrategyManager initialized")
 
     def make_instance_key(
@@ -154,7 +159,7 @@ class StrategyManager:
         try:
             logger.info(f"Creating new instance: {instance_key}")
 
-            # 1. 创建策略执行器（占位符，后续实现）
+            # 1. 创建策略执行器
             from ..strategies.executor import StrategyExecutor
 
             executor = StrategyExecutor(
@@ -163,6 +168,7 @@ class StrategyManager:
                 exchange=exchange,
                 trade_type=trade_type,
                 parameters=parameters,
+                signal_publisher=self.signal_publisher,
             )
 
             # 2. 构建 NATS 主题
