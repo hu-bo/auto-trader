@@ -46,7 +46,7 @@ trader-service/
 │   │   └── notification.service.ts   # 通知服务
 │   ├── entity/                       # 数据实体
 │   │   ├── user.entity.ts            # 用户实体
-│   │   ├── user-symbol-strategy.entity.ts   # 用户币种策略绑定
+│   │   ├── strategy-order.entity.ts  # 用户策略订单绑定
 │   │   ├── user-exchange.entity.ts   # 用户交易所配置
 │   │   ├── risk-config.entity.ts     # 风控配置
 │   │   ├── order.entity.ts           # 订单记录
@@ -83,8 +83,8 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, OneToMany } f
 
 @Entity('users')
 export class User {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryGeneratedColumn('increment')
+  id: number;
 
   @Column({ unique: true })
   casdoorId: string;           // Casdoor 用户ID
@@ -112,16 +112,17 @@ export class User {
 ### 2. 用户策略绑定
 
 ```typescript
-// src/entity/user-strategy.entity.ts
+// src/entity/strategy-order.entity.ts
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { RiskConfig } from '@auto-trader/risk-model';
 
 @Entity('strategy_order')
-export class UserStrategy {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+export class StrategyOrder {
+  @PrimaryGeneratedColumn('increment')
+  id: number;
 
   @Column()
-  userId: string;
+  userId: number;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'userId' })
@@ -134,34 +135,56 @@ export class UserStrategy {
   strategyName: string;
 
   @Column()
-  exchangeId: string;          // 使用的交易所配置
+  exchangeId: number;          // 使用的交易所配置
 
   @Column('simple-array')
   symbols: string[];           // 交易标的列表
 
-  @Column('decimal', { precision: 18, scale: 8 })
-  allocation: number;          // 资金分配比例
-
-  @Column({ default: 'stopped' })
-  status: 'running' | 'stopped' | 'paused';
+  @Column({ default: 0 })
+  live: 0 | 1; // 启动/停止
 
   @Column('jsonb', { nullable: true })
   parameters: Record<string, any>;  // 策略参数
 
   @Column('jsonb', { nullable: true })
-  riskConfig: {
-    maxPositionSize: number;
-    maxDailyLoss: number;
-    maxDrawdown: number;
-    stopLossPercent: number;
-    takeProfitPercent: number;
-  };
+  riskConfig: RiskConfig;  // 风控配置（来自 @auto-trader/risk-model）
 
   @Column('timestamp', { nullable: true })
   startedAt: Date;
 
   @Column('timestamp', { nullable: true })
   stoppedAt: Date;
+}
+```
+
+**RiskConfig 结构说明**（详见 `@auto-trader/risk-model/src/types.ts`）：
+
+```typescript
+{
+  // 账户级风险配置
+  account: {
+    maxDailyLoss: number;          // 单日最大亏损（USDT）
+    maxMarginUsagePct: number;     // 最大保证金使用率 (0-1)
+    onBreach: 'BLOCK_TRADING' | 'CLOSE_ALL';  // 越界行为
+  },
+  // 仓位级风险配置（默认）
+  position: {
+    stopProfitPct: number;         // 止盈比例（基于 margin 的盈亏率）
+    stopLossPct: number;           // 止损比例（基于 margin 的盈亏率）
+    maxLossPerPosition?: number;   // 单仓最大亏损（USDT，可选）
+    onBreach: 'CLOSE_POSITION' | 'REDUCE_POSITION';  // 越界行为
+    reduceRatio?: number;          // 减仓比例（仅 REDUCE_POSITION 时使用）
+    cooldown: number | string;     // 风控冷却时间（毫秒或时间字符串如 "15m"）
+  },
+  // 品种级覆盖（可选）
+  symbols?: {
+    'BTCUSDT': {
+      position: {
+        stopProfitPct: 0.5,        // 覆盖默认止盈
+        stopLossPct: 0.2,          // 覆盖默认止损
+      }
+    }
+  }
 }
 ```
 
@@ -173,11 +196,11 @@ import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 't
 
 @Entity('user_exchanges')
 export class UserExchange {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryGeneratedColumn('increment')
+  id: number;
 
   @Column()
-  userId: string;
+  userId: number;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'userId' })
@@ -189,11 +212,11 @@ export class UserExchange {
   @Column()
   name: string;                // 配置名称
 
-  @Column({ type: 'text' })
-  apiKeyEncrypted: string;     // 加密存储
+  @Column({type: 'varchar', length: 256})
+  access_key: string;     // 加密存储
 
-  @Column({ type: 'text' })
-  apiSecretEncrypted: string;  // 加密存储
+  @Column({type: 'varchar', length: 256})
+  secret_key: string;  // 加密存储
 
   @Column({ nullable: true })
   passphrase: string;          // OKX 需要
@@ -203,9 +226,6 @@ export class UserExchange {
 
   @Column({ default: true })
   isActive: boolean;
-
-  @Column('jsonb', { nullable: true })
-  permissions: string[];       // 权限列表
 }
 ```
 
@@ -328,20 +348,20 @@ export class AuthMiddleware implements IMiddleware<Context, NextFunction> {
 import { Provide, Inject } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Repository } from 'typeorm';
-import { UserStrategy } from '../entity/user-strategy.entity';
+import { StrategyOrder } from '../entity/strategy-order.entity';
 import { NatsService } from './nats.service';
 
 @Provide()
 export class StrategyService {
-  @InjectEntityModel(UserStrategy)
-  userStrategyRepo: Repository<UserStrategy>;
+  @InjectEntityModel(StrategyOrder)
+  strategyOrderRepo: Repository<StrategyOrder>;
 
   @Inject()
   natsService: NatsService;
 
   // 绑定策略
-  async bindStrategy(userId: string, dto: BindStrategyDto): Promise<UserStrategy> {
-    const userStrategy = this.userStrategyRepo.create({
+  async bindStrategy(userId: string, dto: BindStrategyDto): Promise<StrategyOrder> {
+    const strategyOrder = this.strategyOrderRepo.create({
       userId,
       strategyId: dto.strategyId,
       strategyName: dto.strategyName,
@@ -353,52 +373,52 @@ export class StrategyService {
       status: 'stopped',
     });
 
-    return this.userStrategyRepo.save(userStrategy);
+    return this.strategyOrderRepo.save(strategyOrder);
   }
 
   // 启动策略
-  async startStrategy(userId: string, userStrategyId: string): Promise<void> {
-    const userStrategy = await this.userStrategyRepo.findOne({
-      where: { id: userStrategyId, userId },
+  async startStrategy(userId: string, strategyOrderId: string): Promise<void> {
+    const strategyOrder = await this.strategyOrderRepo.findOne({
+      where: { id: strategyOrderId, userId },
     });
 
-    if (!userStrategy) {
+    if (!strategyOrder) {
       throw new Error('Strategy binding not found');
     }
 
     // 发送启动指令到策略引擎
     await this.natsService.publish('strategy.command.start', {
-      userStrategyId: userStrategy.id,
+      strategyOrderId: strategyOrder.id,
       userId,
-      strategyId: userStrategy.strategyId,
-      symbols: userStrategy.symbols,
-      parameters: userStrategy.parameters,
-      riskConfig: userStrategy.riskConfig,
+      strategyId: strategyOrder.strategyId,
+      symbols: strategyOrder.symbols,
+      parameters: strategyOrder.parameters,
+      riskConfig: strategyOrder.riskConfig,
     });
 
     // 更新状态
-    await this.userStrategyRepo.update(userStrategyId, {
+    await this.strategyOrderRepo.update(strategyOrderId, {
       status: 'running',
       startedAt: new Date(),
     });
   }
 
   // 停止策略
-  async stopStrategy(userId: string, userStrategyId: string): Promise<void> {
+  async stopStrategy(userId: string, strategyOrderId: string): Promise<void> {
     await this.natsService.publish('strategy.command.stop', {
-      userStrategyId,
+      strategyOrderId,
       userId,
     });
 
-    await this.userStrategyRepo.update(userStrategyId, {
+    await this.strategyOrderRepo.update(strategyOrderId, {
       status: 'stopped',
       stoppedAt: new Date(),
     });
   }
 
-  // 获取用户策略列表
-  async getUserStrategies(userId: string): Promise<UserStrategy[]> {
-    return this.userStrategyRepo.find({
+  // 获取用户策略订单列表
+  async getStrategyOrders(userId: string): Promise<StrategyOrder[]> {
+    return this.strategyOrderRepo.find({
       where: { userId },
       order: { createdAt: 'DESC' },
     });
@@ -408,413 +428,18 @@ export class StrategyService {
 
 ### 7. 订单服务
 
-```typescript
-// src/service/order.service.ts
-import { Provide, Inject } from '@midwayjs/core';
-import { InjectEntityModel } from '@midwayjs/typeorm';
-import { Repository } from 'typeorm';
-import { Order } from '../entity/order.entity';
-import { NatsService } from './nats.service';
 
-@Provide()
-export class OrderService {
-  @InjectEntityModel(Order)
-  orderRepo: Repository<Order>;
-
-  @Inject()
-  natsService: NatsService;
-
-  // 订阅订单更新
-  async subscribeOrderUpdates() {
-    await this.natsService.subscribe('order.updates.>', async (msg) => {
-      const orderData = JSON.parse(msg.data.toString());
-      await this.handleOrderUpdate(orderData);
-    });
-  }
-
-  // 处理订单更新
-  async handleOrderUpdate(orderData: any): Promise<void> {
-    const order = await this.orderRepo.findOne({
-      where: { exchangeOrderId: orderData.orderId },
-    });
-
-    if (order) {
-      await this.orderRepo.update(order.id, {
-        status: orderData.status,
-        filledQty: orderData.filledQty,
-        avgPrice: orderData.avgPrice,
-        updatedAt: new Date(),
-      });
-
-      // 通知用户
-      await this.natsService.publish(`user.${order.userId}.orders`, {
-        type: 'order_update',
-        order: { ...order, ...orderData },
-      });
-    }
-  }
-
-  // 查询用户订单
-  async getUserOrders(userId: string, query: OrderQueryDto): Promise<{
-    orders: Order[];
-    total: number;
-  }> {
-    const [orders, total] = await this.orderRepo.findAndCount({
-      where: {
-        userId,
-        ...(query.status && { status: query.status }),
-        ...(query.symbol && { symbol: query.symbol }),
-      },
-      order: { createdAt: 'DESC' },
-      skip: query.offset || 0,
-      take: query.limit || 20,
-    });
-
-    return { orders, total };
-  }
-
-  // 手动下单
-  async createManualOrder(userId: string, dto: CreateOrderDto): Promise<Order> {
-    const order = this.orderRepo.create({
-      userId,
-      exchangeId: dto.exchangeId,
-      symbol: dto.symbol,
-      side: dto.side,
-      type: dto.type,
-      quantity: dto.quantity,
-      price: dto.price,
-      status: 'pending',
-      source: 'manual',
-    });
-
-    const savedOrder = await this.orderRepo.save(order);
-
-    // 发送到交易服务执行
-    await this.natsService.publish('order.execute', {
-      orderId: savedOrder.id,
-      userId,
-      ...dto,
-    });
-
-    return savedOrder;
-  }
-}
-```
 
 ### 8. 仓位服务
 
-```typescript
-// src/service/position.service.ts
-import { Provide, Inject } from '@midwayjs/core';
-import { InjectEntityModel } from '@midwayjs/typeorm';
-import { Repository } from 'typeorm';
-import { Position } from '../entity/position.entity';
-import { NatsService } from './nats.service';
 
-@Provide()
-export class PositionService {
-  @InjectEntityModel(Position)
-  positionRepo: Repository<Position>;
-
-  @Inject()
-  natsService: NatsService;
-
-  // 订阅仓位更新
-  async subscribePositionUpdates() {
-    await this.natsService.subscribe('position.updates.>', async (msg) => {
-      const positionData = JSON.parse(msg.data.toString());
-      await this.handlePositionUpdate(positionData);
-    });
-  }
-
-  // 处理仓位更新
-  async handlePositionUpdate(data: any): Promise<void> {
-    let position = await this.positionRepo.findOne({
-      where: {
-        userId: data.userId,
-        exchangeId: data.exchangeId,
-        symbol: data.symbol,
-      },
-    });
-
-    if (position) {
-      await this.positionRepo.update(position.id, {
-        quantity: data.quantity,
-        avgPrice: data.avgPrice,
-        unrealizedPnl: data.unrealizedPnl,
-        updatedAt: new Date(),
-      });
-    } else {
-      position = this.positionRepo.create({
-        userId: data.userId,
-        exchangeId: data.exchangeId,
-        symbol: data.symbol,
-        quantity: data.quantity,
-        avgPrice: data.avgPrice,
-        side: data.side,
-      });
-      await this.positionRepo.save(position);
-    }
-
-    // 通知用户
-    await this.natsService.publish(`user.${data.userId}.positions`, {
-      type: 'position_update',
-      position: data,
-    });
-  }
-
-  // 获取用户仓位
-  async getUserPositions(userId: string): Promise<Position[]> {
-    return this.positionRepo.find({
-      where: { userId, quantity: Not(0) },
-      order: { updatedAt: 'DESC' },
-    });
-  }
-
-  // 获取仓位汇总
-  async getPositionSummary(userId: string): Promise<{
-    totalValue: number;
-    totalPnl: number;
-    totalPnlPercent: number;
-  }> {
-    const positions = await this.getUserPositions(userId);
-
-    const totalValue = positions.reduce((sum, p) =>
-      sum + p.quantity * p.currentPrice, 0);
-    const totalPnl = positions.reduce((sum, p) =>
-      sum + p.unrealizedPnl, 0);
-    const totalCost = positions.reduce((sum, p) =>
-      sum + p.quantity * p.avgPrice, 0);
-
-    return {
-      totalValue,
-      totalPnl,
-      totalPnlPercent: totalCost > 0 ? (totalPnl / totalCost) * 100 : 0,
-    };
-  }
-}
-```
-
-### 9. 统计服务
-
-```typescript
-// src/service/stats.service.ts
-import { Provide, Inject } from '@midwayjs/core';
-import { InjectEntityModel } from '@midwayjs/typeorm';
-import { Repository, Between } from 'typeorm';
-import { TradeRecord } from '../entity/trade-record.entity';
-import { Order } from '../entity/order.entity';
-
-@Provide()
-export class StatsService {
-  @InjectEntityModel(TradeRecord)
-  tradeRecordRepo: Repository<TradeRecord>;
-
-  @InjectEntityModel(Order)
-  orderRepo: Repository<Order>;
-
-  // 获取策略收益统计
-  async getStrategyStats(userId: string, userStrategyId: string, period: string): Promise<{
-    totalReturn: number;
-    returnPercent: number;
-    buyCount: number;
-    sellCount: number;
-    winRate: number;
-    maxDrawdown: number;
-    sharpeRatio: number;
-  }> {
-    const dateRange = this.getDateRange(period);
-
-    const trades = await this.tradeRecordRepo.find({
-      where: {
-        userId,
-        userStrategyId,
-        createdAt: Between(dateRange.start, dateRange.end),
-      },
-      order: { createdAt: 'ASC' },
-    });
-
-    const orders = await this.orderRepo.find({
-      where: {
-        userId,
-        userStrategyId,
-        status: 'filled',
-        createdAt: Between(dateRange.start, dateRange.end),
-      },
-    });
-
-    const buyCount = orders.filter(o => o.side === 'buy').length;
-    const sellCount = orders.filter(o => o.side === 'sell').length;
-
-    const totalReturn = trades.reduce((sum, t) => sum + t.realizedPnl, 0);
-    const initialCapital = trades[0]?.capital || 0;
-    const returnPercent = initialCapital > 0
-      ? (totalReturn / initialCapital) * 100
-      : 0;
-
-    const winningTrades = trades.filter(t => t.realizedPnl > 0).length;
-    const winRate = trades.length > 0
-      ? (winningTrades / trades.length) * 100
-      : 0;
-
-    const maxDrawdown = this.calculateMaxDrawdown(trades);
-    const sharpeRatio = this.calculateSharpeRatio(trades);
-
-    return {
-      totalReturn,
-      returnPercent,
-      buyCount,
-      sellCount,
-      winRate,
-      maxDrawdown,
-      sharpeRatio,
-    };
-  }
-
-  // 获取用户总体统计
-  async getUserOverallStats(userId: string): Promise<{
-    totalPnl: number;
-    todayPnl: number;
-    weekPnl: number;
-    monthPnl: number;
-    activeStrategies: number;
-    totalTrades: number;
-  }> {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    const [totalPnl, todayPnl, weekPnl, monthPnl, totalTrades] = await Promise.all([
-      this.getPnlSum(userId),
-      this.getPnlSum(userId, today),
-      this.getPnlSum(userId, weekAgo),
-      this.getPnlSum(userId, monthAgo),
-      this.orderRepo.count({ where: { userId, status: 'filled' } }),
-    ]);
-
-    return {
-      totalPnl,
-      todayPnl,
-      weekPnl,
-      monthPnl,
-      activeStrategies: 0, // 从策略服务获取
-      totalTrades,
-    };
-  }
-
-  private calculateMaxDrawdown(trades: TradeRecord[]): number {
-    let peak = 0;
-    let maxDrawdown = 0;
-    let cumReturn = 0;
-
-    for (const trade of trades) {
-      cumReturn += trade.realizedPnl;
-      if (cumReturn > peak) {
-        peak = cumReturn;
-      }
-      const drawdown = peak > 0 ? (peak - cumReturn) / peak : 0;
-      if (drawdown > maxDrawdown) {
-        maxDrawdown = drawdown;
-      }
-    }
-
-    return maxDrawdown * 100;
-  }
-
-  private calculateSharpeRatio(trades: TradeRecord[]): number {
-    if (trades.length < 2) return 0;
-
-    const returns = trades.map(t => t.returnPercent);
-    const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
-    const variance = returns.reduce((sum, r) =>
-      sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
-    const stdDev = Math.sqrt(variance);
-
-    const riskFreeRate = 0.02 / 252; // 年化2%无风险利率，按日
-    return stdDev > 0 ? (avgReturn - riskFreeRate) / stdDev * Math.sqrt(252) : 0;
-  }
-}
-```
 
 ### 10. 通知服务
 
-```typescript
-// src/service/notification.service.ts
-import { Provide, Inject } from '@midwayjs/core';
-import { NatsService } from './nats.service';
-import { RedisService } from '@midwayjs/redis';
-
-@Provide()
-export class NotificationService {
-  @Inject()
-  natsService: NatsService;
-
-  @Inject()
-  redisService: RedisService;
-
-  // 发送订单通知
-  async sendOrderNotification(userId: string, order: any): Promise<void> {
-    const notification = {
-      type: 'order',
-      title: `订单${order.status === 'filled' ? '成交' : '更新'}`,
-      message: `${order.symbol} ${order.side} ${order.filledQty}@${order.avgPrice}`,
-      data: order,
-      timestamp: new Date().toISOString(),
-    };
-
-    // 推送到 NATS (WebSocket 订阅)
-    await this.natsService.publish(`user.${userId}.notifications`, notification);
-
-    // 存储到 Redis 通知列表
-    await this.redisService.lpush(
-      `notifications:${userId}`,
-      JSON.stringify(notification)
-    );
-    await this.redisService.ltrim(`notifications:${userId}`, 0, 99);
-  }
-
-  // 发送风控告警
-  async sendRiskAlert(userId: string, alert: {
-    type: string;
-    level: 'warning' | 'danger';
-    message: string;
-  }): Promise<void> {
-    const notification = {
-      type: 'risk_alert',
-      ...alert,
-      timestamp: new Date().toISOString(),
-    };
-
-    await this.natsService.publish(`user.${userId}.alerts`, notification);
-  }
-
-  // 获取未读通知
-  async getNotifications(userId: string, limit = 20): Promise<any[]> {
-    const notifications = await this.redisService.lrange(
-      `notifications:${userId}`,
-      0,
-      limit - 1
-    );
-    return notifications.map(n => JSON.parse(n));
-  }
-}
-```
 
 ## API 接口
 
 ### 认证接口
-
-```typescript
-// src/controller/auth.controller.ts
-@Controller('/api/auth')
-export class AuthController {
-  @Get('/login')              // 获取登录 URL
-  @Post('/callback')          // OAuth 回调
-  @Post('/refresh')           // 刷新 Token
-  @Post('/logout')            // 登出
-}
-```
 
 ### 用户接口
 
@@ -822,10 +447,7 @@ export class AuthController {
 // src/controller/user.controller.ts
 @Controller('/api/user')
 export class UserController {
-  @Get('/profile')            // 获取用户信息
-  @Put('/profile')            // 更新用户信息
-  @Get('/preferences')        // 获取偏好设置
-  @Put('/preferences')        // 更新偏好设置
+  @Get('/current')            // 获取用户信息
 }
 ```
 
