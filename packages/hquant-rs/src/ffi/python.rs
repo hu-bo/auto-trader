@@ -12,6 +12,7 @@ use crate::backtest::simple_backtest::{Backtest as SimpleBacktest, BacktestConfi
 use crate::dsl::{compile_strategy, validate_dsl as validate_dsl_core, CompiledStrategy};
 use crate::indicators::{IndicatorId, IndicatorSpec, IndicatorValue};
 use crate::kline_buffer::KlineBuffer;
+use crate::multi::MultiHQuant as CoreMultiHQuant;
 use crate::period::Period;
 use crate::types::{Action, Bar};
 use crate::vector_store::{LabeledVector, VectorStore};
@@ -257,6 +258,60 @@ impl HQuant {
     fn push_bar(&mut self, bar: &Bound<'_, PyDict>) -> PyResult<()> {
         self.inner.push_kline(bar_from_dict(bar)?);
         Ok(())
+    }
+
+    fn poll_signals(&mut self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+        let mut out = Vec::new();
+        for s in self.inner.poll_signals() {
+            let d = PyDict::new_bound(py);
+            d.set_item("strategy_id", s.strategy_id)?;
+            d.set_item("action", s.action.as_str())?;
+            d.set_item("timestamp", s.timestamp)?;
+            out.push(d.into());
+        }
+        Ok(out)
+    }
+}
+
+#[pyclass]
+pub struct MultiHQuant {
+    inner: CoreMultiHQuant,
+}
+
+#[pymethods]
+impl MultiHQuant {
+    #[new]
+    fn new(capacity: usize, periods: Vec<String>) -> PyResult<Self> {
+        if periods.is_empty() {
+            return Err(py_err("periods must be non-empty"));
+        }
+        let mut ps = Vec::with_capacity(periods.len());
+        for p in periods {
+            ps.push(Period::parse(&p).map_err(|e| py_err(e.to_string()))?);
+        }
+        Ok(Self {
+            inner: CoreMultiHQuant::new(capacity, ps),
+        })
+    }
+
+    fn add_multi_strategy(&mut self, name: String, dsl: String) -> PyResult<u32> {
+        self.inner
+            .add_multi_strategy(&name, &dsl)
+            .map_err(|e| py_err(e.to_string()))
+    }
+
+    fn feed_bar(&mut self, bar: &Bound<'_, PyDict>) -> PyResult<()> {
+        self.inner.feed_bar(bar_from_dict(bar)?);
+        Ok(())
+    }
+
+    fn update_last(&mut self, bar: &Bound<'_, PyDict>) -> PyResult<()> {
+        self.inner.update_last(bar_from_dict(bar)?);
+        Ok(())
+    }
+
+    fn flush(&mut self) {
+        self.inner.flush();
     }
 
     fn poll_signals(&mut self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
@@ -620,6 +675,7 @@ fn validate_dsl(source: String) -> PyResult<bool> {
 #[pymodule]
 fn _hquant(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<HQuant>()?;
+    m.add_class::<MultiHQuant>()?;
     m.add_class::<PyBacktest>()?;
     m.add_class::<PyAggregator>()?;
     m.add_class::<PyDslStrategy>()?;

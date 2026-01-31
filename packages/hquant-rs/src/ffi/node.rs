@@ -14,6 +14,7 @@ use crate::backtest::simple_backtest::{
 use crate::dsl::{compile_strategy, validate_dsl, CompiledStrategy};
 use crate::indicators::{IndicatorId, IndicatorSpec, IndicatorValue};
 use crate::kline_buffer::KlineBuffer;
+use crate::multi::MultiHQuant as CoreMultiHQuant;
 use crate::period::Period;
 use crate::types::{Action, Bar};
 use crate::vector_store::{LabeledVector, VectorStore};
@@ -418,6 +419,63 @@ impl HQuant {
         self.inner.reset();
         self.named.clear();
         self.aggregator = None;
+    }
+}
+
+#[napi]
+pub struct MultiHQuant {
+    inner: CoreMultiHQuant,
+}
+
+#[napi]
+impl MultiHQuant {
+    #[napi(constructor)]
+    pub fn new(capacity: u32, periods: Vec<String>) -> Result<Self> {
+        if periods.is_empty() {
+            return Err(Error::new(Status::InvalidArg, "periods must be non-empty".to_string()));
+        }
+        let mut ps = Vec::with_capacity(periods.len());
+        for p in periods {
+            ps.push(Period::parse(&p).map_err(|e| Error::new(Status::InvalidArg, e.to_string()))?);
+        }
+        Ok(Self {
+            inner: CoreMultiHQuant::new(capacity as usize, ps),
+        })
+    }
+
+    #[napi(js_name = "addMultiStrategy")]
+    pub fn addMultiStrategy(&mut self, name: String, dsl: String) -> Result<u32> {
+        self.inner
+            .add_multi_strategy(&name, &dsl)
+            .map_err(|e| Error::new(Status::InvalidArg, e.to_string()))
+    }
+
+    #[napi(js_name = "feedBar")]
+    pub fn feedBar(&mut self, bar: JsBar) {
+        self.inner.feed_bar(bar.into_bar());
+    }
+
+    #[napi(js_name = "updateLast")]
+    pub fn updateLast(&mut self, bar: JsBar) {
+        self.inner.update_last(bar.into_bar());
+    }
+
+    #[napi]
+    pub fn flush(&mut self) {
+        self.inner.flush();
+    }
+
+    #[napi(js_name = "pollSignals")]
+    pub fn pollSignals(&mut self) -> Vec<JsDslSignal> {
+        self.inner
+            .poll_signals()
+            .into_iter()
+            .map(|s| JsDslSignal {
+                strategy_id: s.strategy_id,
+                action: s.action.as_str().to_string(),
+                timestamp: s.timestamp,
+            })
+            .collect()
     }
 }
 

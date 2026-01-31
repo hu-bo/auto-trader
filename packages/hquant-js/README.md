@@ -21,10 +21,11 @@ pnpm add @hquant/js
 ## Quick Start
 
 ```typescript
-import { HQuant } from '@hquant/js'
+import { HQuant, KlineAggregator } from '@hquant/js'
 
-// Create engine with multi-timeframe support
-const engine = new HQuant(1000, ['15m', '1h', '4h'])
+// 推荐：聚合器 + 引擎 分离（feed_bar 流）
+const agg = new KlineAggregator('1m', ['15m', '1h'], 1000)
+const engine = new HQuant(1000)
 
 // Add indicators
 engine.addIndicator('rsi', { type: 'rsi', period: 14 })
@@ -32,6 +33,9 @@ engine.addIndicator('ma_fast', { type: 'ema', period: 5 })
 engine.addIndicator('ma_slow', { type: 'ema', period: 20 })
 engine.addIndicator('macd', { type: 'macd', fast: 12, slow: 26, signal: 9 })
 engine.addIndicator('boll', { type: 'boll', period: 20, stdDev: 2 })
+
+// Add DSL strategy
+engine.addStrategy('s', 'IF close > 0 THEN BUY')
 
 // Feed K-line data (from WebSocket)
 const bar = {
@@ -43,13 +47,18 @@ const bar = {
   volume: 1000,
 }
 
-// feedKline returns aggregator events when higher timeframe candles complete
-const events = engine.feedKline(bar)
+// pushKline returns aggregator events when higher timeframe candles complete
+const events = agg.pushKline(bar)
 for (const event of events) {
   if (event.kind === 'KlineClosed') {
     console.log(`${event.period} candle closed:`, event.candle)
   }
 }
+
+// Evaluate strategies on base timeframe bars
+engine.pushBar(bar)
+const sigs = engine.pollSignals()
+for (const s of sigs) console.log('signal:', s)
 
 // Get indicator values
 const rsi = engine.getIndicatorValue('rsi')
@@ -58,6 +67,8 @@ if (macdResult) {
   console.log(`MACD: ${macdResult.value}, Histogram: ${macdResult.extra?.[0]}`)
 }
 ```
+
+> Note: `event.period` 可能是 `15m/1h/...` 或 `M15/H1/...`（取决于 native 模块版本）。
 
 ## DSL Strategy
 
@@ -144,6 +155,17 @@ for (const event of events) {
 }
 ```
 
+## E2E Tests
+
+Repo 内 e2e 用例：`packages/hquant-js/__test__/e2e.test.ts`
+
+```bash
+cd packages/hquant-js
+npm test
+# 或仅跑单文件
+npx jest __test__/e2e.test.ts
+```
+
 ## Supported Indicators
 
 | Builder | Methods | Description |
@@ -164,6 +186,9 @@ cargo build --release --features ffi-node
 
 # Copy to native directory (macOS)
 cp target/release/libhquant.dylib ../hquant-js/native/hquant.node
+
+# Linux
+# cp target/release/libhquant.so ../hquant-js/native/hquant.node
 
 # Build TypeScript
 cd ../hquant-js

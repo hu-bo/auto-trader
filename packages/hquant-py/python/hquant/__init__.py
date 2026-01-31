@@ -3,6 +3,7 @@ from __future__ import annotations
 from ._hquant import (  # noqa: F401
     FuturesBacktest,
     HQuant,
+    MultiHQuant,
     PyAggregator as Aggregator,
     PyBacktest as Backtest,
     PyDslStrategy as DslStrategy,
@@ -15,6 +16,6 @@ __all__ = [
     "DslStrategy",
     "FuturesBacktest",
     "HQuant",
+    "MultiHQuant",
     "validate_dsl",
 ]
-

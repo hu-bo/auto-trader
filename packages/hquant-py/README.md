@@ -2,17 +2,18 @@
 
 High-performance quantitative trading engine powered by Rust (PyO3).
 
-## Development
+## Install (dev)
 
 ```bash
 cd packages/hquant-py
+pip install maturin
 maturin develop --features ffi-python
 ```
 
 ## Quick Start
 
 ```python
-from hquant import HQuant, Aggregator, Backtest
+from hquant import Aggregator, Backtest, HQuant
 
 engine = HQuant(capacity=1000)
 engine.add_indicator("rsi", {"type": "rsi", "period": 14})
@@ -31,3 +32,14 @@ bt.close_position(price=110, position_side="LONG")
 print(bt.backtest_result())
 ```
 
+> Note: `period` 可能是 `15m/1h/...` 或 `M15/H1/...`（取决于编译的 native 模块版本）。
+
+## E2E Tests
+
+Repo 内 e2e 用例：`packages/hquant-py/test_e2e.py`
+
+```bash
+cd packages/hquant-py
+maturin develop --features ffi-python
+pytest -q test_e2e.py
+```

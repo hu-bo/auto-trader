@@ -184,6 +184,13 @@ type Native = {
     result(price: number): FuturesBacktestResult
     getPositions(): FuturesPosition[]
   }
+  MultiHQuant: new (capacity: number, periods: string[]) => {
+    addMultiStrategy(name: string, dsl: string): number
+    feedBar(bar: Bar): void
+    updateLast(bar: Bar): void
+    flush(): void
+    pollSignals(): DslSignal[]
+  }
   validateDsl(source: string): boolean
 }
 
@@ -193,5 +200,5 @@ export class Backtest extends native.Backtest {}
 export class KlineAggregator extends native.KlineAggregator {}
 export class DslStrategy extends native.DslStrategy {}
 export class FuturesBacktest extends native.FuturesBacktest {}
+export class MultiHQuant extends native.MultiHQuant {}
 export const validateDsl = native.validateDsl
-

@@ -31,29 +31,25 @@ trader-service/
 │   ├── controller/                   # 控制器
 │   │   ├── user.controller.ts        # 用户管理
 │   │   ├── strategy.controller.ts    # 策略管理
+│   │   ├── strategy-order.controller.ts    # 策略订单管理
 │   │   ├── order.controller.ts       # 订单管理
-│   │   ├── position.controller.ts    # 仓位管理
 │   │   ├── risk.controller.ts        # 风控配置
-│   │   ├── stats.controller.ts       # 统计报表
 │   │   ├── admin.controller.ts       # 后台管理
 │   │   └── health.controller.ts      # 健康检查
 │   ├── service/                      # 服务层
 │   │   ├── user.service.ts           # 用户服务
 │   │   ├── auth.service.ts           # 认证服务
 │   │   ├── strategy.service.ts       # 策略服务
+│   │   ├── strategy-order.service.ts # 策略订单服务
 │   │   ├── order.service.ts          # 订单服务
-│   │   ├── position.service.ts       # 仓位服务
 │   │   ├── risk.service.ts           # 风控服务
-│   │   ├── stats.service.ts          # 统计服务
 │   │   └── notification.service.ts   # 通知服务
 │   ├── entity/                       # 数据实体
 │   │   ├── user.entity.ts            # 用户实体
-│   │   ├── user-strategy.entity.ts   # 用户策略绑定
+│   │   ├── user-symbol-strategy.entity.ts   # 用户币种策略绑定
 │   │   ├── user-exchange.entity.ts   # 用户交易所配置
 │   │   ├── risk-config.entity.ts     # 风控配置
 │   │   ├── order.entity.ts           # 订单记录
-│   │   ├── position.entity.ts        # 持仓记录
-│   │   └── trade-record.entity.ts    # 交易记录
 │   ├── middleware/                   # 中间件
 │   │   ├── auth.middleware.ts        # 认证中间件
 │   │   └── admin.middleware.ts       # 管理员中间件
@@ -65,7 +61,8 @@ trader-service/
 │   ├── dto/                          # 数据传输对象
 │   │   ├── user.dto.ts
 │   │   ├── strategy.dto.ts
-│   │   └── order.dto.ts
+│   │   ├── strategy.dto.ts
+│   │   └── strategy-order.dto.ts
 │   └── interface/                    # 接口定义
 │       └── index.ts
 ├── test/                             # 测试
@@ -95,26 +92,20 @@ export class User {
   @Column()
   username: string;
 
-  @Column()
-  email: string;
-
   @Column({ default: 'user' })
   role: 'user' | 'admin';
 
   @Column({ default: true })
   isActive: boolean;
 
-  @Column('jsonb', { nullable: true })
-  preferences: Record<string, any>;
-
-  @OneToMany(() => UserStrategy, us => us.user)
-  strategies: UserStrategy[];
-
   @OneToMany(() => UserExchange, ue => ue.user)
   exchanges: UserExchange[];
 
   @CreateDateColumn()
   createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }
 ```
 
@@ -124,7 +115,7 @@ export class User {
 // src/entity/user-strategy.entity.ts
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
 
-@Entity('user_strategies')
+@Entity('strategy_order')
 export class UserStrategy {
   @PrimaryGeneratedColumn('uuid')
   id: string;
