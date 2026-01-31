@@ -19,6 +19,7 @@ class StrategyExecutor:
         exchange: str,
         trade_type: str,
         parameters: Optional[Dict[str, Any]] = None,
+        signal_publisher=None,  # SignalPublisher 实例
     ):
         """
         初始化策略执行器
@@ -29,12 +30,14 @@ class StrategyExecutor:
             exchange: 交易所
             trade_type: 交易类型
             parameters: 策略参数
+            signal_publisher: 信号发布器（可选）
         """
         self.strategy_id = strategy_id
         self.symbol = symbol
         self.exchange = exchange
         self.trade_type = trade_type
         self.parameters = parameters or {}
+        self.signal_publisher = signal_publisher
 
         self.is_running = False
         self.last_candle_time: Optional[datetime] = None
@@ -105,9 +108,22 @@ class StrategyExecutor:
         Args:
             signals: 信号列表
         """
-        # 占位符实现
-        # 实际应调用 NATS 客户端发布信号
+        if not self.signal_publisher:
+            logger.warning("No signal publisher configured, skipping signal publication")
+            return
+
         logger.info(f"Publishing {len(signals)} signals for {self.symbol}")
+
+        for signal in signals:
+            try:
+                await self.signal_publisher.publish_signal(
+                    user_id=signal.get("user_id"),
+                    symbol=self.symbol,
+                    trade_type=self.trade_type,
+                    signal_data=signal,
+                )
+            except Exception as e:
+                logger.error(f"Failed to publish signal: {e}")
 
     async def load_historical_context(
         self, since: Optional[datetime] = None
