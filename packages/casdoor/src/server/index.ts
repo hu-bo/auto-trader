@@ -9,6 +9,19 @@ import type {
 
 export * from '../types.js';
 
+// 手动解析 JWT (base64url decode)
+function decodeJwt(token: string): JwtClaims {
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    throw new Error('Invalid JWT format');
+  }
+  const payload = parts[1]!;
+  const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+  const decoded = Buffer.from(padded, 'base64').toString('utf-8');
+  return JSON.parse(decoded) as JwtClaims;
+}
+
 /**
  * Casdoor 服务端 SDK
  */
@@ -38,19 +51,18 @@ export class CasdoorServer {
   /**
    * 获取登录 URL
    * @param redirectUri 回调地址
-   * @param state 状态参数
    */
-  getSigninUrl(redirectUri: string, state?: string): string {
-    return this.sdk.getSigninUrl(redirectUri, state ?? '');
+  getSigninUrl(redirectUri: string): string {
+    return this.sdk.getSignInUrl(redirectUri);
   }
 
   /**
    * 获取注册 URL
    * @param redirectUri 回调地址
-   * @param state 状态参数
+   * @param enablePassword 是否启用密码注册
    */
-  getSignupUrl(redirectUri: string, state?: string): string {
-    return this.sdk.getSignupUrl(redirectUri, state ?? '');
+  getSignupUrl(redirectUri: string, enablePassword = true): string {
+    return this.sdk.getSignUpUrl(enablePassword, redirectUri);
   }
 
   /**
@@ -58,8 +70,8 @@ export class CasdoorServer {
    * @param code 授权码
    */
   async getToken(code: string): Promise<TokenResponse> {
-    const token = await this.sdk.getOAuthToken(code);
-    return token as TokenResponse;
+    const token = await this.sdk.getAuthToken(code);
+    return token as unknown as TokenResponse;
   }
 
   /**
@@ -67,8 +79,8 @@ export class CasdoorServer {
    * @param refreshToken 刷新令牌
    */
   async refreshToken(refreshToken: string): Promise<TokenResponse> {
-    const token = await this.sdk.refreshOAuthToken(refreshToken);
-    return token as TokenResponse;
+    const token = await this.sdk.refreshToken(refreshToken);
+    return token as unknown as TokenResponse;
   }
 
   /**
@@ -76,7 +88,7 @@ export class CasdoorServer {
    * @param token JWT Token
    */
   parseJwtToken(token: string): JwtClaims {
-    return this.sdk.parseJwtToken(token) as JwtClaims;
+    return decodeJwt(token);
   }
 
   /**
@@ -97,7 +109,7 @@ export class CasdoorServer {
       }
 
       // 获取用户信息
-      const user = await this.getUser(claims.name || claims.sub);
+      const user = await this.getUser(claims.name as string || claims.sub);
 
       return {
         valid: true,
@@ -117,7 +129,9 @@ export class CasdoorServer {
    * @param name 用户名
    */
   async getUser(name: string): Promise<CasdoorUser> {
-    const user = await this.sdk.getUser(name);
+    const response = await this.sdk.getUser(name);
+    // SDK 返回 AxiosResponse，需要从 data 中获取
+    const user = (response as { data?: unknown }).data ?? response;
     return user as CasdoorUser;
   }
 
@@ -125,7 +139,8 @@ export class CasdoorServer {
    * 获取用户列表
    */
   async getUsers(): Promise<CasdoorUser[]> {
-    const users = await this.sdk.getUsers();
+    const response = await this.sdk.getUsers();
+    const users = (response as { data?: unknown }).data ?? response;
     return users as CasdoorUser[];
   }
 
@@ -134,8 +149,9 @@ export class CasdoorServer {
    * @param user 用户信息
    */
   async updateUser(user: Partial<CasdoorUser> & { name: string }): Promise<boolean> {
-    const result = await this.sdk.modifyUser('update-user', user);
-    return result.status === 'ok';
+    const result = await this.sdk.updateUser(user as Parameters<typeof this.sdk.updateUser>[0]);
+    const data = (result as { data?: { status?: string } }).data ?? result;
+    return (data as { status?: string }).status === 'ok';
   }
 
   /**
@@ -143,8 +159,9 @@ export class CasdoorServer {
    * @param name 用户名
    */
   async deleteUser(name: string): Promise<boolean> {
-    const result = await this.sdk.modifyUser('delete-user', { name, owner: this.config.orgName });
-    return result.status === 'ok';
+    const result = await this.sdk.deleteUser({ name, owner: this.config.orgName } as Parameters<typeof this.sdk.deleteUser>[0]);
+    const data = (result as { data?: { status?: string } }).data ?? result;
+    return (data as { status?: string }).status === 'ok';
   }
 
   /**
