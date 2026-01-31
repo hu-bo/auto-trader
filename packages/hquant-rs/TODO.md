@@ -340,3 +340,13 @@ rust不必写测试，都由nodejs、python封装后测试
 
 python二次封装：packages/hquant-py （空目录）
 nodejs二次封装： packages/hquant-js (已初始化package.json)
+
+
+
+ 完成TODO
+  1. 封装packages/hquant-js
+  2. 编写e2e测试用例: /Users/hubo/Work/Coding/MyProject/auto-trader/packages/hquant-js/__test__/
+  e2e.test.ts（多周期, 组合策略, 回测， feed_bar流）
+  3. 封装packages/hquant-py
+  4. 编写e2e测试用例（多周期, 组合策略, 回测， feed_bar流）
+  5. 编写README文档

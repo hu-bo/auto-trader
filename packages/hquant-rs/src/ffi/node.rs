@@ -1,151 +1,633 @@
-//! Node.js FFI using napi-rs
-
-use std::sync::Mutex;
+use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
-use crate::{
-    dsl::{DslContext, DslEngine, LabeledVector},
-    ATRBuilder,
-    BOLLBuilder,
-    BacktestConfig,
-    BacktestEngine,
-    BacktestStats,
-    Bar,
-    // FuturesBacktest from core
-    FuturesBacktest as CoreFuturesBacktest,
-    FuturesBacktestConfig as CoreFuturesBacktestConfig,
-    IndicatorGraph,
-    MABuilder,
-    MACDBuilder,
-    MarketType,
-    MultiTimeFrameAggregator,
-    PositionSide,
-    QuantEngine,
-    RSIBuilder,
-    Side,
-    Signal,
-    TimeFrame,
-    Trade,
-    VRIBuilder,
+use crate::aggregator::{Aggregator, AggregatorEventKind};
+use crate::backtest::futures_backtest::{
+    BacktestParams, BacktestResult, FuturesBacktest as CoreFuturesBacktest, FuturesPosition, PositionSide,
 };
-
-fn lock_poisoned_error() -> Error {
-    Error::from_reason("lock poisoned".to_string())
-}
-
-fn parse_position_side(position_side: &str) -> napi::Result<PositionSide> {
-    match position_side.to_ascii_uppercase().as_str() {
-        "LONG" => Ok(PositionSide::Long),
-        "SHORT" => Ok(PositionSide::Short),
-        _ => Err(Error::from_reason(
-            "positionSide must be \"LONG\" or \"SHORT\"".to_string(),
-        )),
-    }
-}
-
-fn to_bar(input: &BarInput) -> Bar {
-    Bar {
-        timestamp: input.timestamp,
-        open: input.open,
-        high: input.high,
-        low: input.low,
-        close: input.close,
-        volume: input.volume,
-        buy_volume: input.buy_volume.unwrap_or(0.0),
-    }
-}
-
-fn parse_timeframe(tf: &str) -> napi::Result<TimeFrame> {
-    TimeFrame::from_str(tf).ok_or_else(|| Error::from_reason(format!("Unknown timeframe: {}", tf)))
-}
-
-fn timeframe_to_string(tf: TimeFrame) -> String {
-    tf.as_str().to_string()
-}
-
-fn signal_to_output(signal: &Signal) -> SignalOutput {
-    SignalOutput {
-        side: match signal.side {
-            Side::Buy => "BUY",
-            Side::Sell => "SELL",
-            Side::Hold => "HOLD",
-        }
-        .to_string(),
-        strength: signal.strength,
-        reason: signal.reason.clone(),
-        timestamp: signal.timestamp,
-    }
-}
-
-// ============================================================================
-// Basic Types
-// ============================================================================
+use crate::backtest::simple_backtest::{
+    Backtest as SimpleBacktest, BacktestConfig as SimpleBacktestConfig, BacktestStats, MarketType,
+    Trade,
+};
+use crate::dsl::{compile_strategy, validate_dsl, CompiledStrategy};
+use crate::indicators::{IndicatorId, IndicatorSpec, IndicatorValue};
+use crate::kline_buffer::KlineBuffer;
+use crate::period::Period;
+use crate::types::{Action, Bar};
+use crate::vector_store::{LabeledVector, VectorStore};
 
 #[napi(object)]
-pub struct BarInput {
+pub struct JsBar {
     pub timestamp: i64,
     pub open: f64,
     pub high: f64,
     pub low: f64,
     pub close: f64,
     pub volume: f64,
+    #[napi(js_name = "buyVolume")]
     pub buy_volume: Option<f64>,
 }
 
+impl From<Bar> for JsBar {
+    fn from(b: Bar) -> Self {
+        Self {
+            timestamp: b.timestamp,
+            open: b.open,
+            high: b.high,
+            low: b.low,
+            close: b.close,
+            volume: b.volume,
+            buy_volume: Some(b.buy_volume),
+        }
+    }
+}
+
+impl JsBar {
+    fn into_bar(self) -> Bar {
+        Bar {
+            timestamp: self.timestamp,
+            open: self.open,
+            high: self.high,
+            low: self.low,
+            close: self.close,
+            volume: self.volume,
+            buy_volume: self.buy_volume.unwrap_or(0.0),
+        }
+    }
+}
+
 #[napi(object)]
-pub struct SignalOutput {
+pub struct JsSignal {
     pub side: String,
     pub strength: f64,
     pub reason: String,
     pub timestamp: i64,
 }
 
-/// Signal output for DSL strategies (compatible with jx-quant)
 #[napi(object)]
-pub struct DslSignalOutput {
+pub struct JsDslSignal {
+    #[napi(js_name = "strategyId")]
     pub strategy_id: u32,
     pub action: String,
     pub timestamp: i64,
 }
 
 #[napi(object)]
-pub struct IndicatorResultOutput {
+pub struct JsIndicatorResult {
     pub value: f64,
     pub timestamp: i64,
     pub extra: Option<Vec<f64>>,
 }
 
-/// Generic indicator config for FFI (mirrors Python's `add_indicator` dict).
 #[napi(object)]
-pub struct IndicatorConfigInput {
-    pub r#type: String,
+pub struct JsAggregatorEvent {
+    pub kind: String,
+    pub period: String,
+    pub candle: Option<JsBar>,
+}
+
+#[napi(object)]
+pub struct JsIndicatorConfig {
+    #[napi(js_name = "type")]
+    pub kind: String,
     pub period: Option<u32>,
     pub fast: Option<u32>,
     pub slow: Option<u32>,
     pub signal: Option<u32>,
+    #[napi(js_name = "stdDev")]
     pub std_dev: Option<f64>,
     pub multiplier: Option<f64>,
 }
 
-#[napi(object)]
-pub struct BacktestStatsOutput {
-    pub total_trades: u32,
-    pub winning_trades: u32,
-    pub losing_trades: u32,
-    pub total_pnl: f64,
-    pub max_drawdown: f64,
-    pub max_drawdown_pct: f64,
-    pub sharpe_ratio: f64,
-    pub win_rate: f64,
-    pub final_equity: f64,
-    pub return_pct: f64,
-    pub liquidations: u32,
+#[napi]
+pub fn validateDsl(source: String) -> Result<bool> {
+    validate_dsl(&source)
+        .map(|_| true)
+        .map_err(|e| Error::new(Status::InvalidArg, e.to_string()))
+}
+
+#[napi]
+pub struct Engine {
+    bars: KlineBuffer,
+    indicators: crate::indicators::IndicatorGraph,
+    named: HashMap<String, IndicatorId>,
+    aggregator: Option<Aggregator>,
+    signals: Vec<JsSignal>,
+}
+
+#[napi]
+impl Engine {
+    #[napi(constructor)]
+    pub fn new(capacity: u32) -> Self {
+        let cap = capacity as usize;
+        Self {
+            bars: KlineBuffer::new(cap),
+            indicators: crate::indicators::IndicatorGraph::new(cap),
+            named: HashMap::new(),
+            aggregator: None,
+            signals: Vec::new(),
+        }
+    }
+
+    #[napi(js_name = "addIndicator")]
+    pub fn addIndicator(&mut self, name: String, config: JsIndicatorConfig) -> Result<()> {
+        let spec = indicator_spec_from_config(&config)
+            .map_err(|e| Error::new(Status::InvalidArg, e))?;
+        let id = self.indicators.add_indicator(spec);
+        self.named.insert(name, id);
+        Ok(())
+    }
+
+    #[napi(js_name = "setupAggregator")]
+    pub fn setupAggregator(&mut self, base_tf: String, target_tfs: Vec<String>, _capacity: u32) -> Result<()> {
+        let base = Period::parse(&base_tf).map_err(|e| Error::new(Status::InvalidArg, e.to_string()))?;
+        let mut periods = vec![base];
+        for p in target_tfs {
+            periods.push(Period::parse(&p).map_err(|e| Error::new(Status::InvalidArg, e.to_string()))?);
+        }
+        self.aggregator = if periods.len() > 1 {
+            Some(Aggregator::new(periods))
+        } else {
+            None
+        };
+        Ok(())
+    }
+
+    #[napi(js_name = "pushKline")]
+    pub fn pushKline(&mut self, bar: JsBar) -> Result<Vec<JsSignal>> {
+        self.push_bar_internal(bar.into_bar());
+        Ok(Vec::new())
+    }
+
+    #[napi(js_name = "updateLast")]
+    pub fn updateLast(&mut self, bar: JsBar) -> Result<()> {
+        let bar = bar.into_bar();
+        let Some(old) = self.bars.update_last(bar) else {
+            return Ok(());
+        };
+        self.indicators.on_update_last(old, bar, &self.bars);
+        if let Some(agg) = self.aggregator.as_mut() {
+            agg.update_last(&bar);
+        }
+        Ok(())
+    }
+
+    #[napi(js_name = "feedKline")]
+    pub fn feedKline(&mut self, bar: JsBar) -> Result<Vec<JsAggregatorEvent>> {
+        let bar = bar.into_bar();
+        self.push_bar_internal(bar);
+        let Some(agg) = self.aggregator.as_mut() else {
+            return Ok(Vec::new());
+        };
+        agg.push(&bar);
+        Ok(convert_agg_events(agg.poll_events()))
+    }
+
+    #[napi(js_name = "getLastBar")]
+    pub fn getLastBar(&self) -> Option<JsBar> {
+        self.bars.last().map(JsBar::from)
+    }
+
+    #[napi(js_name = "getKlineCount")]
+    pub fn getKlineCount(&self) -> u32 {
+        self.bars.len() as u32
+    }
+
+    #[napi(js_name = "getIndicatorValue")]
+    pub fn getIndicatorValue(&self, name: String) -> Option<f64> {
+        let id = *self.named.get(&name)?;
+        let v = self.indicators.indicator_last(id)?;
+        match v {
+            IndicatorValue::F64(x) => Some(x),
+            IndicatorValue::Boll(b) => Some(b.mid),
+            IndicatorValue::Macd(m) => Some(m.macd),
+        }
+    }
+
+    #[napi(js_name = "getIndicatorResult")]
+    pub fn getIndicatorResult(&self, name: String) -> Option<JsIndicatorResult> {
+        let id = *self.named.get(&name)?;
+        let ts = self.bars.last()?.timestamp;
+        let v = self.indicators.indicator_last(id)?;
+        match v {
+            IndicatorValue::F64(x) => Some(JsIndicatorResult {
+                value: x,
+                timestamp: ts,
+                extra: None,
+            }),
+            IndicatorValue::Boll(b) => Some(JsIndicatorResult {
+                value: b.mid,
+                timestamp: ts,
+                extra: Some(vec![b.upper, b.lower]),
+            }),
+            IndicatorValue::Macd(m) => Some(JsIndicatorResult {
+                value: m.macd,
+                timestamp: ts,
+                extra: Some(vec![m.hist, m.signal]),
+            }),
+        }
+    }
+
+    #[napi(js_name = "isIndicatorReady")]
+    pub fn isIndicatorReady(&self, name: String) -> bool {
+        let Some(v) = self.getIndicatorValue(name) else {
+            return false;
+        };
+        v.is_finite() && !v.is_nan()
+    }
+
+    #[napi(js_name = "pollSignals")]
+    pub fn pollSignals(&mut self) -> Vec<JsSignal> {
+        self.signals.drain(..).collect()
+    }
+
+    #[napi]
+    pub fn reset(&mut self) {
+        self.bars.clear();
+        self.indicators.reset();
+        self.named.clear();
+        self.signals.clear();
+        self.aggregator = None;
+    }
+
+    fn push_bar_internal(&mut self, bar: Bar) {
+        self.bars.push(bar);
+        self.indicators.on_push(&self.bars);
+    }
+}
+
+#[napi]
+pub struct HQuant {
+    inner: crate::hquant::HQuant,
+    named: HashMap<String, IndicatorId>,
+    aggregator: Option<Aggregator>,
+}
+
+#[napi]
+impl HQuant {
+    #[napi(constructor)]
+    pub fn new(capacity: u32, periods: Option<Vec<String>>) -> Result<Self> {
+        let mut aggregator = None;
+        if let Some(periods) = periods {
+            if periods.len() >= 2 {
+                let mut ps = Vec::with_capacity(periods.len());
+                for p in periods {
+                    ps.push(Period::parse(&p).map_err(|e| Error::new(Status::InvalidArg, e.to_string()))?);
+                }
+                aggregator = Some(Aggregator::new(ps));
+            }
+        }
+        Ok(Self {
+            inner: crate::hquant::HQuant::new(capacity as usize),
+            named: HashMap::new(),
+            aggregator,
+        })
+    }
+
+    #[napi(js_name = "addIndicator")]
+    pub fn addIndicator(&mut self, name: String, config: JsIndicatorConfig) -> Result<()> {
+        let spec = indicator_spec_from_config(&config)
+            .map_err(|e| Error::new(Status::InvalidArg, e))?;
+        let id = self.inner.add_indicator(spec);
+        self.named.insert(name, id);
+        Ok(())
+    }
+
+    #[napi(js_name = "addStrategy")]
+    pub fn addStrategy(&mut self, name: String, dsl: String) -> Result<u32> {
+        self.inner
+            .add_strategy(&name, &dsl)
+            .map_err(|e| Error::new(Status::InvalidArg, e.to_string()))
+    }
+
+    #[napi(js_name = "feedKline")]
+    pub fn feedKline(&mut self, bar: JsBar) -> Result<Vec<JsAggregatorEvent>> {
+        let bar = bar.into_bar();
+        self.inner.push_kline(bar);
+        let Some(agg) = self.aggregator.as_mut() else {
+            return Ok(Vec::new());
+        };
+        agg.push(&bar);
+        Ok(convert_agg_events(agg.poll_events()))
+    }
+
+    #[napi(js_name = "pushBar")]
+    pub fn pushBar(&mut self, bar: JsBar) -> Result<()> {
+        self.inner.push_kline(bar.into_bar());
+        Ok(())
+    }
+
+    #[napi(js_name = "pushKline")]
+    pub fn pushKline(&mut self, bar: JsBar) -> Result<Vec<JsSignal>> {
+        self.inner.push_kline(bar.into_bar());
+        Ok(Vec::new())
+    }
+
+    #[napi(js_name = "updateLast")]
+    pub fn updateLast(&mut self, bar: JsBar) -> Result<()> {
+        self.inner.update_last(bar.into_bar());
+        Ok(())
+    }
+
+    #[napi(js_name = "pollSignals")]
+    pub fn pollSignals(&mut self) -> Vec<JsDslSignal> {
+        self.inner
+            .poll_signals()
+            .into_iter()
+            .map(|s| JsDslSignal {
+                strategy_id: s.strategy_id,
+                action: s.action.as_str().to_string(),
+                timestamp: s.timestamp,
+            })
+            .collect()
+    }
+
+    #[napi(js_name = "getIndicatorValue")]
+    pub fn getIndicatorValue(&self, name: String) -> Option<f64> {
+        let id = *self.named.get(&name)?;
+        let v = self.inner.indicator_last(id)?;
+        match v {
+            IndicatorValue::F64(x) => Some(x),
+            IndicatorValue::Boll(b) => Some(b.mid),
+            IndicatorValue::Macd(m) => Some(m.macd),
+        }
+    }
+
+    #[napi(js_name = "getIndicatorResult")]
+    pub fn getIndicatorResult(&self, name: String) -> Option<JsIndicatorResult> {
+        let id = *self.named.get(&name)?;
+        let ts = self.inner.bars().last()?.timestamp;
+        let v = self.inner.indicator_last(id)?;
+        match v {
+            IndicatorValue::F64(x) => Some(JsIndicatorResult {
+                value: x,
+                timestamp: ts,
+                extra: None,
+            }),
+            IndicatorValue::Boll(b) => Some(JsIndicatorResult {
+                value: b.mid,
+                timestamp: ts,
+                extra: Some(vec![b.upper, b.lower]),
+            }),
+            IndicatorValue::Macd(m) => Some(JsIndicatorResult {
+                value: m.macd,
+                timestamp: ts,
+                extra: Some(vec![m.hist, m.signal]),
+            }),
+        }
+    }
+
+    #[napi(js_name = "isIndicatorReady")]
+    pub fn isIndicatorReady(&self, name: String) -> bool {
+        let Some(v) = self.getIndicatorValue(name) else {
+            return false;
+        };
+        v.is_finite() && !v.is_nan()
+    }
+
+    #[napi(js_name = "loadStore")]
+    pub fn loadStore(&mut self, name: String, vectors: Vec<JsLabeledVector>) -> Result<()> {
+        let vecs = vectors
+            .into_iter()
+            .map(|v| LabeledVector {
+                label: v.label,
+                vector: v.vector,
+                ts: None,
+            })
+            .collect();
+        self.inner.load_store(&name, vecs);
+        Ok(())
+    }
+
+    #[napi(js_name = "setThreshold")]
+    pub fn setThreshold(&mut self, threshold: f64) -> Result<()> {
+        if !threshold.is_finite() || !(-1.0..=1.0).contains(&threshold) {
+            return Err(Error::new(
+                Status::InvalidArg,
+                "threshold must be finite in [-1,1]".to_string(),
+            ));
+        }
+        self.inner.set_similarity_threshold(threshold);
+        Ok(())
+    }
+
+    #[napi]
+    pub fn reset(&mut self) {
+        self.inner.reset();
+        self.named.clear();
+        self.aggregator = None;
+    }
+}
+
+#[napi]
+pub struct KlineAggregator {
+    inner: Aggregator,
+}
+
+#[napi]
+impl KlineAggregator {
+    #[napi(constructor)]
+    pub fn new(base_tf: String, target_tfs: Vec<String>, _capacity: u32) -> Result<Self> {
+        let base = Period::parse(&base_tf).map_err(|e| Error::new(Status::InvalidArg, e.to_string()))?;
+        let mut periods = vec![base];
+        for p in target_tfs {
+            periods.push(Period::parse(&p).map_err(|e| Error::new(Status::InvalidArg, e.to_string()))?);
+        }
+        Ok(Self {
+            inner: Aggregator::new(periods),
+        })
+    }
+
+    #[napi(js_name = "pushKline")]
+    pub fn pushKline(&mut self, bar: JsBar) -> Result<Vec<JsAggregatorEvent>> {
+        let bar = bar.into_bar();
+        self.inner.push(&bar);
+        Ok(convert_agg_events(self.inner.poll_events()))
+    }
+
+    #[napi(js_name = "updateLast")]
+    pub fn updateLast(&mut self, bar: JsBar) -> Result<()> {
+        self.inner.update_last(&bar.into_bar());
+        Ok(())
+    }
+
+    #[napi]
+    pub fn flush(&mut self) {
+        self.inner.flush();
+        let _ = self.inner.poll_events();
+    }
+
+    #[napi]
+    pub fn reset(&mut self) {
+        self.inner.reset();
+    }
 }
 
 #[napi(object)]
-pub struct TradeOutput {
+pub struct JsLabeledVector {
+    pub label: i32,
+    pub vector: Vec<f64>,
+}
+
+#[napi]
+pub struct DslStrategy {
+    bars: KlineBuffer,
+    graph: crate::indicators::IndicatorGraph,
+    strategy: CompiledStrategy,
+    store: VectorStore,
+}
+
+#[napi]
+impl DslStrategy {
+    #[napi(constructor)]
+    pub fn new(source: String) -> Result<Self> {
+        let capacity = 4096usize;
+        let mut graph = crate::indicators::IndicatorGraph::new(capacity);
+        let strategy = compile_strategy(1, "dsl", &source, &mut graph)
+            .map_err(|e| Error::new(Status::InvalidArg, e.to_string()))?;
+        Ok(Self {
+            bars: KlineBuffer::new(capacity),
+            graph,
+            strategy,
+            store: VectorStore::new(),
+        })
+    }
+
+    #[napi(js_name = "loadStore")]
+    pub fn loadStore(&mut self, name: String, vectors: Vec<JsLabeledVector>) -> Result<()> {
+        let vecs = vectors
+            .into_iter()
+            .map(|v| LabeledVector {
+                label: v.label,
+                vector: v.vector,
+                ts: None,
+            })
+            .collect();
+        self.store.load(&name, vecs);
+        Ok(())
+    }
+
+    #[napi(js_name = "setThreshold")]
+    pub fn setThreshold(&mut self, threshold: f64) -> Result<()> {
+        if !threshold.is_finite() || !(0.0..=1.0).contains(&threshold) {
+            return Err(Error::new(Status::InvalidArg, "threshold must be in [0,1]".to_string()));
+        }
+        self.store.threshold = threshold;
+        Ok(())
+    }
+
+    #[napi]
+    pub fn evaluate(&mut self, bar: JsBar, _indicators: HashMap<String, f64>) -> Result<Vec<JsSignal>> {
+        let bar = bar.into_bar();
+        self.bars.push(bar);
+        self.graph.on_push(&self.bars);
+        let Some(sig) = self.strategy.evaluate(&self.bars, &self.graph, Some(&self.store)) else {
+            return Ok(Vec::new());
+        };
+        Ok(vec![JsSignal {
+            side: sig.action.as_str().to_string(),
+            strength: 1.0,
+            reason: sig.meta.unwrap_or_else(|| "dsl".to_string()),
+            timestamp: sig.timestamp,
+        }])
+    }
+
+    #[napi]
+    pub fn reset(&mut self) {
+        self.bars.clear();
+        self.graph.reset();
+    }
+}
+
+#[napi(object)]
+pub struct JsBacktestConfig {
+    #[napi(js_name = "marketType")]
+    pub market_type: Option<String>,
+    #[napi(js_name = "initialCapital")]
+    pub initial_capital: f64,
+    pub leverage: Option<f64>,
+    #[napi(js_name = "makerFee")]
+    pub maker_fee: Option<f64>,
+    #[napi(js_name = "takerFee")]
+    pub taker_fee: Option<f64>,
+}
+
+#[napi]
+pub struct Backtest {
+    inner: SimpleBacktest,
+}
+
+#[napi]
+impl Backtest {
+    #[napi(constructor)]
+    pub fn new(config: JsBacktestConfig) -> Result<Self> {
+        let market_type = match config
+            .market_type
+            .as_deref()
+            .unwrap_or("spot")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "spot" => MarketType::Spot,
+            "futures" => MarketType::Futures,
+            _ => MarketType::Spot,
+        };
+        let cfg = SimpleBacktestConfig {
+            market_type,
+            initial_capital: config.initial_capital,
+            leverage: config.leverage.unwrap_or(1.0),
+            maker_fee_rate: config.maker_fee.unwrap_or(0.0),
+            taker_fee_rate: config.taker_fee.unwrap_or(0.0),
+        };
+        Ok(Self {
+            inner: SimpleBacktest::new(cfg),
+        })
+    }
+
+    #[napi(js_name = "openPosition")]
+    pub fn openPosition(&mut self, price: f64, size: f64, position_side: String) {
+        if let Some(side) = parse_position_side(&position_side) {
+            self.inner.open_position(price, size, side);
+        }
+    }
+
+    #[napi(js_name = "closePosition")]
+    pub fn closePosition(&mut self, price: f64, position_side: String) {
+        if let Some(side) = parse_position_side(&position_side) {
+            self.inner.close_position(price, side);
+        }
+    }
+
+    #[napi]
+    pub fn result(&self) -> JsBacktestStats {
+        self.inner.result().into()
+    }
+
+    #[napi(js_name = "getTrades")]
+    pub fn getTrades(&self) -> Vec<JsTrade> {
+        self.inner.trades().iter().copied().map(JsTrade::from).collect()
+    }
+
+    #[napi(js_name = "getEquityCurve")]
+    pub fn getEquityCurve(&self) -> Vec<f64> {
+        self.inner.equity_curve().to_vec()
+    }
+
+    #[napi(js_name = "getEquity")]
+    pub fn getEquity(&self) -> f64 {
+        self.inner.equity()
+    }
+
+    #[napi]
+    pub fn reset(&mut self) {
+        self.inner.reset();
+    }
+}
+
+#[napi(object)]
+pub struct JsTrade {
     pub timestamp: i64,
     pub side: String,
     pub price: f64,
@@ -154,1004 +636,95 @@ pub struct TradeOutput {
     pub pnl: f64,
 }
 
-fn add_indicator_from_config(
-    engine: &mut QuantEngine,
-    name: String,
-    config: IndicatorConfigInput,
-) -> napi::Result<()> {
-    let ind_type = config.r#type.to_lowercase();
-    match ind_type.as_str() {
-        "ma" | "sma" => {
-            let period = config.period.unwrap_or(20) as usize;
-            let builder = MABuilder::new().period(period).sma();
-            engine
-                .add_indicator(name, builder)
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-        }
-        "ema" => {
-            let period = config.period.unwrap_or(20) as usize;
-            let builder = MABuilder::new().period(period).ema();
-            engine
-                .add_indicator(name, builder)
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-        }
-        "wma" => {
-            let period = config.period.unwrap_or(20) as usize;
-            let builder = MABuilder::new().period(period).wma();
-            engine
-                .add_indicator(name, builder)
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-        }
-        "rsi" => {
-            let period = config.period.unwrap_or(14) as usize;
-            let builder = RSIBuilder::new().period(period);
-            engine
-                .add_indicator(name, builder)
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-        }
-        "macd" => {
-            let fast = config.fast.unwrap_or(12) as usize;
-            let slow = config.slow.unwrap_or(26) as usize;
-            let signal = config.signal.unwrap_or(9) as usize;
-            let builder = MACDBuilder::new().fast(fast).slow(slow).signal(signal);
-            engine
-                .add_indicator(name, builder)
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-        }
-        "atr" => {
-            let period = config.period.unwrap_or(14) as usize;
-            let builder = ATRBuilder::new().period(period);
-            engine
-                .add_indicator(name, builder)
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-        }
-        "boll" | "bollinger" => {
-            let period = config.period.unwrap_or(20) as usize;
-            let std_dev = config.std_dev.or(config.multiplier).unwrap_or(2.0);
-            let builder = BOLLBuilder::new().period(period).std_dev(std_dev);
-            engine
-                .add_indicator(name, builder)
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-        }
-        "vri" => {
-            let period = config.period.unwrap_or(14) as usize;
-            let builder = VRIBuilder::new().period(period);
-            engine
-                .add_indicator(name, builder)
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-        }
-        "vwap" => {
-            engine
-                .add_vwap(name)
-                .map_err(|e| Error::from_reason(e.to_string()))?;
-        }
-        "obv" => {
-            let capacity = engine.klines().capacity();
-            let indicator = crate::obv(capacity).map_err(|e| Error::from_reason(e.to_string()))?;
-            engine.add_indicator_boxed(name, Box::new(indicator));
-        }
-        _ => {
-            return Err(Error::from_reason(format!(
-                "Unknown indicator type: {}",
-                config.r#type
-            )));
-        }
-    }
-
-    Ok(())
-}
-
-// ============================================================================
-// Engine
-// ============================================================================
-
-#[napi]
-pub struct Engine {
-    inner: Mutex<QuantEngine>,
-}
-
-#[napi]
-impl Engine {
-    #[napi(constructor)]
-    pub fn new(capacity: u32) -> napi::Result<Self> {
-        Ok(Self {
-            inner: Mutex::new(
-                QuantEngine::new(capacity as usize)
-                    .map_err(|e| Error::from_reason(e.to_string()))?,
-            ),
-        })
-    }
-
-    /// Add indicator from config object.
-    /// Example: engine.addIndicator("rsi", { type: "rsi", period: 14 })
-    #[napi]
-    pub fn add_indicator(&self, name: String, config: IndicatorConfigInput) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        add_indicator_from_config(&mut engine, name, config)
-    }
-
-    /// Setup multi-timeframe aggregator
-    #[napi]
-    pub fn setup_aggregator(
-        &self,
-        base_tf: String,
-        target_tfs: Vec<String>,
-        capacity: u32,
-    ) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let base = parse_timeframe(&base_tf)?;
-        let targets: Vec<TimeFrame> = target_tfs
-            .iter()
-            .map(|s| parse_timeframe(s))
-            .collect::<napi::Result<Vec<_>>>()?;
-        engine
-            .setup_aggregator(base, &targets, capacity as usize)
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Push K-line data
-    #[napi]
-    pub fn push_kline(&self, bar: BarInput) -> napi::Result<Vec<SignalOutput>> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let b = to_bar(&bar);
-        let signals = engine.append_bar(&b);
-        Ok(signals.iter().map(signal_to_output).collect())
-    }
-
-    /// Update last K-line
-    #[napi]
-    pub fn update_last(&self, bar: BarInput) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let b = to_bar(&bar);
-        engine.update_last_bar(&b);
-        Ok(())
-    }
-
-    /// Get indicator value
-    #[napi]
-    pub fn get_indicator_value(&self, name: String) -> napi::Result<Option<f64>> {
-        let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.indicator_value(&name))
-    }
-
-    /// Check if indicator is ready
-    #[napi]
-    pub fn is_indicator_ready(&self, name: String) -> napi::Result<bool> {
-        let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.indicator_ready(&name))
-    }
-
-    /// Get indicator result with extra data
-    #[napi]
-    pub fn get_indicator_result(
-        &self,
-        name: String,
-    ) -> napi::Result<Option<IndicatorResultOutput>> {
-        let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine
-            .indicator_result(&name)
-            .map(|r| IndicatorResultOutput {
-                value: r.value,
-                timestamp: r.timestamp,
-                extra: r.extra,
-            }))
-    }
-
-    /// Get last bar
-    #[napi]
-    pub fn get_last_bar(&self) -> napi::Result<Option<BarInput>> {
-        let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.last_bar().map(|b| BarInput {
-            timestamp: b.timestamp,
-            open: b.open,
-            high: b.high,
-            low: b.low,
-            close: b.close,
-            volume: b.volume,
-            buy_volume: Some(b.buy_volume),
-        }))
-    }
-
-    /// Reset engine
-    #[napi]
-    pub fn reset(&self) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        engine.reset();
-        Ok(())
-    }
-
-    /// Feed raw K-line data (for realtime WebSocket streams)
-    /// This method processes the K-line through the internal aggregator
-    /// and returns aggregator events (period closures)
-    #[napi]
-    pub fn feed_kline(&self, bar: BarInput) -> napi::Result<Vec<AggregatorEvent>> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let b = to_bar(&bar);
-
-        // Update indicators and kline data
-        engine.append_bar(&b);
-
-        // Get aggregator events if aggregator is setup
-        let mut events = Vec::new();
-        if let Some(agg) = engine.aggregator() {
-            // We need to get completed timeframes from last push
-            // Since we already appended, check each timeframe for new data
-            for tf in [TimeFrame::H1, TimeFrame::H4, TimeFrame::D1, TimeFrame::W1] {
-                if let Some(output) = agg.output(tf) {
-                    if let Some(last) = output.last() {
-                        // Only add if this is a newly completed candle
-                        // (timestamp matches the aligned timestamp for this period)
-                        let aligned = tf.align_timestamp(b.timestamp);
-                        if last.timestamp != aligned && b.timestamp >= last.timestamp + tf.millis()
-                        {
-                            events.push(AggregatorEvent {
-                                kind: "KlineClosed".to_string(),
-                                period: timeframe_to_string(tf),
-                                candle: Some(BarInput {
-                                    timestamp: last.timestamp,
-                                    open: last.open,
-                                    high: last.high,
-                                    low: last.low,
-                                    close: last.close,
-                                    volume: last.volume,
-                                    buy_volume: Some(last.buy_volume),
-                                }),
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(events)
-    }
-
-    /// Poll signals from strategies (used after feed_kline in realtime mode)
-    #[napi]
-    pub fn poll_signals(&self) -> napi::Result<Vec<SignalOutput>> {
-        // In current implementation, signals are returned from push_kline/append_bar
-        // This method is for compatibility with the API design
-        // In a more complete implementation, this would return queued signals
-        Ok(Vec::new())
-    }
-
-    /// Get K-line count
-    #[napi]
-    pub fn get_kline_count(&self) -> napi::Result<u32> {
-        let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.klines().len() as u32)
-    }
-
-    // Backtest APIs intentionally not exposed on Engine.
-}
-
-// ============================================================================
-// Shared helpers
-// ============================================================================
-
-fn parse_backtest_config(config: &BacktestConfigInput) -> BacktestConfig {
-    let market_type = match config.market_type.as_deref() {
-        Some("futures") | Some("Futures") | Some("FUTURES") => MarketType::Futures,
-        _ => MarketType::Spot,
-    };
-    BacktestConfig {
-        market_type,
-        initial_capital: config.initial_capital,
-        leverage: config.leverage.unwrap_or(1.0),
-        maker_fee: config.maker_fee.unwrap_or(0.001),
-        taker_fee: config.taker_fee.unwrap_or(0.001),
-        slippage: config.slippage.unwrap_or(0.0005),
-        position_size_pct: config.position_size_pct.unwrap_or(0.1),
-    }
-}
-
-fn stats_to_output(stats: &BacktestStats) -> BacktestStatsOutput {
-    BacktestStatsOutput {
-        total_trades: stats.total_trades as u32,
-        winning_trades: stats.winning_trades as u32,
-        losing_trades: stats.losing_trades as u32,
-        total_pnl: stats.total_pnl,
-        max_drawdown: stats.max_drawdown,
-        max_drawdown_pct: stats.max_drawdown_pct,
-        sharpe_ratio: stats.sharpe_ratio,
-        win_rate: stats.win_rate,
-        final_equity: stats.final_equity,
-        return_pct: stats.return_pct,
-        liquidations: stats.liquidations as u32,
-    }
-}
-
-fn trade_to_output(t: &Trade) -> TradeOutput {
-    TradeOutput {
-        timestamp: t.timestamp,
-        side: match t.side {
-            Side::Buy => "BUY".to_string(),
-            Side::Sell => "SELL".to_string(),
-            Side::Hold => "HOLD".to_string(),
-        },
-        price: t.price,
-        size: t.size,
-        fee: t.fee,
-        pnl: t.pnl,
-    }
-}
-
-// ============================================================================
-// Multi-Period HQuant (combines Engine with built-in Aggregator)
-// ============================================================================
-
-/// Inner state for HQuant, protected by a single Mutex
-struct HQuantInner {
-    engine: QuantEngine,
-    aggregator: Option<MultiTimeFrameAggregator>,
-    base_tf: Option<TimeFrame>,
-    signal_queue: Vec<Signal>,
-    dsl_strategies: Vec<(u32, String, DslEngine)>,
-    next_strategy_id: u32,
-}
-
-/// Multi-period quantitative engine with built-in aggregator
-/// Ideal for production use with WebSocket data streams
-#[napi]
-pub struct HQuant {
-    inner: Mutex<HQuantInner>,
-}
-
-#[napi]
-impl HQuant {
-    #[napi(constructor)]
-    pub fn new(capacity: u32, periods: Option<Vec<String>>) -> napi::Result<Self> {
-        let engine =
-            QuantEngine::new(capacity as usize).map_err(|e| Error::from_reason(e.to_string()))?;
-
-        let (aggregator, base_tf) = if let Some(ref period_strs) = periods {
-            if period_strs.is_empty() {
-                (None, None)
-            } else {
-                // First period is the base timeframe
-                let base = parse_timeframe(&period_strs[0])?;
-                let targets: Vec<TimeFrame> = period_strs[1..]
-                    .iter()
-                    .map(|s| parse_timeframe(s))
-                    .collect::<napi::Result<Vec<_>>>()?;
-
-                if targets.is_empty() {
-                    (None, Some(base))
-                } else {
-                    let agg = MultiTimeFrameAggregator::new(base, &targets, capacity as usize)
-                        .map_err(|e| Error::from_reason(e.to_string()))?;
-                    (Some(agg), Some(base))
-                }
-            }
-        } else {
-            (None, None)
-        };
-
-        Ok(Self {
-            inner: Mutex::new(HQuantInner {
-                engine,
-                aggregator,
-                base_tf,
-                signal_queue: Vec::new(),
-                dsl_strategies: Vec::new(),
-                next_strategy_id: 1,
-            }),
-        })
-    }
-
-    /// Add indicator from config object.
-    /// Example: hq.addIndicator("rsi_3", { type: "rsi", period: 3 })
-    #[napi]
-    pub fn add_indicator(&self, name: String, config: IndicatorConfigInput) -> napi::Result<()> {
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        add_indicator_from_config(&mut inner.engine, name, config)
-    }
-
-    /// Feed raw K-line data from WebSocket stream
-    /// Triggers multi-period aggregation internally
-    #[napi]
-    pub fn feed_kline(&self, bar: BarInput) -> napi::Result<Vec<AggregatorEvent>> {
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let b = to_bar(&bar);
-
-        // Process through engine
-        let signals = inner.engine.append_bar(&b);
-        inner.signal_queue.extend(signals);
-
-        // Process through aggregator if available
-        let mut events = Vec::new();
-        if let Some(ref mut agg) = inner.aggregator {
-            let completed = agg.push(&b);
-            for tf in completed {
-                if let Some(output) = agg.output(tf) {
-                    if let Some(last) = output.last() {
-                        events.push(AggregatorEvent {
-                            kind: "KlineClosed".to_string(),
-                            period: timeframe_to_string(tf),
-                            candle: Some(BarInput {
-                                timestamp: last.timestamp,
-                                open: last.open,
-                                high: last.high,
-                                low: last.low,
-                                close: last.close,
-                                volume: last.volume,
-                                buy_volume: Some(last.buy_volume),
-                            }),
-                        });
-                    }
-                }
-            }
-        }
-
-        Ok(events)
-    }
-
-    /// Push completed K-line (for historical data loading)
-    /// This method updates indicators and evaluates DSL strategies
-    #[napi]
-    pub fn push_bar(&self, bar: BarInput) -> napi::Result<()> {
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let b = to_bar(&bar);
-
-        // Append bar to engine (updates indicators)
-        let _builtin_signals = inner.engine.append_bar(&b);
-
-        // Evaluate DSL strategies with field destructuring to enable split borrows
-        let HQuantInner {
-            engine,
-            dsl_strategies,
-            signal_queue,
-            ..
-        } = &mut *inner;
-
-        for (strategy_id, _name, dsl_engine) in dsl_strategies.iter_mut() {
-            let graph = engine.graph();
-            let ctx = DslContext::new(&b, graph);
-            if let Ok(signals) = dsl_engine.evaluate(&ctx) {
-                for mut sig in signals {
-                    sig.reason = format!("{}:{}", strategy_id, sig.reason);
-                    signal_queue.push(sig);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Push completed K-line (legacy alias for push_bar)
-    #[napi]
-    pub fn push_kline(&self, bar: BarInput) -> napi::Result<Vec<SignalOutput>> {
-        self.push_bar(bar)?;
-        // Return empty - use pollSignals() to get accumulated signals
-        Ok(Vec::new())
-    }
-
-    /// Update last K-line (for realtime price updates within same candle)
-    #[napi]
-    pub fn update_last(&self, bar: BarInput) -> napi::Result<()> {
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let b = to_bar(&bar);
-        inner.engine.update_last_bar(&b);
-
-        if let Some(ref mut agg) = inner.aggregator {
-            agg.update_last(&b);
-        }
-
-        Ok(())
-    }
-
-    /// Poll accumulated signals from DSL strategies
-    /// Returns signals with strategyId and action (BUY/SELL/HOLD)
-    #[napi]
-    pub fn poll_signals(&self) -> napi::Result<Vec<DslSignalOutput>> {
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let signals: Vec<DslSignalOutput> = inner
-            .signal_queue
-            .iter()
-            .map(|s| {
-                // Parse strategy_id from reason (format: "id:reason")
-                let strategy_id = s
-                    .reason
-                    .split(':')
-                    .next()
-                    .and_then(|id| id.parse::<u32>().ok())
-                    .unwrap_or(0);
-                DslSignalOutput {
-                    strategy_id,
-                    action: match s.side {
-                        Side::Buy => "BUY".to_string(),
-                        Side::Sell => "SELL".to_string(),
-                        Side::Hold => "HOLD".to_string(),
-                    },
-                    timestamp: s.timestamp,
-                }
-            })
-            .collect();
-        inner.signal_queue.clear();
-        Ok(signals)
-    }
-
-    /// Get indicator value
-    #[napi]
-    pub fn get_indicator_value(&self, name: String) -> napi::Result<Option<f64>> {
-        let inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(inner.engine.indicator_value(&name))
-    }
-
-    /// Get indicator result with extra data
-    #[napi]
-    pub fn get_indicator_result(
-        &self,
-        name: String,
-    ) -> napi::Result<Option<IndicatorResultOutput>> {
-        let inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(inner
-            .engine
-            .indicator_result(&name)
-            .map(|r| IndicatorResultOutput {
-                value: r.value,
-                timestamp: r.timestamp,
-                extra: r.extra,
-            }))
-    }
-
-    /// Check if indicator is ready
-    #[napi]
-    pub fn is_indicator_ready(&self, name: String) -> napi::Result<bool> {
-        let inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(inner.engine.indicator_ready(&name))
-    }
-
-    /// Reset engine
-    #[napi]
-    pub fn reset(&self) -> napi::Result<()> {
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        inner.engine.reset();
-        if let Some(ref mut agg) = inner.aggregator {
-            agg.reset();
-        }
-        inner.signal_queue.clear();
-
-        Ok(())
-    }
-
-    // -- DSL Strategy methods --
-
-    /// Add a DSL-based strategy
-    /// Returns the strategy ID (>0 on success)
-    #[napi]
-    pub fn add_strategy(&self, name: String, dsl: String) -> napi::Result<u32> {
-        let dsl_engine = DslEngine::new(&dsl)
-            .map_err(|e| Error::from_reason(format!("DSL compile error: {}", e)))?;
-
-        let mut inner = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let id = inner.next_strategy_id;
-        inner.dsl_strategies.push((id, name, dsl_engine));
-        inner.next_strategy_id += 1;
-
-        Ok(id)
-    }
-
-    // Built-in indicator/strategy adders intentionally not exposed via FFI.
-
-    // Backtest APIs intentionally not exposed on HQuant.
-}
-
-// ============================================================================
-// Backtest
-// ============================================================================
-
-#[napi(object)]
-pub struct BacktestConfigInput {
-    pub market_type: Option<String>,
-    pub initial_capital: f64,
-    pub leverage: Option<f64>,
-    pub maker_fee: Option<f64>,
-    pub taker_fee: Option<f64>,
-    pub slippage: Option<f64>,
-    pub position_size_pct: Option<f64>,
-}
-
-#[napi]
-pub struct Backtest {
-    inner: Mutex<BacktestEngine>,
-}
-
-#[napi]
-impl Backtest {
-    #[napi(constructor)]
-    pub fn new(config: BacktestConfigInput) -> Self {
+impl From<Trade> for JsTrade {
+    fn from(t: Trade) -> Self {
         Self {
-            inner: Mutex::new(BacktestEngine::new(parse_backtest_config(&config))),
-        }
-    }
-
-    /// Open position
-    #[napi]
-    pub fn open_position(&self, price: f64, size: f64, position_side: String) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let position_side = parse_position_side(&position_side)?;
-        engine.open_position(price, size, position_side);
-        Ok(())
-    }
-
-    /// Close position
-    #[napi]
-    pub fn close_position(&self, price: f64, position_side: String) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let position_side = parse_position_side(&position_side)?;
-        engine.close_position(price, position_side);
-        Ok(())
-    }
-
-    /// Get backtest result
-    #[napi]
-    pub fn result(&self) -> napi::Result<BacktestStatsOutput> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(stats_to_output(engine.result()))
-    }
-
-    /// Get trades
-    #[napi]
-    pub fn get_trades(&self) -> napi::Result<Vec<TradeOutput>> {
-        let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.trades().iter().map(trade_to_output).collect())
-    }
-
-    /// Get equity curve
-    #[napi]
-    pub fn get_equity_curve(&self) -> napi::Result<Vec<f64>> {
-        let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.equity_curve().to_vec())
-    }
-
-    /// Get current equity
-    #[napi]
-    pub fn get_equity(&self) -> napi::Result<f64> {
-        let engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        Ok(engine.equity())
-    }
-
-    /// Reset backtest
-    #[napi]
-    pub fn reset(&self) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        engine.reset();
-        Ok(())
-    }
-}
-
-// ============================================================================
-// Aggregator
-// ============================================================================
-
-#[napi(object)]
-pub struct AggregatorEvent {
-    pub kind: String,
-    pub period: String,
-    pub candle: Option<BarInput>,
-}
-
-#[napi]
-pub struct KlineAggregator {
-    inner: Mutex<MultiTimeFrameAggregator>,
-}
-
-#[napi]
-impl KlineAggregator {
-    #[napi(constructor)]
-    pub fn new(base_tf: String, target_tfs: Vec<String>, capacity: u32) -> napi::Result<Self> {
-        let base = parse_timeframe(&base_tf)?;
-        let targets: Vec<TimeFrame> = target_tfs
-            .iter()
-            .map(|s| parse_timeframe(s))
-            .collect::<napi::Result<Vec<_>>>()?;
-
-        let agg = MultiTimeFrameAggregator::new(base, &targets, capacity as usize)
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-
-        Ok(Self {
-            inner: Mutex::new(agg),
-        })
-    }
-
-    /// Push K-line and get events
-    #[napi]
-    pub fn push_kline(&self, bar: BarInput) -> napi::Result<Vec<AggregatorEvent>> {
-        let mut agg = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let b = to_bar(&bar);
-        let completed = agg.push(&b);
-
-        let mut events = Vec::new();
-        for tf in completed {
-            if let Some(output) = agg.output(tf) {
-                if let Some(last) = output.last() {
-                    events.push(AggregatorEvent {
-                        kind: "KlineClosed".to_string(),
-                        period: timeframe_to_string(tf),
-                        candle: Some(BarInput {
-                            timestamp: last.timestamp,
-                            open: last.open,
-                            high: last.high,
-                            low: last.low,
-                            close: last.close,
-                            volume: last.volume,
-                            buy_volume: Some(last.buy_volume),
-                        }),
-                    });
-                }
+            timestamp: t.timestamp,
+            side: match t.side {
+                PositionSide::Long => "LONG",
+                PositionSide::Short => "SHORT",
             }
+            .to_string(),
+            price: t.price,
+            size: t.size,
+            fee: t.fee,
+            pnl: t.pnl,
         }
-
-        Ok(events)
     }
-
-    /// Update last K-line
-    #[napi]
-    pub fn update_last(&self, bar: BarInput) -> napi::Result<()> {
-        let mut agg = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let b = to_bar(&bar);
-        agg.update_last(&b);
-        Ok(())
-    }
-
-    /// Flush all pending candles
-    #[napi]
-    pub fn flush(&self) -> napi::Result<()> {
-        let mut agg = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        agg.flush_all();
-        Ok(())
-    }
-
-    /// Reset aggregator
-    #[napi]
-    pub fn reset(&self) -> napi::Result<()> {
-        let mut agg = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        agg.reset();
-        Ok(())
-    }
-}
-
-// ============================================================================
-// Strategy DSL
-// ============================================================================
-
-#[napi(object)]
-pub struct LabeledVectorInput {
-    pub label: i32,
-    pub vector: Vec<f64>,
 }
 
 #[napi(object)]
-pub struct SimilarityHitOutput {
-    pub label: i32,
-    pub score: f64,
+pub struct JsBacktestStats {
+    #[napi(js_name = "totalTrades")]
+    pub total_trades: u32,
+    #[napi(js_name = "winningTrades")]
+    pub winning_trades: u32,
+    #[napi(js_name = "losingTrades")]
+    pub losing_trades: u32,
+    #[napi(js_name = "totalPnl")]
+    pub total_pnl: f64,
+    #[napi(js_name = "maxDrawdown")]
+    pub max_drawdown: f64,
+    #[napi(js_name = "maxDrawdownPct")]
+    pub max_drawdown_pct: f64,
+    #[napi(js_name = "sharpeRatio")]
+    pub sharpe_ratio: f64,
+    #[napi(js_name = "winRate")]
+    pub win_rate: f64,
+    #[napi(js_name = "finalEquity")]
+    pub final_equity: f64,
+    #[napi(js_name = "returnPct")]
+    pub return_pct: f64,
+    pub liquidations: u32,
 }
 
-/// DSL Strategy engine for custom trading strategies
-#[napi]
-pub struct DslStrategy {
-    inner: Mutex<DslEngine>,
-}
-
-#[napi]
-impl DslStrategy {
-    /// Create a new DSL strategy from source code
-    ///
-    /// Example DSL:
-    /// ```text
-    /// ema20 = EMA(close, period=20)
-    /// IF RSI(14) < 30 THEN BUY
-    /// IF RSI(14) > 70 THEN SELL
-    /// ```
-    #[napi(constructor)]
-    pub fn new(source: String) -> napi::Result<Self> {
-        let engine = DslEngine::new(&source).map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(Self {
-            inner: Mutex::new(engine),
-        })
-    }
-
-    /// Load labeled vectors into a named store for similarity matching
-    ///
-    /// Used with VEC_STORE() and SIMILARITY() in DSL
-    #[napi]
-    pub fn load_store(&self, name: String, vectors: Vec<LabeledVectorInput>) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let labeled: Vec<LabeledVector> = vectors
-            .into_iter()
-            .map(|v| LabeledVector::new(v.label, v.vector))
-            .collect();
-        engine.vector_store_mut().load(&name, labeled);
-        Ok(())
-    }
-
-    /// Set similarity threshold (default: 0.9)
-    #[napi]
-    pub fn set_threshold(&self, threshold: f64) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        engine.set_threshold(threshold);
-        Ok(())
-    }
-
-    /// Evaluate strategy with given bar data and indicators
-    /// Returns generated signals
-    #[napi]
-    pub fn evaluate(
-        &self,
-        bar: BarInput,
-        indicators: std::collections::HashMap<String, f64>,
-    ) -> napi::Result<Vec<SignalOutput>> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        let b = to_bar(&bar);
-
-        // Create a minimal indicator map for context
-        // Note: In real usage, you'd pass the actual engine's indicators
-        let empty_graph = IndicatorGraph::new();
-        let ctx = DslContext::new(&b, &empty_graph);
-
-        let signals = engine
-            .evaluate(&ctx)
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-
-        Ok(signals.iter().map(signal_to_output).collect())
-    }
-
-    /// Reset strategy state
-    #[napi]
-    pub fn reset(&self) -> napi::Result<()> {
-        let mut engine = self.inner.lock().map_err(|_| lock_poisoned_error())?;
-        engine.reset();
-        Ok(())
+impl From<BacktestStats> for JsBacktestStats {
+    fn from(s: BacktestStats) -> Self {
+        Self {
+            total_trades: s.total_trades,
+            winning_trades: s.winning_trades,
+            losing_trades: s.losing_trades,
+            total_pnl: s.total_pnl,
+            max_drawdown: s.max_drawdown,
+            max_drawdown_pct: s.max_drawdown_pct,
+            sharpe_ratio: s.sharpe_ratio,
+            win_rate: s.win_rate,
+            final_equity: s.final_equity,
+            return_pct: s.return_pct,
+            liquidations: s.liquidations,
+        }
     }
 }
-
-/// Compile and validate DSL source without creating engine
-#[napi]
-pub fn validate_dsl(source: String) -> napi::Result<bool> {
-    match crate::dsl::compile(&source) {
-        Ok(_) => Ok(true),
-        Err(e) => Err(Error::from_reason(e.to_string())),
-    }
-}
-
-// ============================================================================
-// FuturesBacktest (standalone, compatible with jx-quant)
-// ============================================================================
 
 #[napi(object)]
-pub struct FuturesBacktestConfig {
+pub struct JsFuturesBacktestConfig {
+    #[napi(js_name = "initialMargin")]
     pub initial_margin: f64,
     pub leverage: f64,
+    #[napi(js_name = "contractSize")]
     pub contract_size: f64,
+    #[napi(js_name = "makerFeeRate")]
     pub maker_fee_rate: f64,
+    #[napi(js_name = "takerFeeRate")]
     pub taker_fee_rate: f64,
+    #[napi(js_name = "maintenanceMarginRate")]
     pub maintenance_margin_rate: f64,
-    pub decimals: Option<u32>,
 }
 
 #[napi(object)]
-pub struct FuturesBacktestResult {
+pub struct JsFuturesBacktestResult {
     pub equity: f64,
     pub profit: f64,
+    #[napi(js_name = "profitRate")]
     pub profit_rate: f64,
+    #[napi(js_name = "maxDrawdownRate")]
     pub max_drawdown_rate: f64,
     pub liquidated: bool,
 }
 
-#[napi(object)]
-pub struct FuturesPositionOutput {
-    pub position_side: String,
-    pub entry_price: f64,
-    pub mark_price: f64,
-    pub position_amt: f64,
-    pub margin: f64,
-    pub unrealized_pnl: f64,
-}
-
-/// Standalone futures backtest engine (compatible with jx-quant FuturesBacktest)
-/// Decoupled from HQuant, can be used independently with any signal source
-/// Uses shared Rust core implementation for consistency across Python/Node.js
-#[napi]
-pub struct FuturesBacktest {
-    inner: CoreFuturesBacktest,
-}
-
-#[napi]
-impl FuturesBacktest {
-    #[napi(constructor)]
-    pub fn new(config: FuturesBacktestConfig) -> Self {
-        let core_config = CoreFuturesBacktestConfig {
-            initial_margin: config.initial_margin,
-            leverage: config.leverage,
-            contract_size: config.contract_size,
-            maker_fee_rate: config.maker_fee_rate,
-            taker_fee_rate: config.taker_fee_rate,
-            maintenance_margin_rate: config.maintenance_margin_rate,
-        };
-        let mut inner = CoreFuturesBacktest::new(core_config);
-        if let Some(d) = config.decimals {
-            inner.set_decimals(d);
-        }
-        Self { inner }
-    }
-
-    /// Set decimal precision for results (default: 8)
-    #[napi]
-    pub fn set_decimals(&mut self, decimals: u32) {
-        self.inner.set_decimals(decimals);
-    }
-
-    /// Apply a trading signal
-    /// action: "BUY", "SELL", or "HOLD"
-    /// price: current market price
-    /// margin: margin amount to use for opening/closing positions
-    /// is_maker: if true, use maker_fee_rate (limit order); if false, use taker_fee_rate (market order)
-    #[napi]
-    pub fn apply_signal(
-        &mut self,
-        action: String,
-        price: f64,
-        margin: f64,
-        position_side: Option<String>,
-        is_maker: Option<bool>,
-    ) -> napi::Result<()> {
-        let use_maker = is_maker.unwrap_or(false);
-        let position_side = position_side
-            .as_deref()
-            .map(parse_position_side)
-            .transpose()?;
-        self.inner
-            .apply_signal(&action, price, margin, position_side, use_maker);
-        Ok(())
-    }
-
-    /// Open a position directly.
-    /// position_side: "LONG" | "SHORT"
-    #[napi]
-    pub fn open_position(
-        &mut self,
-        position_side: String,
-        price: f64,
-        margin: f64,
-        is_maker: Option<bool>,
-    ) -> napi::Result<()> {
-        let position_side = parse_position_side(&position_side)?;
-        let use_maker = is_maker.unwrap_or(false);
-        self.inner
-            .open_position(price, margin, position_side, use_maker);
-        Ok(())
-    }
-
-    /// Close a position directly.
-    /// position_side: "LONG" | "SHORT"
-    #[napi]
-    pub fn close_position(
-        &mut self,
-        position_side: String,
-        price: f64,
-        margin: f64,
-        is_maker: Option<bool>,
-    ) -> napi::Result<()> {
-        let position_side = parse_position_side(&position_side)?;
-        let use_maker = is_maker.unwrap_or(false);
-        self.inner
-            .close_position(price, margin, position_side, use_maker);
-        Ok(())
-    }
-
-    /// Update position value on price change (for liquidation checking)
-    #[napi]
-    pub fn on_price(&mut self, price: f64) {
-        self.inner.on_price(price);
-    }
-
-    /// Get backtest result
-    #[napi]
-    pub fn result(&self, price: f64) -> FuturesBacktestResult {
-        let r = self.inner.result(price);
-        FuturesBacktestResult {
+impl From<BacktestResult> for JsFuturesBacktestResult {
+    fn from(r: BacktestResult) -> Self {
+        Self {
             equity: r.equity,
             profit: r.profit,
             profit_rate: r.profit_rate,
@@ -1159,49 +732,211 @@ impl FuturesBacktest {
             liquidated: r.liquidated,
         }
     }
+}
 
-    /// Get current equity
-    #[napi]
-    pub fn get_equity(&self) -> f64 {
-        self.inner.equity()
+#[napi(object)]
+pub struct JsFuturesPosition {
+    #[napi(js_name = "positionSide")]
+    pub position_side: String,
+    #[napi(js_name = "entryPrice")]
+    pub entry_price: f64,
+    #[napi(js_name = "markPrice")]
+    pub mark_price: f64,
+    #[napi(js_name = "positionAmt")]
+    pub position_amt: f64,
+    pub margin: f64,
+    #[napi(js_name = "unrealizedPnl")]
+    pub unrealized_pnl: f64,
+}
+
+impl From<FuturesPosition> for JsFuturesPosition {
+    fn from(p: FuturesPosition) -> Self {
+        Self {
+            position_side: match p.position_side {
+                PositionSide::Long => "LONG",
+                PositionSide::Short => "SHORT",
+            }
+            .to_string(),
+            entry_price: p.entry_price,
+            mark_price: p.mark_price,
+            position_amt: p.position_amt,
+            margin: p.margin,
+            unrealized_pnl: p.unrealized_pnl,
+        }
+    }
+}
+
+#[napi]
+pub struct FuturesBacktest {
+    inner: CoreFuturesBacktest,
+    last_price: f64,
+}
+
+#[napi]
+impl FuturesBacktest {
+    #[napi(constructor)]
+    pub fn new(config: JsFuturesBacktestConfig) -> Result<Self> {
+        let params = BacktestParams {
+            initial_margin: config.initial_margin,
+            leverage: config.leverage,
+            contract_size: config.contract_size,
+            maker_fee_rate: config.maker_fee_rate,
+            taker_fee_rate: config.taker_fee_rate,
+            maintenance_margin_rate: config.maintenance_margin_rate,
+        };
+        let inner = CoreFuturesBacktest::try_new(params)
+            .ok_or_else(|| Error::new(Status::InvalidArg, "invalid futures backtest params".to_string()))?;
+        Ok(Self {
+            inner,
+            last_price: f64::NAN,
+        })
     }
 
-    /// Get current position
-    #[napi]
-    pub fn get_position(&self) -> f64 {
-        self.inner.position()
+    #[napi(js_name = "applySignal")]
+    pub fn applySignal(
+        &mut self,
+        action: String,
+        price: f64,
+        margin: f64,
+        position_side: Option<String>,
+        is_maker: Option<bool>,
+    ) -> Result<()> {
+        let action = Action::parse(&action).ok_or_else(|| Error::new(Status::InvalidArg, "invalid action".to_string()))?;
+        let params = self.inner.params();
+        let fee_rate = if is_maker.unwrap_or(false) { params.maker_fee_rate } else { params.taker_fee_rate };
+
+        match position_side.as_deref().and_then(parse_position_side) {
+            None => {
+                self.inner.apply_signal(action, price, margin);
+                self.last_price = price;
+                return Ok(());
+            }
+            Some(PositionSide::Long) => match action {
+                Action::Buy => self.inner.open_long(price, margin, fee_rate),
+                Action::Sell => self.inner.close_long(price, margin, fee_rate),
+                Action::Hold => {}
+            },
+            Some(PositionSide::Short) => match action {
+                Action::Sell => self.inner.open_short(price, margin, fee_rate),
+                Action::Buy => self.inner.close_short(price, margin, fee_rate),
+                Action::Hold => {}
+            },
+        }
+        self.inner.on_price(price);
+        self.last_price = price;
+        Ok(())
     }
 
-    /// Get current positions (0 or 1).
+    #[napi(js_name = "openPosition")]
+    pub fn openPosition(&mut self, position_side: String, price: f64, margin: f64, is_maker: Option<bool>) {
+        let params = self.inner.params();
+        let fee_rate = if is_maker.unwrap_or(false) { params.maker_fee_rate } else { params.taker_fee_rate };
+        match parse_position_side(&position_side) {
+            Some(PositionSide::Long) => self.inner.open_long(price, margin, fee_rate),
+            Some(PositionSide::Short) => self.inner.open_short(price, margin, fee_rate),
+            None => {}
+        }
+        self.last_price = price;
+    }
+
+    #[napi(js_name = "closePosition")]
+    pub fn closePosition(&mut self, position_side: String, price: f64, margin: f64, is_maker: Option<bool>) {
+        let params = self.inner.params();
+        let fee_rate = if is_maker.unwrap_or(false) { params.maker_fee_rate } else { params.taker_fee_rate };
+        match parse_position_side(&position_side) {
+            Some(PositionSide::Long) => self.inner.close_long(price, margin, fee_rate),
+            Some(PositionSide::Short) => self.inner.close_short(price, margin, fee_rate),
+            None => {}
+        }
+        self.last_price = price;
+    }
+
+    #[napi(js_name = "onPrice")]
+    pub fn onPrice(&mut self, price: f64) {
+        self.inner.on_price(price);
+        self.last_price = price;
+    }
+
     #[napi]
-    pub fn get_positions(&self) -> Vec<FuturesPositionOutput> {
+    pub fn result(&self, price: f64) -> JsFuturesBacktestResult {
+        self.inner.result(price).into()
+    }
+
+    #[napi(js_name = "getPositions")]
+    pub fn getPositions(&self) -> Vec<JsFuturesPosition> {
         self.inner
-            .positions()
+            .get_positions(self.last_price)
             .into_iter()
-            .map(|p| FuturesPositionOutput {
-                position_side: match p.position_side {
-                    PositionSide::Long => "LONG",
-                    PositionSide::Short => "SHORT",
-                }
-                .to_string(),
-                entry_price: p.entry_price,
-                mark_price: p.mark_price,
-                position_amt: p.position_amt,
-                margin: p.margin,
-                unrealized_pnl: p.unrealized_pnl,
-            })
+            .map(JsFuturesPosition::from)
             .collect()
     }
+}
 
-    /// Check if liquidated
-    #[napi]
-    pub fn is_liquidated(&self) -> bool {
-        self.inner.is_liquidated()
+fn indicator_spec_from_config(cfg: &JsIndicatorConfig) -> std::result::Result<IndicatorSpec, String> {
+    let kind = cfg.kind.trim().to_ascii_lowercase();
+    match kind.as_str() {
+        "ma" | "sma" => {
+            let period = cfg.period.ok_or_else(|| "period is required".to_string())? as usize;
+            Ok(IndicatorSpec::Sma {
+                field: crate::types::Field::Close,
+                period,
+            })
+        }
+        "ema" => {
+            let period = cfg.period.ok_or_else(|| "period is required".to_string())? as usize;
+            Ok(IndicatorSpec::Ema {
+                field: crate::types::Field::Close,
+                period,
+            })
+        }
+        "stddev" => {
+            let period = cfg.period.ok_or_else(|| "period is required".to_string())? as usize;
+            Ok(IndicatorSpec::StdDev {
+                field: crate::types::Field::Close,
+                period,
+            })
+        }
+        "rsi" => {
+            let period = cfg.period.ok_or_else(|| "period is required".to_string())? as usize;
+            Ok(IndicatorSpec::Rsi { period })
+        }
+        "macd" => Ok(IndicatorSpec::Macd {
+            fast: cfg.fast.ok_or_else(|| "fast is required".to_string())? as usize,
+            slow: cfg.slow.ok_or_else(|| "slow is required".to_string())? as usize,
+            signal: cfg.signal.ok_or_else(|| "signal is required".to_string())? as usize,
+        }),
+        "boll" | "bollinger" => {
+            let period = cfg.period.ok_or_else(|| "period is required".to_string())? as usize;
+            let k = cfg
+                .std_dev
+                .or(cfg.multiplier)
+                .ok_or_else(|| "stdDev/multiplier is required".to_string())?;
+            Ok(IndicatorSpec::Boll {
+                period,
+                k_bits: k.to_bits(),
+            })
+        }
+        other => Err(format!("unsupported indicator type: {other}")),
     }
+}
 
-    /// Reset backtest state
-    #[napi]
-    pub fn reset(&mut self) {
-        self.inner.reset();
+fn parse_position_side(s: &str) -> Option<PositionSide> {
+    match s.trim().to_ascii_uppercase().as_str() {
+        "LONG" => Some(PositionSide::Long),
+        "SHORT" => Some(PositionSide::Short),
+        _ => None,
     }
+}
+
+fn convert_agg_events(events: Vec<crate::aggregator::AggregatorEvent>) -> Vec<JsAggregatorEvent> {
+    events
+        .into_iter()
+        .map(|e| JsAggregatorEvent {
+            kind: match e.kind {
+                AggregatorEventKind::KlineClosed => "KlineClosed".to_string(),
+            },
+            period: e.period.to_string(),
+            candle: Some(JsBar::from(Bar::from(e.candle))),
+        })
+        .collect()
 }

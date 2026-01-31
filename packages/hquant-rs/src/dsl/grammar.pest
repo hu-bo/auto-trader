@@ -1,0 +1,48 @@
+WHITESPACE = _{ " " | "\t" }
+
+line = { SOI ~ (var_line | rule_line) ~ EOI }
+
+rule_line = { if_kw ~ expr ~ then_kw ~ action }
+
+var_line = { var_kw ~ ident ~ "=" ~ value }
+var_kw = _{ ^"LET" }
+
+if_kw = _{ ^"IF" }
+then_kw = _{ ^"THEN" }
+
+expr = { or_expr }
+or_expr = { and_expr ~ (or_kw ~ and_expr)* }
+and_expr = { not_expr ~ (and_kw ~ not_expr)* }
+not_expr = { (not_kw ~ not_expr) | "(" ~ expr ~ ")" | cmp_expr }
+cmp_expr = { value ~ (cmp_op ~ value)? }
+
+or_kw = { ^"OR" }
+and_kw = { ^"AND" }
+not_kw = { ^"NOT" | "!" }
+
+cmp_op = _{ le | ge | lt | gt | eq | ne }
+le = { "<=" }
+ge = { ">=" }
+lt = { "<" }
+gt = { ">" }
+eq = { "==" }
+ne = { "!=" }
+
+value = _{ number | string | call | series_ref }
+
+call = { ident ~ "(" ~ arg_list? ~ ")" }
+arg_list = { arg ~ ("," ~ arg)* }
+arg = _{ kw_arg | value }
+kw_arg = { ident ~ "=" ~ value }
+
+series_ref = { ident ~ ( "@" ~ period_token )? }
+period_token = @{ (ASCII_ALPHANUMERIC | "_" )+ }
+
+ident = @{ (ASCII_ALPHA | "_" ) ~ (ASCII_ALPHANUMERIC | "_" )* }
+number = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+string = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+
+action = { action_name ~ action_meta? }
+action_name = @{ ^"BUY" | ^"SELL" | ^"HOLD" }
+action_meta = { "(" ~ meta_inner ~ ")" }
+meta_inner = @{ (!")" ~ ANY)* }

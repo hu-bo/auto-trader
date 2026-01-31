@@ -1,159 +1,33 @@
-# HQuant
+# hquant (Python)
 
-High-performance quantitative trading engine powered by Rust.
+High-performance quantitative trading engine powered by Rust (PyO3).
 
-## Installation
+## Development
 
 ```bash
-pip install hquant
+cd packages/hquant-py
+maturin develop --features ffi-python
 ```
 
 ## Quick Start
 
 ```python
-from hquant import HQuant, Backtest
+from hquant import HQuant, Aggregator, Backtest
 
-# Create engine
 engine = HQuant(capacity=1000)
-
-# Add indicators
 engine.add_indicator("rsi", {"type": "rsi", "period": 14})
-engine.add_indicator("ma_fast", {"type": "ema", "period": 5})
-engine.add_indicator("ma_slow", {"type": "ema", "period": 20})
-engine.add_indicator("macd", {"type": "macd", "fast": 12, "slow": 26, "signal": 9})
-engine.add_indicator("boll", {"type": "boll", "period": 20, "std_dev": 2.0})
+engine.add_strategy("s", "IF RSI(14) < 30 THEN BUY\nIF RSI(14) > 70 THEN SELL")
 
-# Push K-line data
-bar = {
-    "timestamp": 1704067200000,
-    "open": 100.0,
-    "high": 105.0,
-    "low": 95.0,
-    "close": 102.0,
-    "volume": 1000.0,
-}
-signals = engine.push_kline(bar)
+bar = {"timestamp": 0, "open": 100, "high": 101, "low": 99, "close": 100, "volume": 1}
+engine.push_bar(bar)
+print(engine.poll_signals())
 
-# Get indicator values
-rsi = engine.get_indicator("rsi")
-if engine.is_ready("rsi"):
-    print(f"RSI: {rsi}")
+agg = Aggregator("1m", ["15m", "1h"], 1000)
+print(agg.push_kline(bar))
+
+bt = Backtest(initial_margin=1000, taker_fee_rate=0.0)
+bt.open_position(price=100, size=1, position_side="LONG")
+bt.close_position(price=110, position_side="LONG")
+print(bt.backtest_result())
 ```
 
-## DSL Strategy
-
-```python
-from hquant import DslStrategy, validate_dsl
-
-# Validate DSL
-source = """
-    IF RSI(14) < 30 AND close > EMA(20) THEN BUY
-    IF RSI(14) > 70 THEN SELL
-"""
-validate_dsl(source)  # Raises ValueError if invalid
-
-# Create strategy
-strategy = DslStrategy(source)
-
-# Evaluate
-signals = strategy.evaluate(bar)
-for signal in signals:
-    print(f"{signal['side']}: {signal['reason']}")
-```
-
-## Backtesting
-
-```python
-from hquant import Backtest
-
-bt = Backtest(
-    initial_margin=10000.0,
-    leverage=1.0,
-    maker_fee_rate=0.001,
-    taker_fee_rate=0.001,
-    market_type="spot"
-)
-
-# Execute trades
-bt.open_position(price=100.0, size=1.0, position_side="LONG")
-bt.close_position(price=110.0, position_side="LONG")
-
-# Get results
-result = bt.backtest_result()
-print(f"Total PnL: {result['total_pnl']}")
-print(f"Win Rate: {result['win_rate']:.2%}")
-print(f"Max Drawdown: {result['max_drawdown_pct']:.2%}")
-```
-
-## Futures Backtesting
-
-```python
-from hquant import FuturesBacktest
-
-bt = FuturesBacktest(
-    initial_margin=1000,
-    leverage=10,
-    contract_size=1,
-    maker_fee_rate=0.0004,
-    taker_fee_rate=0.0004,
-    maintenance_margin_rate=0.005,
-)
-
-# apply_signal supports optional position_side: "LONG" | "SHORT"
-bt.apply_signal("BUY", 100, 100, position_side="LONG")
-bt.apply_signal("SELL", 110, 50, position_side="LONG")
-
-print(bt.get_positions())
-print(bt.result(110))
-```
-
-## Multi-Timeframe Aggregation
-
-```python
-from hquant import Aggregator
-
-agg = Aggregator(
-    base_tf="1m",
-    target_tfs=["15m", "1h", "4h"],
-    capacity=1000
-)
-
-# Push 1-minute candles
-events = agg.push_kline(bar)
-for event in events:
-    if event["kind"] == "KlineClosed":
-        print(f"{event['period']} candle closed: {event['candle']}")
-```
-
-## Supported Indicators
-
-| Type | Parameters | Description |
-|------|------------|-------------|
-| `ma`, `sma` | `period` | Simple Moving Average |
-| `ema` | `period` | Exponential Moving Average |
-| `wma` | `period` | Weighted Moving Average |
-| `rsi` | `period` | Relative Strength Index |
-| `macd` | `fast`, `slow`, `signal` | MACD |
-| `atr` | `period` | Average True Range |
-| `boll` | `period`, `std_dev` | Bollinger Bands |
-| `vri` | `period` | Volume Ratio Index |
-| `vwap` | - | Volume Weighted Average Price |
-| `obv` | - | On-Balance Volume |
-
-## Development
-
-```bash
-# Install maturin
-pip install maturin
-
-# Build and install locally
-cd packages/hquant-py
-maturin develop --features ffi-python
-
-# Test
-python -m pytest --capture=no tests/test_e2e.py
-```
-
-## License
-
-GPL-3.0-or-later

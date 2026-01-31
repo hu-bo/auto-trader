@@ -1,784 +1,501 @@
-//! Python FFI using PyO3
+use std::collections::HashMap;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use std::sync::Mutex;
 
-use crate::{
-    dsl::{DslContext, DslEngine, LabeledVector},
-    strategy::Signal,
-    ATRBuilder,
-    BOLLBuilder,
-    BacktestConfig,
-    BacktestEngine,
-    BacktestStats,
-    Bar,
-    // FuturesBacktest from core
-    FuturesBacktest as CoreFuturesBacktest,
-    FuturesBacktestConfig,
-    IndicatorGraph,
-    MABuilder,
-    MACDBuilder,
-    MarketType,
-    MultiTimeFrameAggregator,
-    PositionSide,
-    QuantEngine,
-    RSIBuilder,
-    Side,
-    TimeFrame,
-    VRIBuilder,
+use crate::aggregator::{Aggregator, AggregatorEventKind};
+use crate::backtest::futures_backtest::{
+    BacktestParams, BacktestResult, FuturesBacktest as CoreFuturesBacktest, PositionSide,
 };
+use crate::backtest::simple_backtest::{Backtest as SimpleBacktest, BacktestConfig, MarketType};
+use crate::dsl::{compile_strategy, validate_dsl as validate_dsl_core, CompiledStrategy};
+use crate::indicators::{IndicatorId, IndicatorSpec, IndicatorValue};
+use crate::kline_buffer::KlineBuffer;
+use crate::period::Period;
+use crate::types::{Action, Bar};
+use crate::vector_store::{LabeledVector, VectorStore};
 
-fn parse_position_side(side: &str) -> PyResult<PositionSide> {
-    match side.to_ascii_uppercase().as_str() {
-        "LONG" => Ok(PositionSide::Long),
-        "SHORT" => Ok(PositionSide::Short),
-        _ => Err(PyValueError::new_err(
-            "position_side must be \"LONG\" or \"SHORT\"",
-        )),
-    }
+fn py_err(msg: impl ToString) -> PyErr {
+    PyValueError::new_err(msg.to_string())
 }
 
-fn position_side_to_str(side: PositionSide) -> &'static str {
-    match side {
-        PositionSide::Long => "LONG",
-        PositionSide::Short => "SHORT",
-    }
+fn dict_get_f64(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<f64>> {
+    Ok(match d.get_item(key)? {
+        None => None,
+        Some(v) => Some(v.extract::<f64>()?),
+    })
 }
 
-fn to_bar(dict: &Bound<'_, PyDict>) -> PyResult<Bar> {
-    let timestamp: i64 = dict
-        .get_item("timestamp")?
-        .ok_or_else(|| PyValueError::new_err("missing timestamp"))?
-        .extract()?;
-    let open: f64 = dict
-        .get_item("open")?
-        .ok_or_else(|| PyValueError::new_err("missing open"))?
-        .extract()?;
-    let high: f64 = dict
-        .get_item("high")?
-        .ok_or_else(|| PyValueError::new_err("missing high"))?
-        .extract()?;
-    let low: f64 = dict
-        .get_item("low")?
-        .ok_or_else(|| PyValueError::new_err("missing low"))?
-        .extract()?;
-    let close: f64 = dict
-        .get_item("close")?
-        .ok_or_else(|| PyValueError::new_err("missing close"))?
-        .extract()?;
-    let volume: f64 = dict
-        .get_item("volume")?
-        .ok_or_else(|| PyValueError::new_err("missing volume"))?
-        .extract()?;
-    let buy_volume: f64 = dict
-        .get_item("buy_volume")
-        .ok()
-        .flatten()
-        .map(|v| v.extract())
-        .transpose()?
+fn dict_get_i64(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<i64>> {
+    Ok(match d.get_item(key)? {
+        None => None,
+        Some(v) => Some(v.extract::<i64>()?),
+    })
+}
+
+fn bar_from_dict(d: &Bound<'_, PyDict>) -> PyResult<Bar> {
+    let timestamp = dict_get_i64(d, "timestamp")?.unwrap_or(0);
+    let open = dict_get_f64(d, "open")?.unwrap_or(0.0);
+    let high = dict_get_f64(d, "high")?.unwrap_or(open);
+    let low = dict_get_f64(d, "low")?.unwrap_or(open);
+    let close = dict_get_f64(d, "close")?.unwrap_or(open);
+    let volume = dict_get_f64(d, "volume")?.unwrap_or(0.0);
+    let buy_volume = dict_get_f64(d, "buy_volume")?
+        .or(dict_get_f64(d, "buyVolume")?)
         .unwrap_or(0.0);
-
-    Ok(Bar::with_buy_volume(
-        timestamp, open, high, low, close, volume, buy_volume,
-    ))
+    Ok(Bar {
+        timestamp,
+        open,
+        high,
+        low,
+        close,
+        volume,
+        buy_volume,
+    })
 }
 
-fn parse_timeframe(tf: &str) -> PyResult<TimeFrame> {
-    TimeFrame::from_str(tf)
-        .ok_or_else(|| PyValueError::new_err(format!("Unknown timeframe: {}", tf)))
+fn merge_bar_update(last: Bar, update: &Bound<'_, PyDict>) -> PyResult<Bar> {
+    Ok(Bar {
+        timestamp: dict_get_i64(update, "timestamp")?.unwrap_or(last.timestamp),
+        open: dict_get_f64(update, "open")?.unwrap_or(last.open),
+        high: dict_get_f64(update, "high")?.unwrap_or(last.high),
+        low: dict_get_f64(update, "low")?.unwrap_or(last.low),
+        close: dict_get_f64(update, "close")?.unwrap_or(last.close),
+        volume: dict_get_f64(update, "volume")?.unwrap_or(last.volume),
+        buy_volume: dict_get_f64(update, "buy_volume")?
+            .or(dict_get_f64(update, "buyVolume")?)
+            .unwrap_or(last.buy_volume),
+    })
 }
 
-/// Inner state for HQuant, protected by a single Mutex
-struct HQuantInner {
-    engine: QuantEngine,
-    dsl_strategies: Vec<(u32, String, DslEngine)>,
-    signal_queue: Vec<Signal>,
-    next_strategy_id: u32,
+fn indicator_spec_from_py(config: &Bound<'_, PyDict>) -> PyResult<IndicatorSpec> {
+    let kind = config
+        .get_item("type")?
+        .ok_or_else(|| py_err("indicator config missing 'type'"))?
+        .extract::<String>()?
+        .to_ascii_lowercase();
+
+    let period = config.get_item("period")?.and_then(|v| v.extract::<u32>().ok());
+    let fast = config.get_item("fast")?.and_then(|v| v.extract::<u32>().ok());
+    let slow = config.get_item("slow")?.and_then(|v| v.extract::<u32>().ok());
+    let signal = config.get_item("signal")?.and_then(|v| v.extract::<u32>().ok());
+    let std_dev = config
+        .get_item("std_dev")?
+        .and_then(|v| v.extract::<f64>().ok())
+        .or_else(|| config.get_item("stdDev").ok().flatten().and_then(|v| v.extract::<f64>().ok()));
+
+    match kind.as_str() {
+        "ma" | "sma" => Ok(IndicatorSpec::Sma {
+            field: crate::types::Field::Close,
+            period: period.ok_or_else(|| py_err("period is required"))? as usize,
+        }),
+        "ema" => Ok(IndicatorSpec::Ema {
+            field: crate::types::Field::Close,
+            period: period.ok_or_else(|| py_err("period is required"))? as usize,
+        }),
+        "stddev" => Ok(IndicatorSpec::StdDev {
+            field: crate::types::Field::Close,
+            period: period.ok_or_else(|| py_err("period is required"))? as usize,
+        }),
+        "rsi" => Ok(IndicatorSpec::Rsi {
+            period: period.ok_or_else(|| py_err("period is required"))? as usize,
+        }),
+        "macd" => Ok(IndicatorSpec::Macd {
+            fast: fast.ok_or_else(|| py_err("fast is required"))? as usize,
+            slow: slow.ok_or_else(|| py_err("slow is required"))? as usize,
+            signal: signal.ok_or_else(|| py_err("signal is required"))? as usize,
+        }),
+        "boll" | "bollinger" => Ok(IndicatorSpec::Boll {
+            period: period.ok_or_else(|| py_err("period is required"))? as usize,
+            k_bits: std_dev.ok_or_else(|| py_err("std_dev is required"))?.to_bits(),
+        }),
+        other => Err(py_err(format!("unsupported indicator type: {other}"))),
+    }
 }
 
-/// High-performance quantitative trading engine
 #[pyclass]
 pub struct HQuant {
-    inner: Mutex<HQuantInner>,
+    inner: crate::hquant::HQuant,
+    named: HashMap<String, IndicatorId>,
+    aggregator: Option<Aggregator>,
 }
 
 #[pymethods]
 impl HQuant {
     #[new]
     #[pyo3(signature = (capacity=1000))]
-    pub fn new(capacity: usize) -> PyResult<Self> {
-        let engine =
-            QuantEngine::new(capacity).map_err(|e| PyValueError::new_err(e.to_string()))?;
-        Ok(Self {
-            inner: Mutex::new(HQuantInner {
-                engine,
-                dsl_strategies: Vec::new(),
-                signal_queue: Vec::new(),
-                next_strategy_id: 1,
-            }),
+    fn new(capacity: usize) -> Self {
+        Self {
+            inner: crate::hquant::HQuant::new(capacity),
+            named: HashMap::new(),
+            aggregator: None,
+        }
+    }
+
+    fn add_indicator(&mut self, name: String, config: &Bound<'_, PyDict>) -> PyResult<()> {
+        let spec = indicator_spec_from_py(config)?;
+        let id = self.inner.add_indicator(spec);
+        self.named.insert(name, id);
+        Ok(())
+    }
+
+    fn push_kline(&mut self, bar: &Bound<'_, PyDict>) -> PyResult<Vec<PyObject>> {
+        self.inner.push_kline(bar_from_dict(bar)?);
+        Ok(Vec::new())
+    }
+
+    fn update_last(&mut self, bar: &Bound<'_, PyDict>) -> PyResult<()> {
+        let Some(last) = self.inner.bars().last() else {
+            return Ok(());
+        };
+        let merged = merge_bar_update(last, bar)?;
+        self.inner.update_last(merged);
+        Ok(())
+    }
+
+    fn get_indicator(&self, py: Python<'_>, name: String) -> PyResult<Option<f64>> {
+        let Some(id) = self.named.get(&name).copied() else {
+            return Ok(None);
+        };
+        Ok(match self.inner.indicator_last(id) {
+            Some(IndicatorValue::F64(x)) => Some(x),
+            Some(IndicatorValue::Boll(b)) => Some(b.mid),
+            Some(IndicatorValue::Macd(m)) => Some(m.macd),
+            None => None,
         })
     }
 
-    /// Add indicator from dict config
-    /// Example: hquant.add_indicator("rsi", {"type": "rsi", "period": 14})
-    pub fn add_indicator(&self, name: &str, config: &Bound<'_, PyDict>) -> PyResult<()> {
-        let mut inner = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-
-        let ind_type: String = config
-            .get_item("type")?
-            .ok_or_else(|| PyValueError::new_err("missing 'type' in config"))?
-            .extract()?;
-
-        match ind_type.to_lowercase().as_str() {
-            "ma" | "sma" => {
-                let period: usize = config
-                    .get_item("period")?
-                    .map(|v| v.extract())
-                    .transpose()?
-                    .unwrap_or(20);
-                let builder = MABuilder::new().period(period).sma();
-                inner
-                    .engine
-                    .add_indicator(name, builder)
-                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    fn get_indicator_result(&self, py: Python<'_>, name: String) -> PyResult<Option<PyObject>> {
+        let Some(id) = self.named.get(&name).copied() else {
+            return Ok(None);
+        };
+        let Some(last) = self.inner.bars().last() else {
+            return Ok(None);
+        };
+        let ts = last.timestamp;
+        let Some(v) = self.inner.indicator_last(id) else {
+            return Ok(None);
+        };
+        let d = PyDict::new_bound(py);
+        match v {
+            IndicatorValue::F64(x) => {
+                d.set_item("value", x)?;
+                d.set_item("timestamp", ts)?;
             }
-            "ema" => {
-                let period: usize = config
-                    .get_item("period")?
-                    .map(|v| v.extract())
-                    .transpose()?
-                    .unwrap_or(20);
-                let builder = MABuilder::new().period(period).ema();
-                inner
-                    .engine
-                    .add_indicator(name, builder)
-                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            IndicatorValue::Boll(b) => {
+                d.set_item("value", b.mid)?;
+                d.set_item("timestamp", ts)?;
+                d.set_item("extra", vec![b.upper, b.lower])?;
             }
-            "wma" => {
-                let period: usize = config
-                    .get_item("period")?
-                    .map(|v| v.extract())
-                    .transpose()?
-                    .unwrap_or(20);
-                let builder = MABuilder::new().period(period).wma();
-                inner
-                    .engine
-                    .add_indicator(name, builder)
-                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
-            }
-            "rsi" => {
-                let period: usize = config
-                    .get_item("period")?
-                    .map(|v| v.extract())
-                    .transpose()?
-                    .unwrap_or(14);
-                let builder = RSIBuilder::new().period(period);
-                inner
-                    .engine
-                    .add_indicator(name, builder)
-                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
-            }
-            "macd" => {
-                let fast: usize = config
-                    .get_item("fast")?
-                    .map(|v| v.extract())
-                    .transpose()?
-                    .unwrap_or(12);
-                let slow: usize = config
-                    .get_item("slow")?
-                    .map(|v| v.extract())
-                    .transpose()?
-                    .unwrap_or(26);
-                let signal: usize = config
-                    .get_item("signal")?
-                    .map(|v| v.extract())
-                    .transpose()?
-                    .unwrap_or(9);
-                let builder = MACDBuilder::new().fast(fast).slow(slow).signal(signal);
-                inner
-                    .engine
-                    .add_indicator(name, builder)
-                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
-            }
-            "atr" => {
-                let period: usize = config
-                    .get_item("period")?
-                    .map(|v| v.extract())
-                    .transpose()?
-                    .unwrap_or(14);
-                let builder = ATRBuilder::new().period(period);
-                inner
-                    .engine
-                    .add_indicator(name, builder)
-                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
-            }
-            "boll" | "bollinger" => {
-                let period: usize = config
-                    .get_item("period")?
-                    .map(|v| v.extract())
-                    .transpose()?
-                    .unwrap_or(20);
-                let std_dev: f64 = config
-                    .get_item("std_dev")?
-                    .map(|v| v.extract())
-                    .transpose()?
-                    .unwrap_or(2.0);
-                let builder = BOLLBuilder::new().period(period).std_dev(std_dev);
-                inner
-                    .engine
-                    .add_indicator(name, builder)
-                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
-            }
-            "vri" => {
-                let period: usize = config
-                    .get_item("period")?
-                    .map(|v| v.extract())
-                    .transpose()?
-                    .unwrap_or(14);
-                let builder = VRIBuilder::new().period(period);
-                inner
-                    .engine
-                    .add_indicator(name, builder)
-                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
-            }
-            "vwap" => {
-                inner
-                    .engine
-                    .add_vwap(name)
-                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
-            }
-            "obv" => {
-                let capacity = inner.engine.klines().capacity();
-                let indicator =
-                    crate::obv(capacity).map_err(|e| PyValueError::new_err(e.to_string()))?;
-                inner.engine.add_indicator_boxed(name, Box::new(indicator));
-            }
-            _ => {
-                return Err(PyValueError::new_err(format!(
-                    "Unknown indicator type: {}",
-                    ind_type
-                )));
+            IndicatorValue::Macd(m) => {
+                d.set_item("value", m.macd)?;
+                d.set_item("timestamp", ts)?;
+                d.set_item("extra", vec![m.hist, m.signal])?;
             }
         }
+        Ok(Some(d.into()))
+    }
 
+    fn is_ready(&self, name: String) -> PyResult<bool> {
+        let Some(id) = self.named.get(&name).copied() else {
+            return Ok(false);
+        };
+        let Some(v) = self.inner.indicator_last(id) else {
+            return Ok(false);
+        };
+        let x = match v {
+            IndicatorValue::F64(x) => x,
+            IndicatorValue::Boll(b) => b.mid,
+            IndicatorValue::Macd(m) => m.macd,
+        };
+        Ok(x.is_finite() && !x.is_nan())
+    }
+
+    fn load_store(&mut self, name: String, vectors: &Bound<'_, PyList>) -> PyResult<()> {
+        let mut out = Vec::new();
+        for v in vectors.iter() {
+            let d = v.downcast::<PyDict>()?;
+            let label = d
+                .get_item("label")?
+                .ok_or_else(|| py_err("missing label"))?
+                .extract::<i32>()?;
+            let vector = d
+                .get_item("vector")?
+                .ok_or_else(|| py_err("missing vector"))?
+                .extract::<Vec<f64>>()?;
+            let ts = match d.get_item("ts")? {
+                None => None,
+                Some(x) => Some(x.extract::<i64>()?),
+            };
+            out.push(LabeledVector { label, vector, ts });
+        }
+        self.inner.load_store(&name, out);
         Ok(())
     }
 
-    /// Push K-line data
-    pub fn push_kline<'py>(
-        &self,
-        py: Python<'py>,
-        bar_dict: &Bound<'py, PyDict>,
-    ) -> PyResult<Bound<'py, PyList>> {
-        let mut inner = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        let bar = to_bar(bar_dict)?;
-        let signals = inner.engine.append_bar(&bar);
-
-        let list = PyList::empty_bound(py);
-        for s in &signals {
-            let dict = PyDict::new_bound(py);
-            dict.set_item(
-                "side",
-                match s.side {
-                    Side::Buy => "BUY",
-                    Side::Sell => "SELL",
-                    Side::Hold => "HOLD",
-                },
-            )?;
-            dict.set_item("strength", s.strength)?;
-            dict.set_item("reason", &s.reason)?;
-            dict.set_item("timestamp", s.timestamp)?;
-            list.append(dict)?;
+    fn set_threshold(&mut self, threshold: f64) -> PyResult<()> {
+        if !threshold.is_finite() || !(-1.0..=1.0).contains(&threshold) {
+            return Err(py_err("threshold must be finite in [-1,1]"));
         }
-        Ok(list)
-    }
-
-    /// Update last K-line
-    pub fn update_last(&self, bar_dict: &Bound<'_, PyDict>) -> PyResult<()> {
-        let mut inner = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        let bar = to_bar(bar_dict)?;
-        inner.engine.update_last_bar(&bar);
+        self.inner.set_similarity_threshold(threshold);
         Ok(())
     }
 
-    /// Get indicator value
-    pub fn get_indicator(&self, name: &str) -> PyResult<Option<f64>> {
-        let inner = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        Ok(inner.engine.indicator_value(name))
+    fn reset(&mut self) {
+        self.inner.reset();
+        self.named.clear();
+        self.aggregator = None;
     }
 
-    /// Check if indicator is ready
-    pub fn is_ready(&self, name: &str) -> PyResult<bool> {
-        let inner = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        Ok(inner.engine.indicator_ready(name))
+    fn add_strategy(&mut self, name: String, dsl: String) -> PyResult<u32> {
+        self.inner
+            .add_strategy(&name, &dsl)
+            .map_err(|e| py_err(e.to_string()))
     }
 
-    /// Get indicator result with extra data
-    pub fn get_indicator_result<'py>(
-        &self,
-        py: Python<'py>,
-        name: &str,
-    ) -> PyResult<Option<Bound<'py, PyDict>>> {
-        let inner = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        match inner.engine.indicator_result(name) {
-            Some(result) => {
-                let dict = PyDict::new_bound(py);
-                dict.set_item("value", result.value)?;
-                dict.set_item("timestamp", result.timestamp)?;
-                if let Some(extra) = result.extra {
-                    dict.set_item("extra", extra)?;
-                }
-                Ok(Some(dict))
-            }
-            None => Ok(None),
-        }
-    }
-
-    /// Reset engine
-    pub fn reset(&self) -> PyResult<()> {
-        let mut inner = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        inner.engine.reset();
-        inner.signal_queue.clear();
+    fn push_bar(&mut self, bar: &Bound<'_, PyDict>) -> PyResult<()> {
+        self.inner.push_kline(bar_from_dict(bar)?);
         Ok(())
     }
 
-    // -- DSL Strategy methods --
-
-    /// Add a DSL-based strategy
-    /// Returns the strategy ID (>0 on success)
-    pub fn add_strategy(&self, name: &str, dsl: &str) -> PyResult<u32> {
-        let dsl_engine = DslEngine::new(dsl)
-            .map_err(|e| PyValueError::new_err(format!("DSL compile error: {}", e)))?;
-
-        let mut inner = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        let id = inner.next_strategy_id;
-        inner
-            .dsl_strategies
-            .push((id, name.to_string(), dsl_engine));
-        inner.next_strategy_id += 1;
-
-        Ok(id)
-    }
-
-    /// Push bar and evaluate DSL strategies
-    pub fn push_bar(&self, bar_dict: &Bound<'_, PyDict>) -> PyResult<()> {
-        let mut inner = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        let bar = to_bar(bar_dict)?;
-
-        // Append bar to engine (updates indicators)
-        let _builtin_signals = inner.engine.append_bar(&bar);
-
-        // Evaluate DSL strategies with field destructuring to enable split borrows
-        let HQuantInner {
-            engine,
-            dsl_strategies,
-            signal_queue,
-            ..
-        } = &mut *inner;
-
-        for (strategy_id, _name, dsl_engine) in dsl_strategies.iter_mut() {
-            let graph = engine.graph();
-            let ctx = DslContext::new(&bar, graph);
-            if let Ok(signals) = dsl_engine.evaluate(&ctx) {
-                for mut sig in signals {
-                    sig.reason = format!("{}:{}", strategy_id, sig.reason);
-                    signal_queue.push(sig);
-                }
-            }
+    fn poll_signals(&mut self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+        let mut out = Vec::new();
+        for s in self.inner.poll_signals() {
+            let d = PyDict::new_bound(py);
+            d.set_item("strategy_id", s.strategy_id)?;
+            d.set_item("action", s.action.as_str())?;
+            d.set_item("timestamp", s.timestamp)?;
+            out.push(d.into());
         }
-
-        Ok(())
+        Ok(out)
     }
-
-    /// Poll accumulated signals from DSL strategies
-    /// Returns list of dicts with keys: strategy_id, action, timestamp
-    pub fn poll_signals<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
-        let mut inner = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        let list = PyList::empty_bound(py);
-
-        for s in inner.signal_queue.iter() {
-            let strategy_id = s
-                .reason
-                .split(':')
-                .next()
-                .and_then(|id| id.parse::<u32>().ok())
-                .unwrap_or(0);
-
-            let dict = PyDict::new_bound(py);
-            dict.set_item("strategy_id", strategy_id)?;
-            dict.set_item(
-                "action",
-                match s.side {
-                    Side::Buy => "BUY",
-                    Side::Sell => "SELL",
-                    Side::Hold => "HOLD",
-                },
-            )?;
-            dict.set_item("timestamp", s.timestamp)?;
-            list.append(dict)?;
-        }
-
-        inner.signal_queue.clear();
-        Ok(list)
-    }
-
-    // Backtest APIs intentionally not exposed on HQuant.
 }
 
-fn stats_to_py_dict<'py>(py: Python<'py>, stats: &BacktestStats) -> PyResult<Bound<'py, PyDict>> {
-    let dict = PyDict::new_bound(py);
-    dict.set_item("total_trades", stats.total_trades)?;
-    dict.set_item("winning_trades", stats.winning_trades)?;
-    dict.set_item("losing_trades", stats.losing_trades)?;
-    dict.set_item("total_pnl", stats.total_pnl)?;
-    dict.set_item("max_drawdown", stats.max_drawdown)?;
-    dict.set_item("max_drawdown_pct", stats.max_drawdown_pct)?;
-    dict.set_item("sharpe_ratio", stats.sharpe_ratio)?;
-    dict.set_item("win_rate", stats.win_rate)?;
-    dict.set_item("final_equity", stats.final_equity)?;
-    dict.set_item("return_pct", stats.return_pct)?;
-    dict.set_item("liquidations", stats.liquidations)?;
-    Ok(dict)
-}
-
-/// Backtest engine
 #[pyclass]
 pub struct PyBacktest {
-    engine: Mutex<BacktestEngine>,
+    inner: SimpleBacktest,
 }
 
 #[pymethods]
 impl PyBacktest {
     #[new]
     #[pyo3(signature = (initial_margin, leverage=1.0, maker_fee_rate=0.001, taker_fee_rate=0.001, market_type="spot"))]
-    pub fn new(
+    fn new(
         initial_margin: f64,
         leverage: f64,
         maker_fee_rate: f64,
         taker_fee_rate: f64,
         market_type: &str,
     ) -> Self {
-        let mt = match market_type.to_lowercase().as_str() {
+        let market_type = match market_type.to_ascii_lowercase().as_str() {
             "futures" => MarketType::Futures,
             _ => MarketType::Spot,
         };
-
-        let config = BacktestConfig {
-            market_type: mt,
+        let cfg = BacktestConfig {
+            market_type,
             initial_capital: initial_margin,
             leverage,
-            maker_fee: maker_fee_rate,
-            taker_fee: taker_fee_rate,
-            slippage: 0.0005,
-            position_size_pct: 0.1,
+            maker_fee_rate,
+            taker_fee_rate,
         };
-
         Self {
-            engine: Mutex::new(BacktestEngine::new(config)),
+            inner: SimpleBacktest::new(cfg),
         }
     }
 
-    /// Open position.
-    ///
-    /// position_side: "LONG" | "SHORT"
-    pub fn open_position(&self, price: f64, size: f64, position_side: &str) -> PyResult<()> {
-        let mut engine = self
-            .engine
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        let position_side = parse_position_side(position_side)?;
-        engine.open_position(price, size, position_side);
-        Ok(())
+    fn open_position(&mut self, price: f64, size: f64, position_side: &str) {
+        if let Some(side) = parse_position_side(position_side) {
+            self.inner.open_position(price, size, side);
+        }
     }
 
-    /// Close current position
-    pub fn close_position(&self, price: f64, position_side: &str) -> PyResult<()> {
-        let mut engine = self
-            .engine
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        let position_side = parse_position_side(position_side)?;
-        engine.close_position(price, position_side);
-        Ok(())
+    fn close_position(&mut self, price: f64, position_side: &str) {
+        if let Some(side) = parse_position_side(position_side) {
+            self.inner.close_position(price, side);
+        }
     }
 
-    /// Get backtest result
-    pub fn backtest_result<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let mut engine = self
-            .engine
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        stats_to_py_dict(py, engine.result())
+    fn backtest_result(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let r = self.inner.result();
+        let d = PyDict::new_bound(py);
+        d.set_item("total_trades", r.total_trades)?;
+        d.set_item("winning_trades", r.winning_trades)?;
+        d.set_item("losing_trades", r.losing_trades)?;
+        d.set_item("total_pnl", r.total_pnl)?;
+        d.set_item("max_drawdown", r.max_drawdown)?;
+        d.set_item("max_drawdown_pct", r.max_drawdown_pct)?;
+        d.set_item("sharpe_ratio", r.sharpe_ratio)?;
+        d.set_item("win_rate", r.win_rate)?;
+        d.set_item("final_equity", r.final_equity)?;
+        d.set_item("return_pct", r.return_pct)?;
+        d.set_item("liquidations", r.liquidations)?;
+        Ok(d.into())
     }
 
-    /// Get equity
-    pub fn get_equity(&self) -> PyResult<f64> {
-        let engine = self
-            .engine
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        Ok(engine.equity())
+    fn get_equity(&self) -> f64 {
+        self.inner.equity()
     }
 
-    /// Get equity curve
-    pub fn get_equity_curve(&self) -> PyResult<Vec<f64>> {
-        let engine = self
-            .engine
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        Ok(engine.equity_curve().to_vec())
+    fn get_equity_curve(&self) -> Vec<f64> {
+        self.inner.equity_curve().to_vec()
     }
 
-    /// Reset backtest
-    pub fn reset(&self) -> PyResult<()> {
-        let mut engine = self
-            .engine
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        engine.reset();
-        Ok(())
+    fn reset(&mut self) {
+        self.inner.reset();
     }
 }
 
-/// K-line aggregator
 #[pyclass]
 pub struct PyAggregator {
-    inner: Mutex<MultiTimeFrameAggregator>,
+    inner: Aggregator,
 }
 
 #[pymethods]
 impl PyAggregator {
     #[new]
-    pub fn new(base_tf: &str, target_tfs: Vec<String>, capacity: usize) -> PyResult<Self> {
-        let base = parse_timeframe(base_tf)?;
-        let targets: Vec<TimeFrame> = target_tfs
-            .iter()
-            .map(|s| parse_timeframe(s))
-            .collect::<PyResult<Vec<_>>>()?;
-
-        let agg = MultiTimeFrameAggregator::new(base, &targets, capacity)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
-
+    fn new(base_tf: String, target_tfs: Vec<String>, _capacity: usize) -> PyResult<Self> {
+        let base = Period::parse(&base_tf).map_err(|e| py_err(e.to_string()))?;
+        let mut periods = vec![base];
+        for p in target_tfs {
+            periods.push(Period::parse(&p).map_err(|e| py_err(e.to_string()))?);
+        }
         Ok(Self {
-            inner: Mutex::new(agg),
+            inner: Aggregator::new(periods),
         })
     }
 
-    /// Push K-line and get completed events
-    pub fn push_kline<'py>(
-        &self,
-        py: Python<'py>,
-        bar_dict: &Bound<'py, PyDict>,
-    ) -> PyResult<Bound<'py, PyList>> {
-        let mut agg = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        let bar = to_bar(bar_dict)?;
-        let completed = agg.push(&bar);
-
-        let list = PyList::empty_bound(py);
-        for tf in completed {
-            if let Some(output) = agg.output(tf) {
-                if let Some(last) = output.last() {
-                    let dict = PyDict::new_bound(py);
-                    dict.set_item("kind", "KlineClosed")?;
-                    dict.set_item("period", tf.as_str())?;
-
-                    let candle = PyDict::new_bound(py);
-                    candle.set_item("timestamp", last.timestamp)?;
-                    candle.set_item("open", last.open)?;
-                    candle.set_item("high", last.high)?;
-                    candle.set_item("low", last.low)?;
-                    candle.set_item("close", last.close)?;
-                    candle.set_item("volume", last.volume)?;
-                    candle.set_item("buy_volume", last.buy_volume)?;
-                    dict.set_item("candle", candle)?;
-
-                    list.append(dict)?;
-                }
-            }
+    fn push_kline(&mut self, py: Python<'_>, bar: &Bound<'_, PyDict>) -> PyResult<Vec<PyObject>> {
+        let bar = bar_from_dict(bar)?;
+        self.inner.push(&bar);
+        let events = self.inner.poll_events();
+        let mut out = Vec::new();
+        for e in events {
+            let d = PyDict::new_bound(py);
+            d.set_item(
+                "kind",
+                match e.kind {
+                    AggregatorEventKind::KlineClosed => "KlineClosed",
+                },
+            )?;
+            d.set_item("period", e.period.to_string())?;
+            let candle: Bar = e.candle.into();
+            let c = PyDict::new_bound(py);
+            c.set_item("timestamp", candle.timestamp)?;
+            c.set_item("open", candle.open)?;
+            c.set_item("high", candle.high)?;
+            c.set_item("low", candle.low)?;
+            c.set_item("close", candle.close)?;
+            c.set_item("volume", candle.volume)?;
+            c.set_item("buy_volume", candle.buy_volume)?;
+            d.set_item("candle", c)?;
+            out.push(d.into());
         }
-
-        Ok(list)
+        Ok(out)
     }
 
-    /// Flush all pending candles
-    pub fn flush(&self) -> PyResult<()> {
-        let mut agg = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        agg.flush_all();
-        Ok(())
+    fn flush(&mut self) {
+        self.inner.flush();
+        let _ = self.inner.poll_events();
     }
 
-    /// Reset aggregator
-    pub fn reset(&self) -> PyResult<()> {
-        let mut agg = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        agg.reset();
-        Ok(())
+    fn reset(&mut self) {
+        self.inner.reset();
     }
 }
 
-/// DSL Strategy engine
 #[pyclass]
 pub struct PyDslStrategy {
-    inner: Mutex<DslEngine>,
+    bars: KlineBuffer,
+    graph: crate::indicators::IndicatorGraph,
+    strategy: CompiledStrategy,
+    store: VectorStore,
 }
 
 #[pymethods]
 impl PyDslStrategy {
-    /// Create a new DSL strategy from source code
     #[new]
-    pub fn new(source: &str) -> PyResult<Self> {
-        let engine = DslEngine::new(source).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    fn new(source: String) -> PyResult<Self> {
+        let capacity = 4096usize;
+        let mut graph = crate::indicators::IndicatorGraph::new(capacity);
+        let strategy = compile_strategy(1, "dsl", &source, &mut graph).map_err(|e| py_err(e.to_string()))?;
         Ok(Self {
-            inner: Mutex::new(engine),
+            bars: KlineBuffer::new(capacity),
+            graph,
+            strategy,
+            store: VectorStore::new(),
         })
     }
 
-    /// Load labeled vectors into a named store for similarity matching
-    pub fn load_store(&self, name: &str, vectors: &Bound<'_, PyList>) -> PyResult<()> {
-        let mut engine = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-
-        let mut labeled = Vec::new();
-        for item in vectors.iter() {
-            let dict = item.downcast::<PyDict>()?;
-            let label: i32 = dict
+    fn load_store(&mut self, name: String, vectors: &Bound<'_, PyList>) -> PyResult<()> {
+        let mut out = Vec::new();
+        for v in vectors.iter() {
+            let d = v.downcast::<PyDict>()?;
+            let label = d
                 .get_item("label")?
-                .ok_or_else(|| PyValueError::new_err("missing label"))?
-                .extract()?;
-            let vector: Vec<f64> = dict
+                .ok_or_else(|| py_err("missing label"))?
+                .extract::<i32>()?;
+            let vector = d
                 .get_item("vector")?
-                .ok_or_else(|| PyValueError::new_err("missing vector"))?
-                .extract()?;
-            labeled.push(LabeledVector::new(label, vector));
+                .ok_or_else(|| py_err("missing vector"))?
+                .extract::<Vec<f64>>()?;
+            out.push(LabeledVector {
+                label,
+                vector,
+                ts: None,
+            });
         }
-
-        engine.vector_store_mut().load(name, labeled);
+        self.store.load(&name, out);
         Ok(())
     }
 
-    /// Set similarity threshold (default: 0.9)
-    pub fn set_threshold(&self, threshold: f64) -> PyResult<()> {
-        let mut engine = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        engine.set_threshold(threshold);
-        Ok(())
-    }
-
-    /// Evaluate strategy with given bar data
-    pub fn evaluate<'py>(
-        &self,
-        py: Python<'py>,
-        bar_dict: &Bound<'py, PyDict>,
-    ) -> PyResult<Bound<'py, PyList>> {
-        let mut engine = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        let bar = to_bar(bar_dict)?;
-
-        let empty_graph = IndicatorGraph::new();
-        let ctx = DslContext::new(&bar, &empty_graph);
-
-        let signals = engine
-            .evaluate(&ctx)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
-
-        let list = PyList::empty_bound(py);
-        for s in &signals {
-            let dict = PyDict::new_bound(py);
-            dict.set_item(
-                "side",
-                match s.side {
-                    Side::Buy => "BUY",
-                    Side::Sell => "SELL",
-                    Side::Hold => "HOLD",
-                },
-            )?;
-            dict.set_item("strength", s.strength)?;
-            dict.set_item("reason", &s.reason)?;
-            dict.set_item("timestamp", s.timestamp)?;
-            list.append(dict)?;
+    fn set_threshold(&mut self, threshold: f64) -> PyResult<()> {
+        if !threshold.is_finite() || !(0.0..=1.0).contains(&threshold) {
+            return Err(py_err("threshold must be in [0,1]"));
         }
-        Ok(list)
+        self.store.threshold = threshold;
+        Ok(())
     }
 
-    /// Reset strategy state
-    pub fn reset(&self) -> PyResult<()> {
-        let mut engine = self
-            .inner
-            .lock()
-            .map_err(|_| PyValueError::new_err("lock poisoned"))?;
-        engine.reset();
-        Ok(())
+    fn evaluate(&mut self, py: Python<'_>, bar: &Bound<'_, PyDict>) -> PyResult<Vec<PyObject>> {
+        let bar = bar_from_dict(bar)?;
+        self.bars.push(bar);
+        self.graph.on_push(&self.bars);
+        let Some(sig) = self.strategy.evaluate(&self.bars, &self.graph, Some(&self.store)) else {
+            return Ok(Vec::new());
+        };
+        let d = PyDict::new_bound(py);
+        d.set_item("side", sig.action.as_str())?;
+        d.set_item("strength", 1.0)?;
+        d.set_item("reason", sig.meta.unwrap_or_else(|| "dsl".to_string()))?;
+        d.set_item("timestamp", sig.timestamp)?;
+        Ok(vec![d.into()])
+    }
+
+    fn reset(&mut self) {
+        self.bars.clear();
+        self.graph.reset();
     }
 }
 
-/// Standalone futures backtest engine (compatible with jx-quant)
-/// Decoupled from HQuant, can be used independently with any signal source
-/// Uses shared Rust core implementation for consistency across Python/Node.js
 #[pyclass]
 pub struct FuturesBacktest {
     inner: CoreFuturesBacktest,
+    last_price: f64,
 }
 
 #[pymethods]
 impl FuturesBacktest {
     #[new]
-    #[pyo3(signature = (initial_margin, leverage, contract_size, maker_fee_rate, taker_fee_rate, maintenance_margin_rate, decimals=None))]
-    pub fn new(
+    fn new(
         initial_margin: f64,
         leverage: f64,
         contract_size: f64,
         maker_fee_rate: f64,
         taker_fee_rate: f64,
         maintenance_margin_rate: f64,
-        decimals: Option<u32>,
-    ) -> Self {
-        let config = FuturesBacktestConfig {
+    ) -> PyResult<Self> {
+        let params = BacktestParams {
             initial_margin,
             leverage,
             contract_size,
@@ -786,138 +503,122 @@ impl FuturesBacktest {
             taker_fee_rate,
             maintenance_margin_rate,
         };
-        let mut inner = CoreFuturesBacktest::new(config);
-        if let Some(d) = decimals {
-            inner.set_decimals(d);
-        }
-        Self { inner }
+        let inner = CoreFuturesBacktest::try_new(params).ok_or_else(|| py_err("invalid params"))?;
+        Ok(Self {
+            inner,
+            last_price: f64::NAN,
+        })
     }
 
-    /// Set decimal precision for results (default: 8)
-    pub fn set_decimals(&mut self, decimals: u32) {
-        self.inner.set_decimals(decimals);
-    }
-
-    /// Apply a trading signal
-    /// action: "BUY", "SELL", or "HOLD"
-    /// price: current market price
-    /// margin: margin amount to use for opening/closing positions
-    /// is_maker: if true, use maker_fee_rate (limit order); if false, use taker_fee_rate (market order)
     #[pyo3(signature = (action, price, margin, position_side=None, is_maker=false))]
-    pub fn apply_signal(
+    fn apply_signal(
         &mut self,
-        action: &str,
+        action: String,
         price: f64,
         margin: f64,
-        position_side: Option<&str>,
+        position_side: Option<String>,
         is_maker: bool,
     ) -> PyResult<()> {
-        let position_side = position_side.map(parse_position_side).transpose()?;
-        self.inner
-            .apply_signal(action, price, margin, position_side, is_maker);
-        Ok(())
-    }
-
-    /// Open a position directly.
-    /// position_side: "LONG" | "SHORT"
-    #[pyo3(signature = (position_side, price, margin, is_maker=false))]
-    pub fn open_position(
-        &mut self,
-        position_side: &str,
-        price: f64,
-        margin: f64,
-        is_maker: bool,
-    ) -> PyResult<()> {
-        let position_side = parse_position_side(position_side)?;
-        self.inner
-            .open_position(price, margin, position_side, is_maker);
-        Ok(())
-    }
-
-    /// Close a position directly.
-    /// position_side: "LONG" | "SHORT"
-    #[pyo3(signature = (position_side, price, margin, is_maker=false))]
-    pub fn close_position(
-        &mut self,
-        position_side: &str,
-        price: f64,
-        margin: f64,
-        is_maker: bool,
-    ) -> PyResult<()> {
-        let position_side = parse_position_side(position_side)?;
-        self.inner
-            .close_position(price, margin, position_side, is_maker);
-        Ok(())
-    }
-
-    /// Update position value on price change (for liquidation checking)
-    pub fn on_price(&mut self, price: f64) {
+        let action = Action::parse(&action).ok_or_else(|| py_err("invalid action"))?;
+        let params = self.inner.params();
+        let fee_rate = if is_maker { params.maker_fee_rate } else { params.taker_fee_rate };
+        match position_side.as_deref().and_then(parse_position_side) {
+            None => self.inner.apply_signal(action, price, margin),
+            Some(PositionSide::Long) => match action {
+                Action::Buy => self.inner.open_long(price, margin, fee_rate),
+                Action::Sell => self.inner.close_long(price, margin, fee_rate),
+                Action::Hold => {}
+            },
+            Some(PositionSide::Short) => match action {
+                Action::Sell => self.inner.open_short(price, margin, fee_rate),
+                Action::Buy => self.inner.close_short(price, margin, fee_rate),
+                Action::Hold => {}
+            },
+        }
         self.inner.on_price(price);
+        self.last_price = price;
+        Ok(())
     }
 
-    /// Get backtest result
-    pub fn result<'py>(&self, py: Python<'py>, price: f64) -> PyResult<Bound<'py, PyDict>> {
+    #[pyo3(signature = (position_side, price, margin, is_maker=false))]
+    fn open_position(&mut self, position_side: String, price: f64, margin: f64, is_maker: bool) {
+        let params = self.inner.params();
+        let fee_rate = if is_maker { params.maker_fee_rate } else { params.taker_fee_rate };
+        match parse_position_side(&position_side) {
+            Some(PositionSide::Long) => self.inner.open_long(price, margin, fee_rate),
+            Some(PositionSide::Short) => self.inner.open_short(price, margin, fee_rate),
+            None => {}
+        }
+        self.last_price = price;
+    }
+
+    #[pyo3(signature = (position_side, price, margin, is_maker=false))]
+    fn close_position(&mut self, position_side: String, price: f64, margin: f64, is_maker: bool) {
+        let params = self.inner.params();
+        let fee_rate = if is_maker { params.maker_fee_rate } else { params.taker_fee_rate };
+        match parse_position_side(&position_side) {
+            Some(PositionSide::Long) => self.inner.close_long(price, margin, fee_rate),
+            Some(PositionSide::Short) => self.inner.close_short(price, margin, fee_rate),
+            None => {}
+        }
+        self.last_price = price;
+    }
+
+    fn on_price(&mut self, price: f64) {
+        self.inner.on_price(price);
+        self.last_price = price;
+    }
+
+    fn result(&self, py: Python<'_>, price: f64) -> PyResult<PyObject> {
         let r = self.inner.result(price);
-        let dict = PyDict::new_bound(py);
-        dict.set_item("equity", r.equity)?;
-        dict.set_item("profit", r.profit)?;
-        dict.set_item("profit_rate", r.profit_rate)?;
-        dict.set_item("max_drawdown_rate", r.max_drawdown_rate)?;
-        dict.set_item("liquidated", r.liquidated)?;
-        Ok(dict)
+        let d = PyDict::new_bound(py);
+        d.set_item("equity", r.equity)?;
+        d.set_item("profit", r.profit)?;
+        d.set_item("profit_rate", r.profit_rate)?;
+        d.set_item("max_drawdown_rate", r.max_drawdown_rate)?;
+        d.set_item("liquidated", r.liquidated)?;
+        Ok(d.into())
     }
 
-    /// Get current equity
-    pub fn get_equity(&self) -> f64 {
-        self.inner.equity()
-    }
-
-    /// Get current position
-    pub fn get_position(&self) -> f64 {
-        self.inner.position()
-    }
-
-    /// Get current positions (0 or 1).
-    pub fn get_positions<'py>(&self, py: Python<'py>) -> PyResult<Vec<PyObject>> {
-        let positions = self.inner.positions();
-        positions
-            .into_iter()
-            .map(|p| {
-                let dict = PyDict::new_bound(py);
-                dict.set_item("position_side", position_side_to_str(p.position_side))?;
-                dict.set_item("entry_price", p.entry_price)?;
-                dict.set_item("mark_price", p.mark_price)?;
-                dict.set_item("position_amt", p.position_amt)?;
-                dict.set_item("margin", p.margin)?;
-                dict.set_item("unrealized_pnl", p.unrealized_pnl)?;
-                Ok(dict.into_py(py))
-            })
-            .collect()
-    }
-
-    /// Check if liquidated
-    pub fn is_liquidated(&self) -> bool {
-        self.inner.is_liquidated()
-    }
-
-    /// Reset backtest state
-    pub fn reset(&mut self) {
-        self.inner.reset();
+    fn get_positions(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+        let mut out = Vec::new();
+        for p in self.inner.get_positions(self.last_price) {
+            let d = PyDict::new_bound(py);
+            d.set_item(
+                "position_side",
+                match p.position_side {
+                    PositionSide::Long => "LONG",
+                    PositionSide::Short => "SHORT",
+                },
+            )?;
+            d.set_item("entry_price", p.entry_price)?;
+            d.set_item("mark_price", p.mark_price)?;
+            d.set_item("position_amt", p.position_amt)?;
+            d.set_item("margin", p.margin)?;
+            d.set_item("unrealized_pnl", p.unrealized_pnl)?;
+            out.push(d.into());
+        }
+        Ok(out)
     }
 }
 
-/// Compile and validate DSL source
+fn parse_position_side(s: &str) -> Option<PositionSide> {
+    match s.trim().to_ascii_uppercase().as_str() {
+        "LONG" => Some(PositionSide::Long),
+        "SHORT" => Some(PositionSide::Short),
+        _ => None,
+    }
+}
+
 #[pyfunction]
-fn validate_dsl(source: &str) -> PyResult<bool> {
-    match crate::dsl::compile(source) {
-        Ok(_) => Ok(true),
-        Err(e) => Err(PyValueError::new_err(e.to_string())),
-    }
+fn validate_dsl(source: String) -> PyResult<bool> {
+    validate_dsl_core(&source)
+        .map(|_| true)
+        .map_err(|e| py_err(e.to_string()))
 }
 
-/// Python module
 #[pymodule]
-fn _hquant(m: &Bound<'_, pyo3::types::PyModule>) -> PyResult<()> {
+fn _hquant(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<HQuant>()?;
     m.add_class::<PyBacktest>()?;
     m.add_class::<PyAggregator>()?;

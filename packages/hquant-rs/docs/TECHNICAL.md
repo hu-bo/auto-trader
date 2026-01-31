@@ -1,4 +1,4 @@
-# hquant-rs 技术文档（面向 LLM Agent）
+# hquant-rs 
 
 ## 1. 项目定位与边界
 
@@ -28,31 +28,32 @@
 
 入口与对外导出：
 
-- `packages/hquant-rs/src/lib.rs`：crate root；对外 `pub use ...`；核心 `QuantEngine`
+- `packages/hquant-rs/src/lib.rs`：crate root；对外 `pub use ...`；核心类型导出
+  - 运行时核心：`HQuant`（单周期）/ `MultiHQuant`（多周期路由）
 
 Module Map:
 
 - `packages/hquant-rs/src/types.rs`: `Bar`, `Field`, `Action`, `Signal`
 - `packages/hquant-rs/src/commom/mod.rs`: common
+- `packages/hquant-rs/src/circular.rs`: re-export `CircularColumn<T>`
 - `packages/hquant-rs/src/commom/circular.rs`: `CircularColumn<T>` fixed-cap ring
 - `packages/hquant-rs/src/kline_buffer.rs`: `KlineBuffer` SoA ring of bars
-- `packages/hquant-rs/src/indicators/*`：`IndicatorGraph` boll,ema，等指标实现、构建器、图执行与去重
-- `packages/hquant-rs/src/strategy/mod.ts`: strategy compile
-- `packages/hquant-rs/src/strategy/vector_store.ts`: strategy vector_store
-- `packages/hquant-rs/src/dsl/*`：DSL AST / parser / eval
+- `packages/hquant-rs/src/indicators/mod.rs`：`IndicatorGraph` 指标实现、构建器、图执行与去重
+- `packages/hquant-rs/src/vector_store.rs`: `VectorStore` + normalize + similarity
+- `packages/hquant-rs/src/dsl/mod.rs`：DSL AST / parser / eval
 - `packages/hquant-rs/src/hquant.rs`: `HQuant` runtime
-- `packages/hquant-rs/src/multi-hquant.rs`: `MultiHQuant` runtime
+- `packages/hquant-rs/src/multi.rs`: `MultiHQuant` runtime
 - `packages/hquant-rs/src/period.rs`: `Period`
 - `packages/hquant-rs/src/aggregator.rs`：`Aggregator` multi-period candle aggregation
-- `packages/hquant-rs/src/backtest.rs`：`FuturesBacktest` USDM futures backtest
+- `packages/hquant-rs/src/backtest/futures_backtest.rs`：`FuturesBacktest` USDM futures backtest
 - `packages/hquant-rs/src/ffi/node.rs`: Node addon (feature `ffi-node`)
 - `packages/hquant-rs/src/ffi/python.rs`: Python module (feature `ffi-python`)
 
 ## 3. Core Types：RingBuffer / KlineSeries
 
-### 3.1 `CircularBuffer<T>`：固定容量环形缓冲区
+### 3.1 `CircularColumn<T>`：固定容量环形缓冲区
 
-### `CircularBuffer<T>` (`packages/hquant-rs/src/circular.rs`)
+### `CircularColumn<T>` (`packages/hquant-rs/src/commom/circular.rs`, re-export: `packages/hquant-rs/src/circular.rs`)
 - generic: `T: Copy + Default`
 - ring metadata:
   - `capacity: usize` (fixed; `>0`)
@@ -90,14 +91,12 @@ Module Map:
 
 
 ## 4. 指标系统：`Indicator` / `IndicatorGraph` / `IndicatorSpec`
-  - MA (SMA/EMA/WMA) - 移动平均线
+  - MA (SMA/EMA) - 移动平均线
+  - STDDEV - 标准差（波动率）
   - RSI - 相对强弱指标
   - MACD - 指数平滑异同移动平均线
-  - ATR - 平均真实波幅
   - BOLL - 布林带
-  - VRI - 成交量比率指标
-  - VWAP - 成交量加权平均价格
-  - OBV - 能量潮指标
+  - (planned) ATR / VWAP / OBV 等
 
 - `IndicatorSpec` (hashable, used for auto-dedup):
   - `Sma { field: Field, period: usize }`
@@ -117,6 +116,8 @@ Module Map:
 ### High-level 
 - input: multi-line DSL; each non-empty, non-comment line is a rule:
   - format: `IF <condition> THEN <action>`
+- statements:
+  - `LET <name> = <value>`（表达式别名；不可变变量）
 - actions:
   - `BUY(meta?)|SELL(meta?)|HOLD()` (also accepts `BUY(hit)` etc) hit = {"symbol": "BTC-USDT", "label": 1, ts: 17000000090}
 - evaluation:
@@ -124,14 +125,21 @@ Module Map:
   - if indicator value is `NaN`, comparisons are `false`
 - compile API:
   - `compile_strategy(id, name, dsl, graph: &mut IndicatorGraph) -> Result<CompiledStrategy, StrategyError>`
-  - multi-period compile (internal): `compile_multi_strategy(id, name, dsl, resolver) -> Result<CompiledStrategyT<MultiIndicatorRef>, StrategyError>`
-- multi-period field suffix:
-  - series refs may include `@<period>` (e.g. `close@4h` | `close@15m`)
+- multi-period：
+  - 单周期策略（`HQuant::add_strategy` / `compile_strategy`）只支持当前周期，不允许 `@<period>` 后缀
+  - 多周期策略：使用 `compile_multi_strategy(...)` 或 `MultiHQuant::add_multi_strategy(...)`
+    - 允许 `close@4h` / `SMA(close@4h, period=20)` / `NORMALIZE(close@4h, ...)`
+    - 未带 `@` 时默认 base period（`periods[0]`）
+  - 注意：DSL 变量使用 `LET name = value`（不可变别名）；不支持无关键字的赋值写法（例如 `name = ...`）
 
 - 向量类：
-  - `NORMALIZE(close@4h, length=30)` 4h周期的close数据归一化
-  - `VEC_STORE("name")`：要求 store 已存在，否则报错
-  - `SIMILARITY(store, vector, 0.9)`：余弦相似度，阈值由 `VectorStore.threshold` 控制（默认 0.9）, 只返回 top, not topk
+  - `VEC_STORE("name")`：引用向量库；运行时 store 不存在/为空时返回 `NaN`（条件判定为 false）
+  - `NORMALIZE(series?, length=..., method="minmax|zscore|l2|none")`：从 KlineBuffer 取最近 `length` 个值构造向量并归一化
+    - `series` 省略时默认 `close`，也支持 `NORMALIZE(30)` 这种写法
+  - `SIMILARITY(store, NORMALIZE(...), method="cosine|pearson|l2|l1|linf", threshold=...)`
+    - `method` 默认 `cosine`
+    - `threshold` 省略时使用 `VectorStore.threshold`（默认 0.9）
+    - 返回：若 best_score >= threshold 返回 score，否则返回 `NaN`（用于规则短路）
 
 ### Condition grammar
 - boolean ops: `AND`, `OR`, `NOT` (also `!`)
@@ -141,18 +149,28 @@ Module Map:
 - indicator call: `IDENT("(" arg_list? ")")` 
 
 ### Supported indicator calls in conditions
-- `RSI(<period>)` or `RSI(close@15m, period=<n>)`
+- `RSI(<period>)` or `RSI(close, period=<n>)`
   - series field restriction: close only
-- `SMA(<series>, <period>)` or kwargs `SMA(close@4h, period=20)`
+- `SMA(<series>, <period>)` or kwargs `SMA(close, period=20)` (also supports `SMA(20)` -> default close)
 - `EMA(<series>, <period>)`
 - `STDDEV(<series>, <period>)`
 - series field names: `open|high|low|close|volume|buy_volume`
 
 ### 向量库 `VectorStore`
 - `VectorStore::load(name, Vec<LabeledVector>)`
-- `find_similar(name, query) -> Option<SimilarityResult>`
-- 相似度：`cosine_similarity`
-- 归一化：`min_max_normalize/normalize_vector/z_score_normalize`
+- `find_similar(name, query) -> Option<SimilarityResult>` (default: cosine)
+- `find_similar_by(name, query, method) -> Option<SimilarityResult>`
+- `find_similar_by_threshold(name, query, method, threshold) -> Option<SimilarityResult>`
+- 相似度方法 `SimilarityMethod`：
+  - `Cosine` (`"cosine"`)
+  - `Pearson` (`"pearson"|"corr"|"correlation"`)
+  - `Euclidean` (`"euclidean"|"l2"`)：`similarity = 1/(1+d)`
+  - `Manhattan` (`"manhattan"|"l1"`)：`similarity = 1/(1+d)`
+  - `Chebyshev` (`"chebyshev"|"linf"|"l_inf"`)：`similarity = 1/(1+d)`
+- 归一化：
+  - `min_max_normalize`
+  - `z_score_normalize`
+  - `normalize_vector` (L2 unit norm)
 
 
 ## Aggregation (multi-period candles)
@@ -172,10 +190,10 @@ Module Map:
 - `AggregateCandle` fields:
   - `open_time`, `open/high/low/close`, `volume`, `buy_volume`
 - 合并规则：`open=first, high=max, low=min, close=last, volume+=, buy_volume+=`
-- 注意：周期结束延迟2个周期删除，避免缓存爆炸
+- 注意：每个目标周期只维护**当前桶**的 `parts`；桶关闭后状态会被覆盖为新桶
 
 
-## 引擎编排：`QuantEngine`
+## 引擎编排：`HQuant` / `MultiHQuant`
 
 `HQuant` 的核心字段：
 
@@ -197,7 +215,6 @@ Module Map:
     - push to `bars`
     - `indicators.on_push(&bars)`
     - eval all strategies (emit 0..N signals)
-  - `feed_kline(bar: Bar)`   dep `Aggregation` close bar
   - `update_last(bar: Bar)`:
     - replace last bar if exists
     - `indicators.on_update_last(old_bar, new_bar, &bars)`
@@ -207,116 +224,79 @@ Module Map:
 ### `MultiHQuant` (`packages/hquant-rs/src/multi.rs`)
 - constructor: `MultiHQuant::new(capacity, periods: Vec<Period>)`
   - creates `HQuant` per period (keyed by `period_ms`)
-  - period index mapping: `idx=1..` for per-period engines; `idx=0` reserved for multi-strategies
 - ingestion:
+  - `add_strategy(name: &str, dsl: &str) -> Result<u32, StrategyError>`
+    - 当前版本：策略只添加到 `periods[0]`（base period）对应的引擎
+  - `add_multi_strategy(name: &str, dsl: &str) -> Result<u32, StrategyError>`
+    - 支持 `@<period>` 后缀的跨周期引用（period 必须存在于 `periods`）
+    - multi-strategy id 使用 `idx=0`（即 `strategy_id == local_id`）
+  - `load_store(name: &str, vectors: Vec<LabeledVector>)`
+  - `set_similarity_threshold(threshold: f64)`
   - `feed_bar(bar)`:
     - `Aggregator::push(bar)` => events
     - routes events into each period engine:
-      - `KlineUpdated`: `update_last` if same `open_time` else `push_kline`
-      - `KlineClosed`: ensures final candle written (update_last/push_kline)
-    - collects per-period signals and encodes ids
-    - evaluates cross-period strategies after routing events
+    - collects per-period signals and encodes ids (`idx<<24 | local_id`)
   - `flush()` => closes all buckets then routes
 - output:
   - `poll_signals() -> Vec<Signal>` drains multi queue
 
-## 9. 回测引擎
+## Backtest (futures)
 
-实现见 `packages/hquant-rs/src/backtest.rs`。
+ `packages/hquant-rs/src/backtest/futures_backtest.rs`。
 
-### 9.1 `BacktestEngine`（现货/简化合约）
+- params: `BacktestParams` (`#[repr(C)]`)
+  - `initial_margin: f64` (`>0`)
+  - `leverage: f64` (`>=1`)
+  - `contract_size: f64` (`>0`)
+  - `maker_fee_rate: f64` (`>=0`)
+  - `taker_fee_rate: f64` (`>=0`)
+  - `maintenance_margin_rate: f64` (`>=0`)
+  - `is_valid() -> bool` (finite + range checks)
+- result: `BacktestResult` (`#[repr(C)]`)
+  - `equity`, `profit`, `profit_rate`, `max_drawdown_rate` (negative), `liquidated`
+- behavior:
+  - positions: separate `pos_long` and `pos_short` (can both exist)
+  - `apply_signal(action, price, margin)`:
+    - `BUY`: close short then open/merge long
+    - `SELL`: close long then open/merge short
+    - `HOLD`: no-op
+    - then `on_price(price)` (updates drawdown + liquidation)
+  - liquidation: if `equity(price) <= maintenance_margin(price)` => `liquidated=true`, clear positions, cash=0
+- APIs:
+  - `new(params)`, `try_new(params) -> Option<Self>`
+  - `cash()`, `liquidated()`
+  - `max_open_margin(fee_rate)`
+  - `open_long/open_short/close_long/close_short`
+  - `equity(price)`, `locked_margin()`, `total_notional(price)`, `maintenance_margin(price)`
+  - `result(price) -> BacktestResult`
 
-核心要素：
-
-- `BacktestConfig { market_type, initial_capital, leverage, maker_fee, taker_fee, slippage, position_size_pct }`
-- `Position`：包含 `liquidation_price`（合约才有，leverage>1）
-- `process_signal(signal, bar)`：
-  - 先检查爆仓（用 `bar.low` 或 `bar.high`）
-  - 再根据 BUY/SELL 做开平仓与权益曲线更新
-- `BacktestStats`：交易次数、PnL、最大回撤、Sharpe（简化）等
-
-### 9.2 `FuturesBacktest`（独立合约回测器）
-
-同文件后半部分提供 `FuturesBacktestConfig/FuturesBacktest/FuturesBacktestResult`，并在 FFI 中有独立包装（Python/Node）。
 
 ## 10. FFI（Python / Node）
 
-Feature gate（见 `packages/hquant-rs/Cargo.toml`）：
+### Exported Python APIs (`packages/hquant-rs/src/ffi/python.rs`)
+### Exported JS APIs (`packages/hquant-rs/src/ffi/node.rs`)
 
-- `ffi-python`：`pyo3/extension-module`
-- `ffi-node`：`napi` + `napi-derive`
-- 两者不可同时启用（`lib.rs` 有 compile_error）
+- class `HQuant`:
+  - `new(capacity: number)`
+  - `add_strategy(name: string, dsl: string) -> number`
+  - `loadStore(name: string, vectors: Array<{label:number, vector:number[]}>)`
+  - `setThreshold(threshold: number)` ([-1,1])
+  - `push_bar(bar: {timestamp,open,high,low,close,volume,buy_volume?})`
+  - `update_last_bar(bar: ...)`
+  - `poll_signals() -> Array<{strategy_id, action: "BUY"|"SELL"|"HOLD", timestamp}>`
+- class `MultiHQuant`:
+  - `new(capacity: number, periods: string[])` where `Period::parse` accepts `ms|s|m|h|d`
+  - `feed_bar(bar)`
+  - `flush()`
+  - `add_strategy(name: string, dsl: string) -> number`
+  - `poll_signals() -> Signal[]` (strategy_id encoded)
+- class `FuturesBacktest`:
+  - `new(params: {initial_margin, leverage, maker_fee_rate, taker_fee_rate})`
+  - `apply_signal(action: "BUY"|"SELL"|"HOLD", price: number, volume: number)`
+  - `result(price: number) -> {equity, profit, profit_rate, max_drawdown_rate, liquidated}`
 
-### 10.1 Python：`HQuant` / `PyBacktest` / `PyAggregator` / `PyDslStrategy`
-
-实现见 `packages/hquant-rs/src/ffi/python.rs`。
-
-`HQuant`：
-
-- 内部用 `Mutex<HQuantInner>` 串行保护状态
-- 支持：
-  - `add_indicator(name, dict_config)`：按 `type` 选择 builder/indicator（MA/EMA/WMA/RSI/MACD/ATR/BOLL/VRI/VWAP/OBV）
-  - `push_kline(dict) -> List[dict]`：调用 `QuantEngine.append_bar` 并返回 Rust 策略信号（注意：DSL 策略信号走另一套 queue）
-  - `update_last(dict)`
-  - `get_indicator/is_ready/get_indicator_result/reset`
-  - DSL：`add_strategy(name, dsl) -> id`、`push_bar(dict)`、`poll_signals()`
-
-注意：
-
-- `push_kline` 返回的是“Rust Strategy 系统”的即时 signals
-- `push_bar` + `poll_signals` 是“DSL strategy 系统”的累积队列 signals
-
-### 10.2 Node：napi-rs exports
-
-实现见 `packages/hquant-rs/src/ffi/node.rs`。
-
-与 Python 基本一致：
-
-- `HQuant` 包装 `QuantEngine` + DSL strategy queue（Mutex）
-- `add_indicator` 接收 `IndicatorConfigInput`
-- `push_kline/update_last/get_indicator/...`
-- DSL：`add_strategy/push_bar/poll_signals`
-- 回测与聚合器也有对应导出类型（见文件后续定义）
-
-## 11. 扩展指南（给 Agent 的改造入口）
-
-### 11.1 新增一个指标（可被去重与依赖共享）
-
-最短路径（推荐）：
-
-1. 新建实现文件：`packages/hquant-rs/src/indicators/<your_indicator>.rs`，实现 `Indicator` trait
-2. 在 `packages/hquant-rs/src/indicators/mod.rs` 中 `pub mod ...` 并 `pub use ...`
-3. 在 `packages/hquant-rs/src/indicators/spec.rs`：
-   - 增加 `IndicatorSpec::<Your>` variant（含参数）
-   - 若是组合指标，实现 `dependencies()`
-4. 在 `packages/hquant-rs/src/indicators/graph.rs::build_indicator` 增加 `match` 分支
-5. 若要 Graph mode 共享子指标：
-   - 指标实现里覆写 `deps()` 返回与 `IndicatorSpec::dependencies()` 一致的 spec 顺序
-   - 实现 `push_with_deps/update_last_with_deps` 使用依赖值而不是自建子指标
-
-### 11.2 新增 DSL 内置函数
-
-修改 `packages/hquant-rs/src/dsl/eval.rs::eval_function`：
-
-- 解析 args/kwargs
-- 从 `DslContext` 取 `bar/indicators/period_*` 数据
-- 返回 `Value::{Number/Bool/String/Vector/SimilarityHit/Null}`
-
-如果需要访问历史 K 线（让 `NORMALIZE(close, ...)` 成为真实实现）：
-
-- 需要扩展 `DslContext` 持有 `&KlineSeries` 或为 eval 提供历史访问回调
-- 同时在 FFI/引擎侧构造 `DslContext` 时注入该引用
-
-### 11.3 将多周期贯通到 DSL
-
-当前状态：
-
-- 语法支持 `series@period`（例如 `close@4h`）
-- `DslContext` 支持 `with_period_bar/with_period_indicators`
-
-要完成闭环，需要：
-
-- 引擎/FFI 在聚合器“周期闭合”时生成对应周期的 bar + 该周期的指标图
-- 在调用 `DslEngine.evaluate(&ctx)` 前，把对应 `period_bars/period_indicators` 填进去
-
-
+## Build / Test Commands
+- core tests: `cargo test` (from `packages/hquant-rs`)
+- build core: `cargo build --release`
+- build node: `cargo build --release --features ffi-node`
+- build python: `cargo build --release --features ffi-python`

@@ -1,18 +1,11 @@
 /**
  * HQuant - High-performance quantitative trading engine powered by Rust
  *
- * @example
- * ```ts
- * const engine = new Engine(1000)
- * engine.addIndicator('ma20', { type: 'ema', period: 20 })
- * engine.addIndicator('rsi', { type: 'rsi', period: 14 })
- * const signals = engine.pushKline({ timestamp: 1, open: 100, high: 105, low: 95, close: 102, volume: 1000 })
- * ```
+ * This package is a thin TypeScript layer over the napi-rs native module in `native/hquant.node`.
  */
 
-// ============================================================================
-// Types
-// ============================================================================
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const native = require('../native/hquant.node') as Native
 
 export type Bar = {
   timestamp: number
@@ -79,8 +72,6 @@ export type BacktestConfig = {
   leverage?: number
   makerFee?: number
   takerFee?: number
-  slippage?: number
-  positionSizePct?: number
 }
 
 export type LabeledVector = {
@@ -118,10 +109,6 @@ export type FuturesPosition = {
   unrealizedPnl: number
 }
 
-// ============================================================================
-// Indicator Config
-// ============================================================================
-
 export type IndicatorConfig = {
   type: string
   period?: number
@@ -131,10 +118,6 @@ export type IndicatorConfig = {
   stdDev?: number
   multiplier?: number
 }
-
-// ============================================================================
-// Native type shape
-// ============================================================================
 
 type Native = {
   Engine: new (capacity: number) => {
@@ -151,7 +134,6 @@ type Native = {
     pollSignals(): Signal[]
     reset(): void
   }
-
   HQuant: new (capacity: number, periods?: string[]) => {
     addIndicator(name: string, config: IndicatorConfig): void
     addStrategy(name: string, dsl: string): number
@@ -163,9 +145,10 @@ type Native = {
     getIndicatorValue(name: string): number | null
     getIndicatorResult(name: string): IndicatorResult | null
     isIndicatorReady(name: string): boolean
+    loadStore(name: string, vectors: LabeledVector[]): void
+    setThreshold(threshold: number): void
     reset(): void
   }
-
   Backtest: new (config: BacktestConfig) => {
     openPosition(price: number, size: number, positionSide: PositionSide): void
     closePosition(price: number, positionSide: PositionSide): void
@@ -175,40 +158,35 @@ type Native = {
     getEquity(): number
     reset(): void
   }
-
   KlineAggregator: new (baseTf: string, targetTfs: string[], capacity: number) => {
     pushKline(bar: Bar): AggregatorEvent[]
     updateLast(bar: Bar): void
     flush(): void
     reset(): void
   }
-
   DslStrategy: new (source: string) => {
     loadStore(name: string, vectors: LabeledVector[]): void
     setThreshold(threshold: number): void
     evaluate(bar: Bar, indicators: Record<string, number>): Signal[]
     reset(): void
   }
-
   FuturesBacktest: new (config: FuturesBacktestConfig) => {
-    applySignal(action: 'BUY' | 'SELL' | 'HOLD', price: number, margin: number, positionSide?: PositionSide, isMaker?: boolean): void
+    applySignal(
+      action: 'BUY' | 'SELL' | 'HOLD',
+      price: number,
+      margin: number,
+      positionSide?: PositionSide,
+      isMaker?: boolean
+    ): void
     openPosition(positionSide: PositionSide, price: number, margin: number, isMaker?: boolean): void
     closePosition(positionSide: PositionSide, price: number, margin: number, isMaker?: boolean): void
     onPrice(price: number): void
     result(price: number): FuturesBacktestResult
     getPositions(): FuturesPosition[]
   }
-
   validateDsl(source: string): boolean
 }
 
-// ============================================================================
-// Load native & re-export
-// ============================================================================
-
-const native = require('../native/hquant.node') as Native
-
-// Re-export native classes
 export class Engine extends native.Engine {}
 export class HQuant extends native.HQuant {}
 export class Backtest extends native.Backtest {}
@@ -216,3 +194,4 @@ export class KlineAggregator extends native.KlineAggregator {}
 export class DslStrategy extends native.DslStrategy {}
 export class FuturesBacktest extends native.FuturesBacktest {}
 export const validateDsl = native.validateDsl
+
