@@ -90,13 +90,14 @@ trader-web/
 │   │   ├── api.ts                    # Axios 实例
 │   │   ├── auth.ts           # 认证服务
 │   │   ├── strategy.ts       # 策略服务
+│   │   ├── strategy-order.ts       # 策略下单
 │   │   ├── exchange.ts          # 交易所账户绑定
-│   │   ├── order.ts          # 订单服务
-│   │   ├── position.ts       # 仓位服务
+│   │   ├── order.ts             # 订单服务(手动下单)
+│   │   ├── position.ts           # 仓位服务
 │   ├── utils/                        # 工具函数
 │   │   ├── format.ts                 # 格式化
 │   │   ├── storage.ts                # 本地存储
-│   │   └── websocket.ts              # WebSocket 工具
+│   │   └── ws.ts                    # socket.io 工具
 │   ├── types/                        # 类型定义
 │   │   ├── index.ts
 │   │   ├── auth.ts
@@ -213,48 +214,7 @@ export default api;
 
 ### 5. 策略服务
 
-```typescript
-// src/services/strategy.service.ts
-import api from './api';
-import { Strategy, StrategyBinding, BindStrategyDto } from '../types/strategy';
-
-export const strategyService = {
-  // 获取可用策略列表
-  async getAvailableStrategies(): Promise<Strategy[]> {
-    return api.get('/strategies/available');
-  },
-
-  // 获取用户绑定的策略
-  async getUserBindings(): Promise<StrategyBinding[]> {
-    return api.get('/strategies/bindings');
-  },
-
-  // 绑定策略
-  async bindStrategy(dto: BindStrategyDto): Promise<StrategyBinding> {
-    return api.post('/strategies/bind', dto);
-  },
-
-  // 更新策略配置
-  async updateBinding(id: string, dto: Partial<BindStrategyDto>): Promise<StrategyBinding> {
-    return api.put(`/strategies/bindings/${id}`, dto);
-  },
-
-  // 启动策略
-  async startStrategy(id: string): Promise<void> {
-    return api.post(`/strategies/bindings/${id}/start`);
-  },
-
-  // 停止策略
-  async stopStrategy(id: string): Promise<void> {
-    return api.post(`/strategies/bindings/${id}/stop`);
-  },
-
-  // 获取策略统计
-  async getStrategyStats(id: string, period: string): Promise<any> {
-    return api.get(`/strategies/bindings/${id}/stats`, { params: { period } });
-  },
-};
-```
+参考E:\Project\my-project\auto-trader\apps\trader-service\app\api\v1
 
 ### 6. WebSocket
 use socket.io
