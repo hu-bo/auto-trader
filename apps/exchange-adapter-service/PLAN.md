@@ -35,6 +35,8 @@
 - **适配器复用**: 统一使用 `pkg/exchange-adapter` 对接多交易所
 - **订单推送**: 通过 WebSocket 实时推送订单状态变化（gRPC stream）
 - **模块化集成**: 将 exchange-sync 的市场数据能力集成为独立模块
+- **实时数据流**: 通过 NATS 订阅 exchange-sync 推送的实时 K 线和订单簿数据
+- **定时同步**: 使用 Cron 定时任务定期同步交易对信息，保持数据最新
 
 ---
 
@@ -45,6 +47,8 @@
 | `@hquant/exchange-adapter` | [pkg/exchange-adapter](../../pkg/exchange-adapter) | 交易所适配器（OKX/Binance/Bybit） |
 | `@hquant/risk-model` | [pkg/risk](../../pkg/risk) | 风控引擎 |
 | - | [apps/exchange-sync](../exchange-sync) | 市场数据服务（K线、订单簿） |
+| - | `github.com/nats-io/nats.go` | NATS 消息队列（实时推送市场数据） |
+| - | `github.com/robfig/cron/v3` | 定时任务（定期同步交易对信息） |
 
 ---
 
@@ -73,16 +77,25 @@
 │                   │ │   Exchange Sync Client           │   │
 │                   │ │  • REST API 调用                  │   │
 │                   │ │  • K线/订单簿/交易对查询          │   │
-│                   │ │  • K线数据格式统一并同步到数据库        │   │
+│                   │ │  • NATS 订阅实时市场数据          │   │
 │                   │ └──────────────────────────────────┘   │
 ├─────────────────────────────────────────────────────────────┤
-│  Risk Layer       │ pkg/risk (下单前需要经过风控模块)                        │
+│  Risk Layer       │ pkg/risk (下单前需要经过风控模块)        │
+├─────────────────────────────────────────────────────────────┤
+│  Cron Layer       │ 定时同步交易对信息 (每日 0 点)           │
 └─────────────────────────────────────────────────────────────┘
                       │
                       ↓
             ┌─────────────────────┐
             │   Exchange APIs     │
             │  (OKX/Binance/...)  │
+            └─────────────────────┘
+                      ↑
+                      │ NATS (实时推送)
+                      │
+            ┌─────────────────────┐
+            │   Exchange Sync     │
+            │ (市场数据同步服务)    │
             └─────────────────────┘
 ```
 
@@ -112,9 +125,12 @@ apps/exchange-adapter-service/
 │   │   └── stream.go               # 订单更新流推送
 │   ├── market/                     # 市场数据层（集成 exchange-sync）
 │   │   ├── client.go               # Exchange Sync HTTP Client
+│   │   ├── nats_subscriber.go      # NATS 订阅器（实时数据）
 │   │   └── service.go              # K线/订单簿查询服务
-│   └── risk/                       # 风控集成
-│       └── evaluator.go            # 调用 pkg/risk 评估
+│   ├── risk/                       # 风控集成
+│   │   └── evaluator.go            # 调用 pkg/risk 评估
+│   └── service/                    # 后台服务
+│       └── cron_service.go         # Cron 定时任务
 ├── proto/
 │   └── exchange.proto              # gRPC 接口定义
 ├── gen/                            # protoc 生成代码
@@ -436,6 +452,203 @@ func (c *ExchangeSyncClient) GetSymbolInfo(ctx context.Context, exchange, symbol
 }
 ```
 
+### 6.4 NATS 订阅实时数据
+
+Exchange Sync 通过 NATS 推送实时市场数据，Exchange Adapter Service 可订阅这些数据以提供低延迟的市场数据查询。
+
+**NATS 主题格式**:
+- K 线更新: `{prefix}.candle.{exchange}.{tradeType}.{symbol}.{period}`
+  - 示例: `exchange.candle.binance.spot.BTC-USDT.15m`
+- 订单簿更新: `{prefix}.orderbook.{exchange}.{tradeType}.{symbol}`
+  - 示例: `exchange.orderbook.okx.futures.ETH-USDT`
+
+**实现示例**:
+
+```go
+// internal/market/nats_subscriber.go
+type NATSSubscriber struct {
+    conn   *nats.Conn
+    prefix string
+
+    // 内存缓存最新数据
+    candleCache    map[string]*Candle    // key: exchange.symbol.period
+    orderBookCache map[string]*OrderBook // key: exchange.symbol
+    mu             sync.RWMutex
+}
+
+func NewNATSSubscriber(cfg *NATSConfig) (*NATSSubscriber, error) {
+    opts := []nats.Option{
+        nats.Name("exchange-adapter-subscriber"),
+        nats.ReconnectWait(time.Duration(cfg.ReconnectWaitMs) * time.Millisecond),
+        nats.MaxReconnects(cfg.MaxReconnects),
+    }
+
+    if cfg.Username != "" && cfg.Password != "" {
+        opts = append(opts, nats.UserInfo(cfg.Username, cfg.Password))
+    }
+
+    conn, err := nats.Connect(cfg.URL, opts...)
+    if err != nil {
+        return nil, err
+    }
+
+    return &NATSSubscriber{
+        conn:           conn,
+        prefix:         cfg.SubjectPrefix,
+        candleCache:    make(map[string]*Candle),
+        orderBookCache: make(map[string]*OrderBook),
+    }, nil
+}
+
+// SubscribeCandles 订阅 K 线更新
+func (s *NATSSubscriber) SubscribeCandles(exchange, tradeType, symbol, period string) error {
+    subject := fmt.Sprintf("%s.candle.%s.%s.%s.%s",
+        s.prefix, exchange, tradeType, symbol, period)
+
+    _, err := s.conn.Subscribe(subject, func(msg *nats.Msg) {
+        var candle Candle
+        if err := json.Unmarshal(msg.Data, &candle); err != nil {
+            log.Error().Err(err).Msg("Failed to unmarshal candle")
+            return
+        }
+
+        // 更新缓存
+        cacheKey := fmt.Sprintf("%s.%s.%s", exchange, symbol, period)
+        s.mu.Lock()
+        s.candleCache[cacheKey] = &candle
+        s.mu.Unlock()
+    })
+
+    return err
+}
+
+// GetLatestCandle 获取最新 K 线（从缓存）
+func (s *NATSSubscriber) GetLatestCandle(exchange, symbol, period string) (*Candle, bool) {
+    cacheKey := fmt.Sprintf("%s.%s.%s", exchange, symbol, period)
+    s.mu.RLock()
+    defer s.mu.RUnlock()
+
+    candle, exists := s.candleCache[cacheKey]
+    return candle, exists
+}
+
+// SubscribeOrderBook 订阅订单簿更新
+func (s *NATSSubscriber) SubscribeOrderBook(exchange, tradeType, symbol string) error {
+    subject := fmt.Sprintf("%s.orderbook.%s.%s.%s",
+        s.prefix, exchange, tradeType, symbol)
+
+    _, err := s.conn.Subscribe(subject, func(msg *nats.Msg) {
+        var ob OrderBook
+        if err := json.Unmarshal(msg.Data, &ob); err != nil {
+            log.Error().Err(err).Msg("Failed to unmarshal orderbook")
+            return
+        }
+
+        // 更新缓存
+        cacheKey := fmt.Sprintf("%s.%s", exchange, symbol)
+        s.mu.Lock()
+        s.orderBookCache[cacheKey] = &ob
+        s.mu.Unlock()
+    })
+
+    return err
+}
+
+// Close 关闭连接
+func (s *NATSSubscriber) Close() {
+    if s.conn != nil {
+        s.conn.Close()
+    }
+}
+```
+
+**使用场景**:
+1. **低延迟查询**: GetCurrentCandle 可直接从 NATS 缓存返回最新数据
+2. **实时推送**: 将 NATS 数据转发到 gRPC stream
+3. **降级策略**: NATS 不可用时降级到 HTTP API
+
+### 6.5 Cron 定时同步
+
+使用 Cron 定时任务定期同步交易对信息，保持数据最新。
+
+**实现示例**:
+
+```go
+// internal/service/cron_service.go
+import (
+    "github.com/robfig/cron/v3"
+)
+
+type CronService struct {
+    cron            *cron.Cron
+    exchangeSyncClient *ExchangeSyncClient
+}
+
+func NewCronService(cfg *CronConfig, client *ExchangeSyncClient) *CronService {
+    return &CronService{
+        cron:            cron.New(),
+        exchangeSyncClient: client,
+    }
+}
+
+// Start 启动定时任务
+func (s *CronService) Start() error {
+    // 每天凌晨 0 点同步交易对信息
+    _, err := s.cron.AddFunc("0 0 * * *", func() {
+        log.Info().Msg("Starting scheduled symbols sync")
+
+        for _, exchange := range []string{"binance", "okx", "bybit"} {
+            if err := s.syncSymbols(exchange); err != nil {
+                log.Error().Err(err).Str("exchange", exchange).Msg("Failed to sync symbols")
+            }
+        }
+
+        log.Info().Msg("Scheduled symbols sync completed")
+    })
+
+    if err != nil {
+        return err
+    }
+
+    s.cron.Start()
+    log.Info().Msg("Cron service started")
+    return nil
+}
+
+// syncSymbols 同步指定交易所的交易对信息
+func (s *CronService) syncSymbols(exchange string) error {
+    symbols, err := s.exchangeSyncClient.GetSymbols(context.Background(), exchange)
+    if err != nil {
+        return err
+    }
+
+    log.Info().Str("exchange", exchange).Int("count", len(symbols)).Msg("Synced symbols")
+    return nil
+}
+
+// Stop 停止定时任务
+func (s *CronService) Stop() {
+    if s.cron != nil {
+        s.cron.Stop()
+        log.Info().Msg("Cron service stopped")
+    }
+}
+```
+
+**配置选项**:
+```yaml
+cron:
+  enabled: true
+  # Cron 表达式: "秒 分 时 日 月 星期"
+  symbols_sync: "0 0 * * *"  # 每天凌晨 0 点
+```
+
+**常用 Cron 表达式**:
+- `"0 0 * * *"` - 每天凌晨 0 点
+- `"0 */6 * * *"` - 每 6 小时
+- `"0 0 */3 * *"` - 每 3 天
+- `"0 0 * * 0"` - 每周日凌晨
+
 ---
 
 ## 7. 会话管理（无数据库）
@@ -669,6 +882,8 @@ func (r *RiskEvaluator) EvaluateOrder(
 | gRPC | google.golang.org/grpc | 标准库 |
 | 配置 | Viper | 支持 YAML/ENV |
 | 日志 | Zap | 高性能结构化日志 |
+| 消息队列 | NATS | 实时推送市场数据（K线、订单簿） |
+| 定时任务 | Cron v3 | 定期同步交易对信息 |
 | 指标 | Prometheus | 标准监控方案 |
 | 测试 | testify | 断言与 mock |
 
@@ -687,6 +902,24 @@ exchange_sync:
   enabled: true
   base_url: "http://localhost:9003"
   timeout_seconds: 10
+
+# NATS 消息队列
+nats:
+  enabled: true
+  url: "nats://localhost:15002"
+  username: "exchange_adapter"
+  password: "123456"
+  subject_prefix: "exchange"
+  batch_window_ms: 200
+  enable_compress: true
+  reconnect_wait_ms: 2000
+  max_reconnects: -1  # -1 表示无限重连
+
+# 定时任务
+cron:
+  enabled: true
+  # 定期同步交易对信息 (每天凌晨 0 点)
+  symbols_sync: "0 0 * * *"
 
 # Session 管理
 session:
