@@ -53,6 +53,27 @@ impl MultiHQuant {
         self.eval_multi_strategies();
     }
 
+    /// Load historical bars in batch. This is more efficient than calling `feed_bar` repeatedly
+    /// because it skips strategy evaluation during loading.
+    pub fn load_history(&mut self, bars: &[Bar]) {
+        let base_ms = self.periods[0].as_ms();
+        for &bar in bars {
+            // Route to base period engine (use load_history_bar for efficiency)
+            if let Some(engine) = self.engines.get_mut(&base_ms) {
+                engine.load_history_bar(bar);
+            }
+
+            // Push to aggregator and route aggregated bars to higher period engines
+            self.aggregator.push(&bar);
+            for ev in self.aggregator.poll_events() {
+                let p_ms = ev.period.as_ms();
+                if let Some(engine) = self.engines.get_mut(&p_ms) {
+                    engine.load_history_bar(ev.candle.into());
+                }
+            }
+        }
+    }
+
     pub fn add_indicator(&mut self, spec: IndicatorSpec) -> HashMap<i64, IndicatorId> {
         let mut out = HashMap::new();
         for (p_ms, engine) in self.engines.iter_mut() {

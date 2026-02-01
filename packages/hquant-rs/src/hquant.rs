@@ -40,6 +40,14 @@ impl HQuant {
         &self.bars
     }
 
+    pub fn bars_mut(&mut self) -> &mut KlineBuffer {
+        &mut self.bars
+    }
+
+    pub fn indicators_mut(&mut self) -> &mut IndicatorGraph {
+        &mut self.indicators
+    }
+
     pub fn store(&self) -> &VectorStore {
         &self.store
     }
@@ -85,6 +93,21 @@ impl HQuant {
         self.bars.push(bar);
         self.indicators.on_push(&self.bars);
         self.eval_strategies();
+    }
+
+    /// Load historical bars in batch. This is more efficient than calling `push_kline` repeatedly
+    /// because it skips strategy evaluation during loading.
+    pub fn load_history(&mut self, bars: &[Bar]) {
+        for &bar in bars {
+            self.load_history_bar(bar);
+        }
+    }
+
+    /// Load a single historical bar without triggering strategy evaluation.
+    #[inline]
+    pub fn load_history_bar(&mut self, bar: Bar) {
+        self.bars.push(bar);
+        self.indicators.on_push(&self.bars);
     }
 
     pub fn update_last(&mut self, bar: Bar) {

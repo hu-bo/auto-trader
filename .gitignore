@@ -1,12 +1,36 @@
-node_modules/
 lib/
+source/
+
+# IDE
+.idea/
+.vscode/
+# macOS
+*.swp
+*.swo
 .DS_Store
-dist/
+
 coverage/
+logs/
 *.log
 .env
 .env.local
+#nodejs
+node_modules/
+dist/
+
+#rust
 debug
 release
 .rustc_info.json
 target/
+
+# golang
+.cache
+.gocache/
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+go.work.sum

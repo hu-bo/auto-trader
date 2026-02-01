@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  nats:
+    image: nats:latest
+    container_name: exchange-sync-nats
+    ports:
+      - "15002:4222"
+    command: [ "-js", "--user=exchange_sync", "--pass=123456" ]
+    healthcheck:
+      test: ["CMD", "nats-server", "--help"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  exchange-sync:
+    image: alpine:3.19
+    container_name: exchange-sync
+    depends_on:
+      - nats
+    ports:
+      - "9100:9100"
+    restart: always
+    volumes:
+      - ./:/app
+    working_dir: /app
+    command: ["/bin/sh", "-lc", "apk add --no-cache ca-certificates tzdata >/dev/null && ./exchange-sync"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep exchange-sync || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  shared_network:
+    external: true

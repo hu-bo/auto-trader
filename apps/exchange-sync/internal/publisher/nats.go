@@ -1,0 +1,196 @@
+package publisher
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"time"
+
+	"exchange-sync/internal/config"
+	"exchange-sync/internal/exchange"
+	"exchange-sync/pkg/logger"
+
+	"github.com/bytedance/sonic"
+	"github.com/nats-io/nats.go"
+)
+
+var log = logger.Module("nats-publisher")
+
+// Publisher NATS 发布器
+type Publisher struct {
+	cfg  *config.NATSConfig
+	conn *nats.Conn
+
+	// 批量聚合
+	candleBatch    map[string]*exchange.NormalizedCandle // key: subject
+	orderBookBatch map[string]*exchange.OrderBook        // key: subject
+	batchMu        sync.Mutex
+	batchTicker    *time.Ticker
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+}
+
+// New 创建 NATS 发布器
+func New(cfg *config.NATSConfig) (*Publisher, error) {
+	opts := []nats.Option{
+		nats.Name("exchange-sync-publisher"),
+		nats.ReconnectWait(time.Duration(cfg.ReconnectWaitMs) * time.Millisecond),
+		nats.MaxReconnects(cfg.MaxReconnects),
+		nats.DisconnectErrHandler(func(nc *nats.Conn, err error) {
+			if err != nil {
+				log.Warn().Err(err).Msg("NATS disconnected")
+			}
+		}),
+		nats.ReconnectHandler(func(nc *nats.Conn) {
+			log.Info().Str("url", nc.ConnectedUrl()).Msg("NATS reconnected")
+		}),
+		nats.ErrorHandler(func(nc *nats.Conn, sub *nats.Subscription, err error) {
+			log.Error().Err(err).Msg("NATS error")
+		}),
+	}
+
+	// NATS 认证
+	if cfg.Username != "" && cfg.Password != "" {
+		opts = append(opts, nats.UserInfo(cfg.Username, cfg.Password))
+		log.Info().Str("username", cfg.Username).Msg("NATS authentication enabled")
+	}
+
+	if cfg.EnableCompress {
+		opts = append(opts, nats.Compression(true))
+	}
+
+	conn, err := nats.Connect(cfg.URL, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	p := &Publisher{
+		cfg:            cfg,
+		conn:           conn,
+		candleBatch:    make(map[string]*exchange.NormalizedCandle),
+		orderBookBatch: make(map[string]*exchange.OrderBook),
+		batchTicker:    time.NewTicker(time.Duration(cfg.BatchWindowMs) * time.Millisecond),
+		ctx:            ctx,
+		cancel:         cancel,
+	}
+
+	// 启动批量发送协程
+	p.wg.Add(1)
+	go p.batchLoop()
+
+	log.Info().Str("url", cfg.URL).Msg("NATS publisher started")
+	return p, nil
+}
+
+// PublishCandle 发布 K线更新（批量聚合）
+func (p *Publisher) PublishCandle(candle exchange.NormalizedCandle) {
+	subject := p.candleSubject(candle.Exchange, candle.TradeType, candle.Symbol, candle.Period)
+
+	p.batchMu.Lock()
+	p.candleBatch[subject] = &candle
+	p.batchMu.Unlock()
+}
+
+// PublishOrderBook 发布订单簿更新（批量聚合）
+func (p *Publisher) PublishOrderBook(ob exchange.OrderBook) {
+	subject := p.orderBookSubject("", "", ob.Symbol) // TODO: 需要在 OrderBook 中添加 exchange 和 tradeType
+
+	p.batchMu.Lock()
+	p.orderBookBatch[subject] = &ob
+	p.batchMu.Unlock()
+}
+
+// PublishOrderBookFull 发布订单簿更新（带完整信息）
+func (p *Publisher) PublishOrderBookFull(exchangeName, tradeType string, ob exchange.OrderBook) {
+	subject := p.orderBookSubject(exchangeName, tradeType, ob.Symbol)
+
+	// log.Info().
+	// 	Str("subject", subject).
+	// 	Int("bids", len(ob.Bids)).
+	// 	Int("asks", len(ob.Asks)).
+	// 	Msg("Publishing orderbook")
+
+	p.batchMu.Lock()
+	p.orderBookBatch[subject] = &ob
+	p.batchMu.Unlock()
+}
+
+// batchLoop 批量发送循环
+func (p *Publisher) batchLoop() {
+	defer p.wg.Done()
+
+	for {
+		select {
+		case <-p.ctx.Done():
+			// 发送剩余数据
+			p.flush()
+			return
+		case <-p.batchTicker.C:
+			p.flush()
+		}
+	}
+}
+
+// flush 刷新批量数据
+func (p *Publisher) flush() {
+	p.batchMu.Lock()
+	candles := p.candleBatch
+	orderBooks := p.orderBookBatch
+	p.candleBatch = make(map[string]*exchange.NormalizedCandle)
+	p.orderBookBatch = make(map[string]*exchange.OrderBook)
+	p.batchMu.Unlock()
+
+	// 发布 K线
+	for subject, candle := range candles {
+		data, err := sonic.Marshal(candle)
+		if err != nil {
+			log.Error().Err(err).Str("subject", subject).Msg("Failed to marshal candle")
+			continue
+		}
+		if err := p.conn.Publish(subject, data); err != nil {
+			log.Error().Err(err).Str("subject", subject).Msg("Failed to publish candle")
+		}
+	}
+
+	// 发布订单簿
+	for subject, ob := range orderBooks {
+		data, err := sonic.Marshal(ob)
+		if err != nil {
+			log.Error().Err(err).Str("subject", subject).Msg("Failed to marshal orderbook")
+			continue
+		}
+		if err := p.conn.Publish(subject, data); err != nil {
+			log.Error().Err(err).Str("subject", subject).Msg("Failed to publish orderbook")
+		}
+	}
+}
+
+// candleSubject 生成 K线主题
+// 格式: {prefix}.candle.{exchange}.{tradeType}.{symbol}.{period}
+func (p *Publisher) candleSubject(exchangeName, tradeType, symbol, period string) string {
+	return fmt.Sprintf("%s.candle.%s.%s.%s.%s", p.cfg.SubjectPrefix, exchangeName, tradeType, symbol, period)
+}
+
+// orderBookSubject 生成订单簿主题
+// 格式: {prefix}.orderbook.{exchange}.{tradeType}.{symbol}
+func (p *Publisher) orderBookSubject(exchangeName, tradeType, symbol string) string {
+	return fmt.Sprintf("%s.orderbook.%s.%s.%s", p.cfg.SubjectPrefix, exchangeName, tradeType, symbol)
+}
+
+// Close 关闭发布器
+func (p *Publisher) Close() error {
+	p.cancel()
+	p.batchTicker.Stop()
+	p.wg.Wait()
+
+	if p.conn != nil {
+		p.conn.Close()
+	}
+
+	log.Info().Msg("NATS publisher closed")
+	return nil
+}

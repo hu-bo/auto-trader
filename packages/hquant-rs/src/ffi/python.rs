@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use numpy::PyReadonlyArray1;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -260,6 +261,62 @@ impl HQuant {
         Ok(())
     }
 
+    /// Load historical data from NumPy arrays (zero-copy).
+    /// All arrays must have the same length.
+    #[pyo3(signature = (timestamp, open, high, low, close, volume, buy_volume=None))]
+    fn load_history(
+        &mut self,
+        timestamp: PyReadonlyArray1<'_, i64>,
+        open: PyReadonlyArray1<'_, f64>,
+        high: PyReadonlyArray1<'_, f64>,
+        low: PyReadonlyArray1<'_, f64>,
+        close: PyReadonlyArray1<'_, f64>,
+        volume: PyReadonlyArray1<'_, f64>,
+        buy_volume: Option<PyReadonlyArray1<'_, f64>>,
+    ) -> PyResult<()> {
+        let ts = timestamp.as_slice()?;
+        let o = open.as_slice()?;
+        let h = high.as_slice()?;
+        let l = low.as_slice()?;
+        let c = close.as_slice()?;
+        let v = volume.as_slice()?;
+
+        let n = ts.len();
+        if o.len() != n || h.len() != n || l.len() != n || c.len() != n || v.len() != n {
+            return Err(py_err("all arrays must have the same length"));
+        }
+
+        let bv_slice: Vec<f64>;
+        let bv: &[f64] = match &buy_volume {
+            Some(arr) => {
+                let slice = arr.as_slice()?;
+                if slice.len() != n {
+                    return Err(py_err("buy_volume array must have the same length"));
+                }
+                slice
+            }
+            None => {
+                bv_slice = vec![0.0; n];
+                &bv_slice
+            }
+        };
+
+        let bars: Vec<Bar> = (0..n)
+            .map(|i| Bar {
+                timestamp: ts[i],
+                open: o[i],
+                high: h[i],
+                low: l[i],
+                close: c[i],
+                volume: v[i],
+                buy_volume: bv[i],
+            })
+            .collect();
+
+        self.inner.load_history(&bars);
+        Ok(())
+    }
+
     fn poll_signals(&mut self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
         let mut out = Vec::new();
         for s in self.inner.poll_signals() {
@@ -302,6 +359,62 @@ impl MultiHQuant {
 
     fn feed_bar(&mut self, bar: &Bound<'_, PyDict>) -> PyResult<()> {
         self.inner.feed_bar(bar_from_dict(bar)?);
+        Ok(())
+    }
+
+    /// Load historical data from NumPy arrays (zero-copy).
+    /// All arrays must have the same length.
+    #[pyo3(signature = (timestamp, open, high, low, close, volume, buy_volume=None))]
+    fn load_history(
+        &mut self,
+        timestamp: PyReadonlyArray1<'_, i64>,
+        open: PyReadonlyArray1<'_, f64>,
+        high: PyReadonlyArray1<'_, f64>,
+        low: PyReadonlyArray1<'_, f64>,
+        close: PyReadonlyArray1<'_, f64>,
+        volume: PyReadonlyArray1<'_, f64>,
+        buy_volume: Option<PyReadonlyArray1<'_, f64>>,
+    ) -> PyResult<()> {
+        let ts = timestamp.as_slice()?;
+        let o = open.as_slice()?;
+        let h = high.as_slice()?;
+        let l = low.as_slice()?;
+        let c = close.as_slice()?;
+        let v = volume.as_slice()?;
+
+        let n = ts.len();
+        if o.len() != n || h.len() != n || l.len() != n || c.len() != n || v.len() != n {
+            return Err(py_err("all arrays must have the same length"));
+        }
+
+        let bv_slice: Vec<f64>;
+        let bv: &[f64] = match &buy_volume {
+            Some(arr) => {
+                let slice = arr.as_slice()?;
+                if slice.len() != n {
+                    return Err(py_err("buy_volume array must have the same length"));
+                }
+                slice
+            }
+            None => {
+                bv_slice = vec![0.0; n];
+                &bv_slice
+            }
+        };
+
+        let bars: Vec<Bar> = (0..n)
+            .map(|i| Bar {
+                timestamp: ts[i],
+                open: o[i],
+                high: h[i],
+                low: l[i],
+                close: c[i],
+                volume: v[i],
+                buy_volume: bv[i],
+            })
+            .collect();
+
+        self.inner.load_history(&bars);
         Ok(())
     }
 

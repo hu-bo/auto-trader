@@ -102,6 +102,20 @@ pub struct JsIndicatorConfig {
     pub multiplier: Option<f64>,
 }
 
+/// Struct-of-Arrays (SoA) format for historical bar data.
+/// This format is optimal for TypedArray zero-copy transfer from JavaScript.
+#[napi(object)]
+pub struct JsBarsSoA {
+    pub timestamp: Vec<i64>,
+    pub open: Vec<f64>,
+    pub high: Vec<f64>,
+    pub low: Vec<f64>,
+    pub close: Vec<f64>,
+    pub volume: Vec<f64>,
+    #[napi(js_name = "buyVolume")]
+    pub buy_volume: Option<Vec<f64>>,
+}
+
 #[napi]
 pub fn validateDsl(source: String) -> Result<bool> {
     validate_dsl(&source)
@@ -414,6 +428,47 @@ impl HQuant {
         Ok(())
     }
 
+    /// Load historical data from Struct-of-Arrays format (optimal for TypedArray).
+    /// All arrays must have the same length.
+    #[napi(js_name = "loadHistory")]
+    pub fn loadHistory(&mut self, data: JsBarsSoA) -> Result<()> {
+        let n = data.timestamp.len();
+        if data.open.len() != n
+            || data.high.len() != n
+            || data.low.len() != n
+            || data.close.len() != n
+            || data.volume.len() != n
+        {
+            return Err(Error::new(
+                Status::InvalidArg,
+                "all arrays must have the same length".to_string(),
+            ));
+        }
+
+        let buy_volume = data.buy_volume.unwrap_or_else(|| vec![0.0; n]);
+        if buy_volume.len() != n {
+            return Err(Error::new(
+                Status::InvalidArg,
+                "buyVolume array must have the same length".to_string(),
+            ));
+        }
+
+        let bars: Vec<Bar> = (0..n)
+            .map(|i| Bar {
+                timestamp: data.timestamp[i],
+                open: data.open[i],
+                high: data.high[i],
+                low: data.low[i],
+                close: data.close[i],
+                volume: data.volume[i],
+                buy_volume: buy_volume[i],
+            })
+            .collect();
+
+        self.inner.load_history(&bars);
+        Ok(())
+    }
+
     #[napi]
     pub fn reset(&mut self) {
         self.inner.reset();
@@ -453,6 +508,47 @@ impl MultiHQuant {
     #[napi(js_name = "feedBar")]
     pub fn feedBar(&mut self, bar: JsBar) {
         self.inner.feed_bar(bar.into_bar());
+    }
+
+    /// Load historical data from Struct-of-Arrays format (optimal for TypedArray).
+    /// All arrays must have the same length.
+    #[napi(js_name = "loadHistory")]
+    pub fn loadHistory(&mut self, data: JsBarsSoA) -> Result<()> {
+        let n = data.timestamp.len();
+        if data.open.len() != n
+            || data.high.len() != n
+            || data.low.len() != n
+            || data.close.len() != n
+            || data.volume.len() != n
+        {
+            return Err(Error::new(
+                Status::InvalidArg,
+                "all arrays must have the same length".to_string(),
+            ));
+        }
+
+        let buy_volume = data.buy_volume.unwrap_or_else(|| vec![0.0; n]);
+        if buy_volume.len() != n {
+            return Err(Error::new(
+                Status::InvalidArg,
+                "buyVolume array must have the same length".to_string(),
+            ));
+        }
+
+        let bars: Vec<Bar> = (0..n)
+            .map(|i| Bar {
+                timestamp: data.timestamp[i],
+                open: data.open[i],
+                high: data.high[i],
+                low: data.low[i],
+                close: data.close[i],
+                volume: data.volume[i],
+                buy_volume: buy_volume[i],
+            })
+            .collect();
+
+        self.inner.load_history(&bars);
+        Ok(())
     }
 
     #[napi(js_name = "updateLast")]

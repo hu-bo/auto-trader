@@ -1,0 +1,56 @@
+server:
+  http_port: 9100
+  # API Key 认证 (为空则不启用认证)
+  api_key: ""
+  # 每秒请求限制 (0 表示不限制)
+  rate_limit_rps: 100
+
+nats:
+  enabled: true
+  url: "nats://localhost:15002"
+  # NATS 认证 (可选)
+  username: "exchange_sync"
+  password: "123456"
+  subject_prefix: "exchange"
+  batch_window_ms: 200
+  enable_compress: true
+  reconnect_wait_ms: 2000
+  max_reconnects: -1
+
+database:
+  host: localhost
+  port: 15000
+  user: exchange_sync_user
+  password: "123456"
+  database: exchange_info
+  ssl_mode: disable
+  max_conns: 20
+  min_conns: 5
+  batch_size: 100
+  batch_interval_ms: 1000
+
+sync:
+  history_start_year: 2016
+  query_limit: 100
+  subscribe_batch_size: 10
+  reconnect_interval_sec: 15
+  heartbeat_interval_sec: 30
+
+big_order:
+  threshold_usd: 5000
+  expire_hours: 48
+
+# 日志配置 (可选)
+log:
+  level: info
+  format: console
+  output: file
+  dir: logs
+  filename: exchange-sync
+  # 使用 {{date}} 和 {{filename}} 占位符来构建按天分割的文件名
+  filename_template: "{{date}}.log"
+
+# 代理配置 (可选)
+# proxy:
+#   http: "http://127.0.0.1:7890"      # HTTP 代理，用于 REST API
+#   socks5: "socks5://127.0.0.1:7890"  # SOCKS5 代理，用于 WebSocket

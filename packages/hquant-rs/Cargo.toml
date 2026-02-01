@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 [features]
 default = []
 ffi-node = ["napi", "napi-derive"]
-ffi-python = ["pyo3/extension-module"]
+ffi-python = ["pyo3/extension-module", "numpy"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -19,6 +19,7 @@ path = "src/lib.rs"
 napi = { version = "2", default-features = false, features = ["napi4"], optional = true }
 napi-derive = { version = "2", optional = true }
 pyo3 = { version = "0.22", features = ["extension-module"], optional = true }
+numpy = { version = "0.22", optional = true }
 
 # DSL parsing
 pest = "2.7"
