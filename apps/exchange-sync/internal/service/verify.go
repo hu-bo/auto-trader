@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"exchange-sync/internal/config"
-	"exchange-sync/internal/exchange"
-	"exchange-sync/internal/exchange/binance"
-	"exchange-sync/internal/exchange/okx"
 	"exchange-sync/internal/storage"
 	"exchange-sync/pkg/logger"
+
+	exbinance "github.com/pkg/exchange-adapter/exchanges/binance"
+	exokx "github.com/pkg/exchange-adapter/exchanges/okx"
+	exchange "github.com/pkg/exchange-adapter/marketdata"
 )
 
 var logVerify = logger.Module("verify")
@@ -51,7 +52,7 @@ type VerifyService struct {
 }
 
 // NewVerifyService 创建验证服务
-func NewVerifyService(cfg *config.Config, repo storage.Repository) *VerifyService {
+func NewVerifyService(cfg *config.Config, repo storage.Repository) (*VerifyService, error) {
 	s := &VerifyService{
 		cfg:         cfg,
 		repo:        repo,
@@ -59,10 +60,18 @@ func NewVerifyService(cfg *config.Config, repo storage.Repository) *VerifyServic
 	}
 
 	// 初始化 REST 客户端 (使用 HTTP 代理)
-	s.restClients[exchange.Binance] = binance.NewRESTClient(cfg.Proxy.HTTP)
-	s.restClients[exchange.OKX] = okx.NewRESTClient(cfg.Proxy.HTTP)
+	s.restClients[exchange.Binance] = exbinance.NewMarketDataRESTClient(exbinance.MarketDataRESTClientOptions{
+		HTTPSProxy: cfg.Proxy.HTTP,
+	})
+	okxClient, err := exokx.NewMarketDataRESTClient(exokx.MarketDataRESTClientOptions{
+		HTTPSProxy: cfg.Proxy.HTTP,
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.restClients[exchange.OKX] = okxClient
 
-	return s
+	return s, nil
 }
 
 // VerifyCandles 验证K线数据

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // ExchangeName 交易所名称
@@ -34,6 +35,50 @@ const (
 	Period4h  Period = "4h"
 	Period1d  Period = "1d"
 )
+
+const (
+	Minute = 60 * 1000
+	Hour   = 60 * Minute
+	Day    = 24 * Hour
+)
+
+var periodIntervalMs = map[Period]int64{
+	Period1m:  1 * Minute,
+	Period5m:  5 * Minute,
+	Period15m: 15 * Minute,
+	Period30m: 30 * Minute,
+	Period1h:  1 * Hour,
+	Period4h:  4 * Hour,
+	Period1d:  1 * Day,
+}
+
+func (p Period) IntervalMs() int64 { return periodIntervalMs[p] }
+
+func (p Period) IsValid() bool {
+	_, ok := periodIntervalMs[p]
+	return ok
+}
+
+// RoundToInterval 将时间戳对齐到周期起始时间 (ms).
+func (p Period) RoundToInterval(ts int64) int64 {
+	interval := p.IntervalMs()
+	if interval == 0 {
+		return ts
+	}
+	return (ts / interval) * interval
+}
+
+func (p Period) RoundTimeToInterval(t time.Time) time.Time {
+	return time.UnixMilli(p.RoundToInterval(t.UnixMilli()))
+}
+
+func (p Period) NextInterval(ts int64) int64 {
+	return p.RoundToInterval(ts) + p.IntervalMs()
+}
+
+func (p Period) PrevInterval(ts int64) int64 {
+	return p.RoundToInterval(ts) - p.IntervalMs()
+}
 
 // SymbolInfo 统一的交易对信息
 type SymbolInfo struct {

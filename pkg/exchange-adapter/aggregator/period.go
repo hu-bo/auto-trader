@@ -1,7 +1,7 @@
 package aggregator
 
 import (
-	"exchange-sync/internal/exchange"
+	md "github.com/pkg/exchange-adapter/marketdata"
 )
 
 // PeriodData 单周期聚合数据
@@ -9,7 +9,7 @@ type PeriodData struct {
 	Symbol       string
 	Exchange     string
 	TradeType    string
-	Period       exchange.Period
+	Period       md.Period
 	PeriodTime   int64 // 周期起始时间 (ms)
 	Open         float64
 	High         float64
@@ -33,14 +33,14 @@ type PeriodData struct {
 }
 
 // NewPeriodData 创建新的周期数据
-func NewPeriodData(symbol, exchangeName, tradeType string, period exchange.Period, periodTime int64) *PeriodData {
+func NewPeriodData(symbol, exchangeName, tradeType string, period md.Period, periodTime int64) *PeriodData {
 	return &PeriodData{
 		Symbol:          symbol,
 		Exchange:        exchangeName,
 		TradeType:       tradeType,
 		Period:          period,
 		PeriodTime:      periodTime,
-		SymbolFamily:    exchange.ExtractSymbolFamily(symbol),
+		SymbolFamily:    md.ExtractSymbolFamily(symbol),
 		processedKlines: make(map[int64]bool),
 		processedVolume: make(map[int64]float64),
 	}
@@ -58,8 +58,8 @@ func (d *PeriodData) UpdateVolume(timestamp int64, volume float64) {
 }
 
 // ToNormalizedCandle 转换为标准化K线
-func (d *PeriodData) ToNormalizedCandle() exchange.NormalizedCandle {
-	return exchange.NormalizedCandle{
+func (d *PeriodData) ToNormalizedCandle() md.NormalizedCandle {
+	return md.NormalizedCandle{
 		Symbol:       d.Symbol,
 		Exchange:     d.Exchange,
 		TradeType:    d.TradeType,
@@ -79,7 +79,7 @@ func (d *PeriodData) ToNormalizedCandle() exchange.NormalizedCandle {
 // 只负责一个周期（如 15m）的聚合逻辑，无锁设计
 type SinglePeriodAggregator struct {
 	exchange string
-	period   exchange.Period
+	period   md.Period
 
 	// symbol -> PeriodData
 	dataMap map[string]*PeriodData
@@ -96,12 +96,12 @@ type SinglePeriodAggregator struct {
 
 // NewSinglePeriodAggregator 创建单周期聚合器
 // Deprecated: 使用 NewSinglePeriodAggregatorWithConfig
-func NewSinglePeriodAggregator(exchangeName string, period exchange.Period) *SinglePeriodAggregator {
+func NewSinglePeriodAggregator(exchangeName string, period md.Period) *SinglePeriodAggregator {
 	return NewSinglePeriodAggregatorWithConfig(exchangeName, period, false)
 }
 
 // NewSinglePeriodAggregatorWithConfig 创建单周期聚合器（带配置）
-func NewSinglePeriodAggregatorWithConfig(exchangeName string, period exchange.Period, needTrade bool) *SinglePeriodAggregator {
+func NewSinglePeriodAggregatorWithConfig(exchangeName string, period md.Period, needTrade bool) *SinglePeriodAggregator {
 	return &SinglePeriodAggregator{
 		exchange:   exchangeName,
 		period:     period,
@@ -113,15 +113,15 @@ func NewSinglePeriodAggregatorWithConfig(exchangeName string, period exchange.Pe
 
 // AggResult 聚合结果
 type AggResult struct {
-	Candle *exchange.NormalizedCandle
+	Candle *md.NormalizedCandle
 	Closed bool // 是否为周期关闭产生的结果
 }
 
 // PushKline 处理 15m K线，返回聚合结果
 // 同一个 K线会收到多次更新，每次都要处理（OHLCV 会变化）
 // 返回值：如果周期完成且满足条件（kline+trade 都 ready），返回完成的 candle
-func (a *SinglePeriodAggregator) PushKline(kline exchange.Kline) *AggResult {
-	if kline.Period != exchange.Period15m {
+func (a *SinglePeriodAggregator) PushKline(kline md.Kline) *AggResult {
+	if kline.Period != md.Period15m {
 		return nil
 	}
 
@@ -246,7 +246,7 @@ func (a *SinglePeriodAggregator) SetTradeReady(symbol string, periodTime int64) 
 // PushTrade 处理成交数据，累计买入量
 // 返回 true 表示成功累加
 // 支持累加到当前周期或历史周期（延迟到达的 trade）
-func (a *SinglePeriodAggregator) PushTrade(trade exchange.Trade) bool {
+func (a *SinglePeriodAggregator) PushTrade(trade md.Trade) bool {
 	if !trade.IsBuy {
 		return false
 	}
@@ -273,8 +273,8 @@ func (a *SinglePeriodAggregator) PushTrade(trade exchange.Trade) bool {
 
 // CheckHistoryReady 检查历史周期是否已就绪，返回就绪的 candles
 // 用于周期性检查延迟到达的 trade 是否已完成
-func (a *SinglePeriodAggregator) CheckHistoryReady() []exchange.NormalizedCandle {
-	var candles []exchange.NormalizedCandle
+func (a *SinglePeriodAggregator) CheckHistoryReady() []md.NormalizedCandle {
+	var candles []md.NormalizedCandle
 
 	for symbol, history := range a.historyMap {
 		for periodTime, data := range history {
@@ -293,7 +293,7 @@ func (a *SinglePeriodAggregator) CheckHistoryReady() []exchange.NormalizedCandle
 }
 
 // GetCurrentCandle 获取当前周期的K线
-func (a *SinglePeriodAggregator) GetCurrentCandle(symbol string) *exchange.NormalizedCandle {
+func (a *SinglePeriodAggregator) GetCurrentCandle(symbol string) *md.NormalizedCandle {
 	data := a.dataMap[symbol]
 	if data == nil {
 		return nil
@@ -304,8 +304,8 @@ func (a *SinglePeriodAggregator) GetCurrentCandle(symbol string) *exchange.Norma
 
 // FlushExpired 刷新过期周期，返回需要完成的K线
 // 延迟 1 个周期清空：例如 15m 周期，15:00 时检查清空 14:30-14:45 的数据，不动 14:45 开始的数据
-func (a *SinglePeriodAggregator) FlushExpired(nowMs int64) []exchange.NormalizedCandle {
-	var candles []exchange.NormalizedCandle
+func (a *SinglePeriodAggregator) FlushExpired(nowMs int64) []md.NormalizedCandle {
+	var candles []md.NormalizedCandle
 
 	// 计算需要清空的周期边界
 	// 延迟 1 个周期：当前周期 - 1 个周期间隔
@@ -346,8 +346,8 @@ func (a *SinglePeriodAggregator) FlushExpired(nowMs int64) []exchange.Normalized
 }
 
 // FlushAll 刷新所有未完成的周期（包括历史周期）
-func (a *SinglePeriodAggregator) FlushAll() []exchange.NormalizedCandle {
-	var candles []exchange.NormalizedCandle
+func (a *SinglePeriodAggregator) FlushAll() []md.NormalizedCandle {
+	var candles []md.NormalizedCandle
 
 	// 刷新历史周期
 	for _, history := range a.historyMap {
@@ -369,6 +369,6 @@ func (a *SinglePeriodAggregator) FlushAll() []exchange.NormalizedCandle {
 }
 
 // Period 获取聚合器的周期
-func (a *SinglePeriodAggregator) Period() exchange.Period {
+func (a *SinglePeriodAggregator) Period() md.Period {
 	return a.period
 }

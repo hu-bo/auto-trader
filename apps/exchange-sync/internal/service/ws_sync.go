@@ -5,15 +5,16 @@ import (
 	"sync"
 	"time"
 
-	"exchange-sync/internal/aggregator"
 	"exchange-sync/internal/config"
-	"exchange-sync/internal/exchange"
-	"exchange-sync/internal/exchange/binance"
-	"exchange-sync/internal/exchange/okx"
 	"exchange-sync/internal/publisher"
 	"exchange-sync/internal/storage"
 	"exchange-sync/pkg/logger"
 	"exchange-sync/pkg/utils"
+
+	"github.com/pkg/exchange-adapter/aggregator"
+	exbinance "github.com/pkg/exchange-adapter/exchanges/binance"
+	exokx "github.com/pkg/exchange-adapter/exchanges/okx"
+	exchange "github.com/pkg/exchange-adapter/marketdata"
 )
 
 var logWs = logger.Module("ws-sync")
@@ -94,15 +95,23 @@ func NewWsSyncService(cfg *config.Config, repo storage.Repository, natsPublisher
 }
 
 func (s *WsSyncService) initClients() {
-	heartbeatSec := s.cfg.Sync.HeartbeatIntervalSec
-	reconnectSec := s.cfg.Sync.ReconnectIntervalSec
+	heartbeat := time.Duration(s.cfg.Sync.HeartbeatIntervalSec) * time.Second
+	reconnect := time.Duration(s.cfg.Sync.ReconnectIntervalSec) * time.Second
 
 	// Binance (WebSocket 使用 SOCKS5 代理)
-	binanceClient := binance.NewClient(s.cfg.Proxy.Socks5, heartbeatSec, reconnectSec)
+	binanceClient := exbinance.NewWsPublicAdapter(exbinance.WsPublicAdapterOptions{
+		SocksProxy:         s.cfg.Proxy.Socks5,
+		HeartbeatInterval:  heartbeat,
+		ReconnectInterval:  reconnect,
+		SubscribeAggTrades: true,
+	})
 	s.clients[exchange.Binance] = binanceClient
 
 	// OKX (WebSocket 使用 SOCKS5 代理)
-	okxClient := okx.NewClient(s.cfg.Proxy.Socks5, heartbeatSec, reconnectSec)
+	okxClient := exokx.NewWsPublicAdapter(exokx.WsPublicAdapterOptions{
+		SocksProxy:        s.cfg.Proxy.Socks5,
+		ReconnectInterval: reconnect,
+	})
 	s.clients[exchange.OKX] = okxClient
 
 	// 设置回调
@@ -294,14 +303,14 @@ func (s *WsSyncService) Start() error {
 			logWs.Error().Err(err).Str("exchange", string(name)).Msg("Failed to connect")
 			continue
 		}
-		logWs.Info().Str("exchange", string(name)).Msg("Connected")
+			logWs.Info().Str("exchange", string(name)).Msg("Connected")
 
-		if name == exchange.Binance {
-			if bc, ok := client.(*binance.Client); ok {
-				if err := bc.SubFuturesMiniTicker(); err != nil {
-					logWs.Warn().Err(err).Msg("Failed to subscribe Binance futures mini ticker")
+			if name == exchange.Binance {
+				if bc, ok := client.(*exbinance.WsPublicAdapter); ok {
+					if err := bc.SubFuturesMiniTicker(); err != nil {
+						logWs.Warn().Err(err).Msg("Failed to subscribe Binance futures mini ticker")
+					}
 				}
-			}
 		}
 	}
 

@@ -47,7 +47,11 @@ func NewServer(cfg *config.Config, wsSyncService *service.WsSyncService, history
 	// 创建验证服务
 	var verifyService *service.VerifyService
 	if repo != nil {
-		verifyService = service.NewVerifyService(cfg, repo)
+		var err error
+		verifyService, err = service.NewVerifyService(cfg, repo)
+		if err != nil {
+			return nil, fmt.Errorf("init verify service: %w", err)
+		}
 	}
 
 	// 创建处理器

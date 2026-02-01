@@ -3,7 +3,7 @@ package aggregator
 import (
 	"testing"
 
-	"exchange-sync/internal/exchange"
+	md "github.com/pkg/exchange-adapter/marketdata"
 )
 
 // TestBinanceAggregation_15m 测试 Binance 15m → 4h 周期聚合
@@ -11,16 +11,16 @@ import (
 func TestBinanceAggregation_15m(t *testing.T) {
 	// needTrade=false: Binance 只需要 kline
 	// 现在订阅 15m K线，聚合到 4h
-	agg := NewSinglePeriodAggregatorWithConfig("binance", exchange.Period4h, false)
+	agg := NewSinglePeriodAggregatorWithConfig("binance", md.Period4h, false)
 
 	// 模拟 4h 周期内的 16 个 15m K线 (4h = 16 * 15m)
 	// baseTime = 2021-01-01 00:00:00 UTC = 1609459200000
 	baseTime := int64(1609459200000)
-	klines := []exchange.Kline{
-		{Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime, Open: 100.0, High: 110.0, Low: 95.0, Close: 105.0, Volume: 1000.0, BuyVolume: 600.0, Closed: false, TradeType: exchange.Spot},                             // 00:00
-		{Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime + 15*60*1000, Open: 105.0, High: 115.0, Low: 100.0, Close: 108.0, Volume: 1500.0, BuyVolume: 800.0, Closed: false, TradeType: exchange.Spot},               // 00:15
-		{Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime + 30*60*1000, Open: 108.0, High: 120.0, Low: 88.0, Close: 112.0, Volume: 2000.0, BuyVolume: 1200.0, Closed: true, TradeType: exchange.Spot},                // 00:30
-		{Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime + 3*60*60*1000 + 45*60*1000, Open: 112.0, High: 125.0, Low: 110.0, Close: 120.0, Volume: 1800.0, BuyVolume: 900.0, Closed: true, TradeType: exchange.Spot}, // 03:45 (最后一个 15m)
+	klines := []md.Kline{
+		{Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime, Open: 100.0, High: 110.0, Low: 95.0, Close: 105.0, Volume: 1000.0, BuyVolume: 600.0, Closed: false, TradeType: md.Spot},                             // 00:00
+		{Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime + 15*60*1000, Open: 105.0, High: 115.0, Low: 100.0, Close: 108.0, Volume: 1500.0, BuyVolume: 800.0, Closed: false, TradeType: md.Spot},               // 00:15
+		{Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime + 30*60*1000, Open: 108.0, High: 120.0, Low: 88.0, Close: 112.0, Volume: 2000.0, BuyVolume: 1200.0, Closed: true, TradeType: md.Spot},                // 00:30
+		{Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime + 3*60*60*1000 + 45*60*1000, Open: 112.0, High: 125.0, Low: 110.0, Close: 120.0, Volume: 1800.0, BuyVolume: 900.0, Closed: true, TradeType: md.Spot}, // 03:45 (最后一个 15m)
 	}
 
 	for _, kline := range klines {
@@ -66,10 +66,10 @@ func TestBinanceAggregation_15m(t *testing.T) {
 	}
 
 	// 推送下一个 4h 周期的第一个 15m kline，触发上一周期完成
-	nextKline := exchange.Kline{
-		Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime + 4*60*60*1000, // 04:00
+	nextKline := md.Kline{
+		Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime + 4*60*60*1000, // 04:00
 		Open: 120.0, High: 128.0, Low: 118.0, Close: 125.0, Volume: 800.0, BuyVolume: 400.0,
-		TradeType: exchange.Spot,
+		TradeType: md.Spot,
 	}
 	result := agg.PushKline(nextKline)
 
@@ -90,14 +90,14 @@ func TestBinanceAggregation_15m(t *testing.T) {
 func TestOKXAggregation_15m(t *testing.T) {
 	// needTrade=true: OKX 需要 kline + trade
 	// 现在订阅 15m K线，聚合到 4h
-	agg := NewSinglePeriodAggregatorWithConfig("okx", exchange.Period4h, true)
+	agg := NewSinglePeriodAggregatorWithConfig("okx", md.Period4h, true)
 
 	// 模拟 4h 周期内的几个 15m K线
 	baseTime := int64(1609459200000)
-	klines := []exchange.Kline{
-		{Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime, Open: 100.0, High: 110.0, Low: 95.0, Close: 105.0, Volume: 1000.0, BuyVolume: 0, Closed: false, TradeType: exchange.Futures},               // 00:00
-		{Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime + 15*60*1000, Open: 105.0, High: 115.0, Low: 100.0, Close: 108.0, Volume: 1500.0, BuyVolume: 0, Closed: false, TradeType: exchange.Futures}, // 00:15
-		{Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime + 30*60*1000, Open: 108.0, High: 120.0, Low: 88.0, Close: 112.0, Volume: 2000.0, BuyVolume: 0, Closed: true, TradeType: exchange.Futures},   // 00:30
+	klines := []md.Kline{
+		{Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime, Open: 100.0, High: 110.0, Low: 95.0, Close: 105.0, Volume: 1000.0, BuyVolume: 0, Closed: false, TradeType: md.Futures},               // 00:00
+		{Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime + 15*60*1000, Open: 105.0, High: 115.0, Low: 100.0, Close: 108.0, Volume: 1500.0, BuyVolume: 0, Closed: false, TradeType: md.Futures}, // 00:15
+		{Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime + 30*60*1000, Open: 108.0, High: 120.0, Low: 88.0, Close: 112.0, Volume: 2000.0, BuyVolume: 0, Closed: true, TradeType: md.Futures},   // 00:30
 	}
 
 	for _, kline := range klines {
@@ -105,7 +105,7 @@ func TestOKXAggregation_15m(t *testing.T) {
 	}
 
 	// 模拟 trade 数据累加 BuyVolume
-	trades := []exchange.Trade{
+	trades := []md.Trade{
 		{Symbol: "BTC-USDT", Timestamp: baseTime + 1000, Quantity: 50.0, IsBuy: true},
 		{Symbol: "BTC-USDT", Timestamp: baseTime + 16*60*1000, Quantity: 80.0, IsBuy: true},
 		{Symbol: "BTC-USDT", Timestamp: baseTime + 31*60*1000, Quantity: 120.0, IsBuy: true},
@@ -133,10 +133,10 @@ func TestOKXAggregation_15m(t *testing.T) {
 	}
 
 	// 推送下一个 4h 周期的第一个 15m kline
-	nextKline := exchange.Kline{
-		Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime + 4*60*60*1000,
+	nextKline := md.Kline{
+		Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime + 4*60*60*1000,
 		Open: 112.0, High: 118.0, Low: 110.0, Close: 115.0, Volume: 800.0,
-		TradeType: exchange.Futures,
+		TradeType: md.Futures,
 	}
 	result := agg.PushKline(nextKline)
 
@@ -159,7 +159,7 @@ func TestOKXAggregation_15m(t *testing.T) {
 // TestCrossPeriod_4h 测试 4h 周期跨越
 // 验证多个 15m K线能正确聚合成 4h
 func TestCrossPeriod_4h(t *testing.T) {
-	agg := NewSinglePeriodAggregatorWithConfig("binance", exchange.Period4h, false)
+	agg := NewSinglePeriodAggregatorWithConfig("binance", md.Period4h, false)
 
 	// 4h = 16 个 15m，模拟完整周期
 	baseTime := int64(1609459200000) // 2021-01-01 00:00:00 UTC
@@ -167,9 +167,9 @@ func TestCrossPeriod_4h(t *testing.T) {
 	// 推送 16 个 15m K线（完整 4h 周期）
 	for i := 0; i < 16; i++ {
 		closed := (i == 15) // 最后一个 Closed=true
-		kline := exchange.Kline{
+		kline := md.Kline{
 			Symbol:    "BTC-USDT",
-			Period:    exchange.Period15m,
+			Period:    md.Period15m,
 			Timestamp: baseTime + int64(i)*15*60*1000,
 			Open:      100.0 + float64(i),
 			High:      110.0 + float64(i),
@@ -178,7 +178,7 @@ func TestCrossPeriod_4h(t *testing.T) {
 			Volume:    100.0,
 			BuyVolume: 50.0,
 			Closed:    closed,
-			TradeType: exchange.Spot,
+			TradeType: md.Spot,
 		}
 		agg.PushKline(kline)
 	}
@@ -212,9 +212,9 @@ func TestCrossPeriod_4h(t *testing.T) {
 	}
 
 	// 推送下一个 4h 周期的第一个 15m，触发当前周期完成
-	nextKline := exchange.Kline{
+	nextKline := md.Kline{
 		Symbol:    "BTC-USDT",
-		Period:    exchange.Period15m,
+		Period:    md.Period15m,
 		Timestamp: baseTime + 4*60*60*1000, // 04:00
 		Open:      200.0,
 		High:      210.0,
@@ -222,7 +222,7 @@ func TestCrossPeriod_4h(t *testing.T) {
 		Close:     205.0,
 		Volume:    500.0,
 		BuyVolume: 250.0,
-		TradeType: exchange.Spot,
+		TradeType: md.Spot,
 	}
 	result := agg.PushKline(nextKline)
 
@@ -230,7 +230,7 @@ func TestCrossPeriod_4h(t *testing.T) {
 		t.Error("expected 4h period to close")
 	}
 	if result != nil && result.Candle != nil {
-		if result.Candle.Period != string(exchange.Period4h) {
+		if result.Candle.Period != string(md.Period4h) {
 			t.Errorf("expected period 4h, got %s", result.Candle.Period)
 		}
 	}

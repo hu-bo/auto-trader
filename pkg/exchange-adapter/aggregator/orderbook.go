@@ -7,9 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"exchange-sync/internal/exchange"
-	"exchange-sync/pkg/utils"
+	md "github.com/pkg/exchange-adapter/marketdata"
 )
+
+// hoursAgo 获取 N 小时前的时间戳
+func hoursAgo(hours int) int64 {
+	return time.Now().Add(-time.Duration(hours) * time.Hour).UnixMilli()
+}
 
 // OrderBookManager 订单簿管理器
 // 管理大单过滤和订单簿维护
@@ -22,7 +26,7 @@ type OrderBookManager struct {
 	books map[string]*OrderBookData
 
 	// 回调
-	onUpdate func(exchange.OrderBook)
+	onUpdate func(md.OrderBook)
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -64,13 +68,13 @@ func NewOrderBookManager(thresholdUSD float64, expireHours int) *OrderBookManage
 }
 
 // OnUpdate 设置更新回调
-func (m *OrderBookManager) OnUpdate(handler func(exchange.OrderBook)) {
+func (m *OrderBookManager) OnUpdate(handler func(md.OrderBook)) {
 	m.onUpdate = handler
 }
 
 // ProcessDepth 处理深度更新
 // 只做过滤（≥ thresholdUSD），不排序，查询时再排序
-func (m *OrderBookManager) ProcessDepth(depth exchange.DepthUpdate) {
+func (m *OrderBookManager) ProcessDepth(depth md.DepthUpdate) {
 	m.mu.Lock()
 	book, ok := m.books[depth.Symbol]
 	if !ok {
@@ -134,7 +138,7 @@ func (m *OrderBookManager) ProcessDepth(depth exchange.DepthUpdate) {
 }
 
 // GetOrderBook 获取订单簿
-func (m *OrderBookManager) GetOrderBook(symbol string) *exchange.OrderBook {
+func (m *OrderBookManager) GetOrderBook(symbol string) *md.OrderBook {
 	m.mu.RLock()
 	book, ok := m.books[symbol]
 	m.mu.RUnlock()
@@ -151,7 +155,7 @@ func (m *OrderBookManager) GetOrderBook(symbol string) *exchange.OrderBook {
 }
 
 // GetFilteredBook 获取指定价格范围内的大单
-func (m *OrderBookManager) GetFilteredBook(symbol string, priceRange float64) *exchange.OrderBook {
+func (m *OrderBookManager) GetFilteredBook(symbol string, priceRange float64) *md.OrderBook {
 	m.mu.RLock()
 	book, ok := m.books[symbol]
 	m.mu.RUnlock()
@@ -171,10 +175,10 @@ func (m *OrderBookManager) GetFilteredBook(symbol string, priceRange float64) *e
 	maxPrice := book.LastPrice * (1 + priceRange)
 
 	// 过滤买单并排序 (价格降序)
-	bids := make([]exchange.OrderBookEntry, 0, len(book.Bids))
+	bids := make([]md.OrderBookEntry, 0, len(book.Bids))
 	for price, order := range book.Bids {
 		if price >= minPrice && price <= book.LastPrice {
-			bids = append(bids, exchange.OrderBookEntry{
+			bids = append(bids, md.OrderBookEntry{
 				Price:     order.Price,
 				Quantity:  order.Quantity,
 				USDValue:  order.USDValue,
@@ -182,15 +186,15 @@ func (m *OrderBookManager) GetFilteredBook(symbol string, priceRange float64) *e
 			})
 		}
 	}
-	slices.SortFunc(bids, func(a, b exchange.OrderBookEntry) int {
+	slices.SortFunc(bids, func(a, b md.OrderBookEntry) int {
 		return cmp.Compare(b.Price, a.Price) // 降序
 	})
 
 	// 过滤卖单并排序 (价格升序)
-	asks := make([]exchange.OrderBookEntry, 0, len(book.Asks))
+	asks := make([]md.OrderBookEntry, 0, len(book.Asks))
 	for price, order := range book.Asks {
 		if price <= maxPrice && price >= book.LastPrice {
-			asks = append(asks, exchange.OrderBookEntry{
+			asks = append(asks, md.OrderBookEntry{
 				Price:     order.Price,
 				Quantity:  order.Quantity,
 				USDValue:  order.USDValue,
@@ -198,11 +202,11 @@ func (m *OrderBookManager) GetFilteredBook(symbol string, priceRange float64) *e
 			})
 		}
 	}
-	slices.SortFunc(asks, func(a, b exchange.OrderBookEntry) int {
+	slices.SortFunc(asks, func(a, b md.OrderBookEntry) int {
 		return cmp.Compare(a.Price, b.Price) // 升序
 	})
 
-	return &exchange.OrderBook{
+	return &md.OrderBook{
 		Symbol: symbol,
 		Bids:   bids,
 		Asks:   asks,
@@ -289,36 +293,36 @@ type TracePrice struct {
 	IsBid    bool    `json:"is_bid"`
 }
 
-func (m *OrderBookManager) getOrderBookLocked(book *OrderBookData) exchange.OrderBook {
+func (m *OrderBookManager) getOrderBookLocked(book *OrderBookData) md.OrderBook {
 	// 买单: 价格降序
-	bids := make([]exchange.OrderBookEntry, 0, len(book.Bids))
+	bids := make([]md.OrderBookEntry, 0, len(book.Bids))
 	for _, order := range book.Bids {
-		bids = append(bids, exchange.OrderBookEntry{
+		bids = append(bids, md.OrderBookEntry{
 			Price:     order.Price,
 			Quantity:  order.Quantity,
 			USDValue:  order.USDValue,
 			Timestamp: order.Timestamp,
 		})
 	}
-	slices.SortFunc(bids, func(a, b exchange.OrderBookEntry) int {
+	slices.SortFunc(bids, func(a, b md.OrderBookEntry) int {
 		return cmp.Compare(b.Price, a.Price) // 降序
 	})
 
 	// 卖单: 价格升序
-	asks := make([]exchange.OrderBookEntry, 0, len(book.Asks))
+	asks := make([]md.OrderBookEntry, 0, len(book.Asks))
 	for _, order := range book.Asks {
-		asks = append(asks, exchange.OrderBookEntry{
+		asks = append(asks, md.OrderBookEntry{
 			Price:     order.Price,
 			Quantity:  order.Quantity,
 			USDValue:  order.USDValue,
 			Timestamp: order.Timestamp,
 		})
 	}
-	slices.SortFunc(asks, func(a, b exchange.OrderBookEntry) int {
+	slices.SortFunc(asks, func(a, b md.OrderBookEntry) int {
 		return cmp.Compare(a.Price, b.Price) // 升序
 	})
 
-	return exchange.OrderBook{
+	return md.OrderBook{
 		Symbol: book.Symbol,
 		Bids:   bids,
 		Asks:   asks,
@@ -343,7 +347,7 @@ func (m *OrderBookManager) cleanupLoop() {
 }
 
 func (m *OrderBookManager) cleanup() {
-	cutoff := utils.HoursAgo(m.expireHours)
+	cutoff := hoursAgo(m.expireHours)
 
 	m.mu.RLock()
 	books := make([]*OrderBookData, 0, len(m.books))

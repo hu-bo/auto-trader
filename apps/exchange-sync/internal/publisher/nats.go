@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"exchange-sync/internal/config"
-	"exchange-sync/internal/exchange"
 	"exchange-sync/pkg/logger"
 
 	"github.com/bytedance/sonic"
 	"github.com/nats-io/nats.go"
+	exchange "github.com/pkg/exchange-adapter/marketdata"
 )
 
 var log = logger.Module("nats-publisher")

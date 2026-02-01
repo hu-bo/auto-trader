@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"exchange-sync/internal/exchange"
 	"exchange-sync/pkg/logger"
+
+	exchange "github.com/pkg/exchange-adapter/marketdata"
 )
 
 var logTask = logger.Module("sync-task")

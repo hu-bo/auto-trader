@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"exchange-sync/internal/exchange"
+	exchange "github.com/pkg/exchange-adapter/marketdata"
 )
 
 func fptr(v float64) *float64 { return &v }

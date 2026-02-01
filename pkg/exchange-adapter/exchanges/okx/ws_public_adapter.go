@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/exchange-adapter/core"
 	"github.com/pkg/exchange-adapter/marketdata"
 	okxapi "github.com/pkg/okx-api"
 	okxtypes "github.com/pkg/okx-api/types"
@@ -242,12 +243,12 @@ func (a *WsPublicAdapter) handleCandle15m(instID string, tradeType marketdata.Tr
 			Exchange:  string(marketdata.OKX),
 			TradeType: tradeType,
 			Period:    marketdata.Period15m,
-			Timestamp: parseInt64(row[0]),
-			Open:      parseFloat(row[1]),
-			High:      parseFloat(row[2]),
-			Low:       parseFloat(row[3]),
-			Close:     parseFloat(row[4]),
-			Volume:    parseFloat(row[5]),
+			Timestamp: core.ParseInt64(row[0]),
+			Open:      core.ParseFloat(row[1]),
+			High:      core.ParseFloat(row[2]),
+			Low:       core.ParseFloat(row[3]),
+			Close:     core.ParseFloat(row[4]),
+			Volume:    core.ParseFloat(row[5]),
 			BuyVolume: 0,
 			Closed:    closed,
 		})
@@ -276,9 +277,9 @@ func (a *WsPublicAdapter) handleTrades(instID string, tradeType marketdata.Trade
 			Symbol:    symbol,
 			Exchange:  string(marketdata.OKX),
 			TradeType: tradeType,
-			Price:     parseFloat(t.Px),
-			Quantity:  parseFloat(t.Sz),
-			Timestamp: parseInt64(t.Ts),
+			Price:     core.ParseFloat(t.Px),
+			Quantity:  core.ParseFloat(t.Sz),
+			Timestamp: core.ParseInt64(t.Ts),
 			IsBuy:     strings.EqualFold(t.Side, "buy"),
 		})
 	}
@@ -307,7 +308,7 @@ func (a *WsPublicAdapter) handleBooks(instID string, tradeType marketdata.TradeT
 			TradeType: tradeType,
 			Bids:      parseOKXDepth(book.Bids),
 			Asks:      parseOKXDepth(book.Asks),
-			Timestamp: parseInt64(book.Ts),
+			Timestamp: core.ParseInt64(book.Ts),
 		})
 	}
 }
@@ -322,8 +323,8 @@ func parseOKXDepth(levels [][]string) []marketdata.DepthEntry {
 			continue
 		}
 		out = append(out, marketdata.DepthEntry{
-			Price:    parseFloat(l[0]),
-			Quantity: parseFloat(l[1]),
+			Price:    core.ParseFloat(l[0]),
+			Quantity: core.ParseFloat(l[1]),
 		})
 	}
 	return out
@@ -352,10 +353,10 @@ func (a *WsPublicAdapter) handleTickers(instID string, tradeType marketdata.Trad
 			Symbol:         symbol,
 			Exchange:       string(marketdata.OKX),
 			TradeType:      tradeType,
-			EventTimeMs:    parseInt64(t.Ts),
-			OpenPrice24h:   parseFloat(t.Open24h),
-			LastPrice:      parseFloat(t.Last),
-			QuoteVolume24h: parseFloat(t.VolCcy24h),
+			EventTimeMs:    core.ParseInt64(t.Ts),
+			OpenPrice24h:   core.ParseFloat(t.Open24h),
+			LastPrice:      core.ParseFloat(t.Last),
+			QuoteVolume24h: core.ParseFloat(t.VolCcy24h),
 		})
 	}
 }

@@ -9,11 +9,12 @@ import (
 
 	"exchange-sync/internal/api"
 	"exchange-sync/internal/config"
-	"exchange-sync/internal/exchange"
 	"exchange-sync/internal/publisher"
 	"exchange-sync/internal/service"
 	"exchange-sync/internal/storage"
 	"exchange-sync/pkg/logger"
+
+	exchange "github.com/pkg/exchange-adapter/marketdata"
 )
 
 var log = logger.Module("main")
@@ -103,11 +104,14 @@ func main() {
 	// 7. 创建历史同步服务
 	var historySyncService *service.HistorySyncService
 	if repo != nil {
-		historySyncService = service.NewHistorySyncService(cfg, repo)
+			historySyncService, err = service.NewHistorySyncService(cfg, repo)
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to create history sync service")
+			}
 
-		// 设置同步完成回调：每个交易对同步完成后自动订阅 WS
-		historySyncService.OnSyncComplete(func(exchangeName exchange.ExchangeName, info exchange.SymbolInfo) {
-			subscribeReq := []exchange.SubscribeRequest{{
+			// 设置同步完成回调：每个交易对同步完成后自动订阅 WS
+			historySyncService.OnSyncComplete(func(exchangeName exchange.ExchangeName, info exchange.SymbolInfo) {
+				subscribeReq := []exchange.SubscribeRequest{{
 				Symbol:    info.Symbol,
 				TradeType: exchange.TradeType(info.TradeType),
 			}}

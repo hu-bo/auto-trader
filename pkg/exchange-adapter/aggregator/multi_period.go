@@ -5,13 +5,13 @@ import (
 	"sync"
 	"time"
 
-	"exchange-sync/internal/exchange"
+	md "github.com/pkg/exchange-adapter/marketdata"
 )
 
 // Event 聚合事件
 type Event struct {
-	Kline *exchange.Kline
-	Trade *exchange.Trade
+	Kline *md.Kline
+	Trade *md.Trade
 }
 
 // MultiPeriodAggregator 多周期聚合器 (Actor 模式)
@@ -20,14 +20,14 @@ type MultiPeriodAggregator struct {
 	exchange string
 
 	// 各周期的聚合器
-	aggregators map[exchange.Period]*SinglePeriodAggregator
+	aggregators map[md.Period]*SinglePeriodAggregator
 
 	// 事件通道 - 所有 Kline/Trade 通过此通道串行处理
 	eventCh chan Event
 
 	// 回调
-	onPeriodComplete func(exchange.NormalizedCandle)
-	onUpdate         func(exchange.NormalizedCandle)
+	onPeriodComplete func(md.NormalizedCandle)
+	onUpdate         func(md.NormalizedCandle)
 
 	// 查询用的读写锁 (仅用于 GetCurrentCandle)
 	mu sync.RWMutex
@@ -43,10 +43,10 @@ type MultiPeriodAggregator struct {
 // MultiPeriodConfig 多周期聚合器配置
 type MultiPeriodConfig struct {
 	Exchange   string
-	Periods    []exchange.Period // 要聚合的周期列表
-	SkipTrade  bool              // 是否跳过 Trade 处理（Binance kline 已包含 BuyVolume）
-	NeedTrade  bool              // 是否需要 Trade 来完成周期（OKX 需要 kline+trade）
-	BufferSize int               // 事件通道缓冲区大小
+	Periods    []md.Period // 要聚合的周期列表
+	SkipTrade  bool        // 是否跳过 Trade 处理（Binance kline 已包含 BuyVolume）
+	NeedTrade  bool        // 是否需要 Trade 来完成周期（OKX 需要 kline+trade）
+	BufferSize int         // 事件通道缓冲区大小
 }
 
 // DefaultMultiPeriodConfig 默认配置
@@ -54,7 +54,7 @@ type MultiPeriodConfig struct {
 func DefaultMultiPeriodConfig(exchangeName string) MultiPeriodConfig {
 	return MultiPeriodConfig{
 		Exchange:   exchangeName,
-		Periods:    []exchange.Period{exchange.Period15m, exchange.Period4h, exchange.Period1d},
+		Periods:    []md.Period{md.Period15m, md.Period4h, md.Period1d},
 		SkipTrade:  false, // 默认处理 trade
 		NeedTrade:  false, // 默认不需要 trade 来完成周期
 		BufferSize: 10000,
@@ -65,8 +65,8 @@ func DefaultMultiPeriodConfig(exchangeName string) MultiPeriodConfig {
 // 源数据为 15m K线，输出 15m/4h/1d（15m 直接透传，4h/1d 聚合）
 func BinanceMultiPeriodConfig() MultiPeriodConfig {
 	return MultiPeriodConfig{
-		Exchange:   string(exchange.Binance),
-		Periods:    []exchange.Period{exchange.Period15m, exchange.Period4h, exchange.Period1d},
+		Exchange:   string(md.Binance),
+		Periods:    []md.Period{md.Period15m, md.Period4h, md.Period1d},
 		SkipTrade:  true,  // Binance kline 已包含 BuyVolume
 		NeedTrade:  false, // 不需要 trade 来完成周期
 		BufferSize: 10000,
@@ -77,8 +77,8 @@ func BinanceMultiPeriodConfig() MultiPeriodConfig {
 // 源数据为 15m K线，输出 15m/4h/1d（15m 直接透传，4h/1d 聚合）
 func OKXMultiPeriodConfig() MultiPeriodConfig {
 	return MultiPeriodConfig{
-		Exchange:   string(exchange.OKX),
-		Periods:    []exchange.Period{exchange.Period15m, exchange.Period4h, exchange.Period1d},
+		Exchange:   string(md.OKX),
+		Periods:    []md.Period{md.Period15m, md.Period4h, md.Period1d},
 		SkipTrade:  false, // 需要处理 trade
 		NeedTrade:  true,  // 需要 trade 来完成周期
 		BufferSize: 10000,
@@ -91,7 +91,7 @@ func NewMultiPeriodAggregator(cfg MultiPeriodConfig) *MultiPeriodAggregator {
 
 	agg := &MultiPeriodAggregator{
 		exchange:    cfg.Exchange,
-		aggregators: make(map[exchange.Period]*SinglePeriodAggregator),
+		aggregators: make(map[md.Period]*SinglePeriodAggregator),
 		eventCh:     make(chan Event, cfg.BufferSize),
 		skipTrade:   cfg.SkipTrade,
 		ctx:         ctx,
@@ -122,18 +122,18 @@ func NewPeriodAggregator(exchangeName string) *MultiPeriodAggregator {
 }
 
 // OnPeriodComplete 设置周期结束回调
-func (a *MultiPeriodAggregator) OnPeriodComplete(handler func(exchange.NormalizedCandle)) {
+func (a *MultiPeriodAggregator) OnPeriodComplete(handler func(md.NormalizedCandle)) {
 	a.onPeriodComplete = handler
 }
 
 // OnUpdate 设置实时更新回调
-func (a *MultiPeriodAggregator) OnUpdate(handler func(exchange.NormalizedCandle)) {
+func (a *MultiPeriodAggregator) OnUpdate(handler func(md.NormalizedCandle)) {
 	a.onUpdate = handler
 }
 
 // ProcessKline 处理 5m K线数据 (线程安全)
 // 将事件投递到 eventCh，由事件循环串行处理
-func (a *MultiPeriodAggregator) ProcessKline(kline exchange.Kline) {
+func (a *MultiPeriodAggregator) ProcessKline(kline md.Kline) {
 	select {
 	case a.eventCh <- Event{Kline: &kline}:
 	case <-a.ctx.Done():
@@ -142,7 +142,7 @@ func (a *MultiPeriodAggregator) ProcessKline(kline exchange.Kline) {
 
 // ProcessTrade 处理成交数据 (线程安全)
 // 将事件投递到 eventCh，由事件循环串行处理
-func (a *MultiPeriodAggregator) ProcessTrade(trade exchange.Trade) {
+func (a *MultiPeriodAggregator) ProcessTrade(trade md.Trade) {
 	if a.skipTrade {
 		return
 	}
@@ -181,7 +181,7 @@ func (a *MultiPeriodAggregator) handleEvent(ev Event) {
 }
 
 // handleKline 处理 Kline 事件
-func (a *MultiPeriodAggregator) handleKline(kline exchange.Kline) {
+func (a *MultiPeriodAggregator) handleKline(kline md.Kline) {
 	for _, agg := range a.aggregators {
 		result := agg.PushKline(kline)
 
@@ -203,7 +203,7 @@ func (a *MultiPeriodAggregator) handleKline(kline exchange.Kline) {
 }
 
 // handleTrade 处理 Trade 事件
-func (a *MultiPeriodAggregator) handleTrade(trade exchange.Trade) {
+func (a *MultiPeriodAggregator) handleTrade(trade md.Trade) {
 	for _, agg := range a.aggregators {
 		agg.PushTrade(trade)
 	}
@@ -253,7 +253,7 @@ func (a *MultiPeriodAggregator) flushExpiredPeriods() {
 }
 
 // GetCurrentCandle 获取当前周期的K线 (线程安全)
-func (a *MultiPeriodAggregator) GetCurrentCandle(symbol string, period exchange.Period) *exchange.NormalizedCandle {
+func (a *MultiPeriodAggregator) GetCurrentCandle(symbol string, period md.Period) *md.NormalizedCandle {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 

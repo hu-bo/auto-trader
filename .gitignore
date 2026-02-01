@@ -27,6 +27,7 @@ target/
 # golang
 .cache
 .gocache/
+.gopath/
 bin/
 *.exe
 *.exe~

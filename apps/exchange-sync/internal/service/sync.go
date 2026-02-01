@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"exchange-sync/internal/config"
-	"exchange-sync/internal/exchange"
-	"exchange-sync/internal/exchange/binance"
-	"exchange-sync/internal/exchange/okx"
 	"exchange-sync/internal/storage"
 	"exchange-sync/pkg/logger"
 	"exchange-sync/pkg/utils"
+
+	exbinance "github.com/pkg/exchange-adapter/exchanges/binance"
+	exokx "github.com/pkg/exchange-adapter/exchanges/okx"
+	exchange "github.com/pkg/exchange-adapter/marketdata"
 
 	"github.com/robfig/cron/v3"
 )
@@ -39,13 +40,21 @@ type HistorySyncService struct {
 }
 
 // NewHistorySyncService 创建历史同步服务
-func NewHistorySyncService(cfg *config.Config, repo storage.Repository) *HistorySyncService {
+func NewHistorySyncService(cfg *config.Config, repo storage.Repository) (*HistorySyncService, error) {
 	// 速率限制: 每秒最多一次请求
 	rateLimiter := utils.NewRateLimiter(time.Second)
 
 	clients := make(map[exchange.ExchangeName]exchange.RESTClient)
-	clients[exchange.Binance] = binance.NewRESTClient(cfg.Proxy.HTTP)
-	clients[exchange.OKX] = okx.NewRESTClient(cfg.Proxy.HTTP)
+	clients[exchange.Binance] = exbinance.NewMarketDataRESTClient(exbinance.MarketDataRESTClientOptions{
+		HTTPSProxy: cfg.Proxy.HTTP,
+	})
+	okxClient, err := exokx.NewMarketDataRESTClient(exokx.MarketDataRESTClientOptions{
+		HTTPSProxy: cfg.Proxy.HTTP,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("init okx rest client: %w", err)
+	}
+	clients[exchange.OKX] = okxClient
 
 	s := &HistorySyncService{
 		cfg:         cfg,
@@ -54,7 +63,7 @@ func NewHistorySyncService(cfg *config.Config, repo storage.Repository) *History
 		rateLimiter: rateLimiter,
 	}
 
-	return s
+	return s, nil
 }
 
 // InitTaskManager 初始化任务管理器 (需要在设置回调后调用)

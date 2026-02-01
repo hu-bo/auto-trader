@@ -3,7 +3,7 @@ package api
 import (
 	"sort"
 
-	"exchange-sync/internal/exchange"
+	exchange "github.com/pkg/exchange-adapter/marketdata"
 )
 
 // sortSymbolsInPlace sorts symbols according to orderBy/order.

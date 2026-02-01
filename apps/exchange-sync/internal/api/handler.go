@@ -5,13 +5,13 @@ import (
 	"strconv"
 	"time"
 
-	"exchange-sync/internal/exchange"
 	"exchange-sync/internal/service"
 	"exchange-sync/internal/storage"
 	"exchange-sync/pkg/logger"
 	"exchange-sync/pkg/utils"
 
 	"github.com/labstack/echo/v4"
+	exchange "github.com/pkg/exchange-adapter/marketdata"
 )
 
 var logAPI = logger.Module("api")

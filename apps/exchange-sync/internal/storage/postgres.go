@@ -9,13 +9,13 @@ import (
 	"strings"
 
 	"exchange-sync/internal/config"
-	"exchange-sync/internal/exchange"
 	"exchange-sync/internal/storage/db"
 	"exchange-sync/pkg/utils"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	exchange "github.com/pkg/exchange-adapter/marketdata"
 	"github.com/shopspring/decimal"
 )
 

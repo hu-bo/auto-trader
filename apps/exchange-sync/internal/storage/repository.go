@@ -2,7 +2,8 @@ package storage
 
 import (
 	"context"
-	"exchange-sync/internal/exchange"
+
+	exchange "github.com/pkg/exchange-adapter/marketdata"
 )
 
 // Repository 存储接口

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"exchange-sync/internal/exchange"
+	md "github.com/pkg/exchange-adapter/marketdata"
 )
 
 // TestBinanceMultiPeriodAggregator 测试 Binance 多周期聚合
@@ -18,10 +18,10 @@ func TestBinanceMultiPeriodAggregator(t *testing.T) {
 	agg := NewMultiPeriodAggregator(cfg)
 	defer agg.Close()
 
-	var completedCandles []exchange.NormalizedCandle
+	var completedCandles []md.NormalizedCandle
 	var mu sync.Mutex
 
-	agg.OnPeriodComplete(func(candle exchange.NormalizedCandle) {
+	agg.OnPeriodComplete(func(candle md.NormalizedCandle) {
 		mu.Lock()
 		completedCandles = append(completedCandles, candle)
 		mu.Unlock()
@@ -31,19 +31,19 @@ func TestBinanceMultiPeriodAggregator(t *testing.T) {
 	baseTime := int64(1609459200000)
 
 	// 第一个 15m K线 (00:00-00:15)，Closed=true 触发 15m 周期完成
-	kline1 := exchange.Kline{
-		Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime,
+	kline1 := md.Kline{
+		Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime,
 		Open: 100.0, High: 110.0, Low: 95.0, Close: 105.0, Volume: 1000.0, BuyVolume: 600.0,
-		Closed: true, TradeType: exchange.Spot,
+		Closed: true, TradeType: md.Spot,
 	}
 	agg.ProcessKline(kline1)
 	time.Sleep(50 * time.Millisecond)
 
 	// 第二个 15m K线 (00:15-00:30)，触发上一个 15m 周期输出
-	kline2 := exchange.Kline{
-		Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime + 15*60*1000,
+	kline2 := md.Kline{
+		Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime + 15*60*1000,
 		Open: 105.0, High: 115.0, Low: 100.0, Close: 108.0, Volume: 1500.0, BuyVolume: 800.0,
-		Closed: true, TradeType: exchange.Spot,
+		Closed: true, TradeType: md.Spot,
 	}
 	agg.ProcessKline(kline2)
 	time.Sleep(50 * time.Millisecond)
@@ -52,7 +52,7 @@ func TestBinanceMultiPeriodAggregator(t *testing.T) {
 	// 应该有 15m 周期完成
 	has15m := false
 	for _, c := range completedCandles {
-		if c.Period == string(exchange.Period15m) {
+		if c.Period == string(md.Period15m) {
 			has15m = true
 			if c.Open != 100.0 || c.Close != 105.0 {
 				t.Errorf("15m completed candle: expected Open=100.0/Close=105.0, got Open=%f/Close=%f", c.Open, c.Close)
@@ -66,7 +66,7 @@ func TestBinanceMultiPeriodAggregator(t *testing.T) {
 	}
 
 	// 验证 4h 和 1d 周期有数据（还在进行中）
-	for _, period := range []exchange.Period{exchange.Period4h, exchange.Period1d} {
+	for _, period := range []md.Period{md.Period4h, md.Period1d} {
 		candle := agg.GetCurrentCandle("BTC-USDT", period)
 		if candle == nil {
 			t.Errorf("expected candle for period %s", period)
@@ -78,10 +78,10 @@ func TestBinanceMultiPeriodAggregator(t *testing.T) {
 	}
 
 	// 推送下一个 4h 周期的第一个 15m，触发 4h 周期完成
-	nextKline := exchange.Kline{
-		Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime + 4*60*60*1000,
+	nextKline := md.Kline{
+		Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime + 4*60*60*1000,
 		Open: 112.0, High: 118.0, Low: 110.0, Close: 115.0, Volume: 800.0, BuyVolume: 400.0,
-		TradeType: exchange.Spot,
+		TradeType: md.Spot,
 	}
 	agg.ProcessKline(nextKline)
 	time.Sleep(100 * time.Millisecond)
@@ -92,7 +92,7 @@ func TestBinanceMultiPeriodAggregator(t *testing.T) {
 	// 应该有 4h 周期完成
 	has4h := false
 	for _, c := range completedCandles {
-		if c.Period == string(exchange.Period4h) {
+		if c.Period == string(md.Period4h) {
 			has4h = true
 		}
 	}
@@ -106,7 +106,7 @@ func TestBinanceMultiPeriodAggregator(t *testing.T) {
 // 源数据为 15m K线，输出 15m/4h/1d
 func TestOKXMultiPeriodAggregator(t *testing.T) {
 	cfg := OKXMultiPeriodConfig()
-	cfg.Periods = []exchange.Period{exchange.Period15m, exchange.Period4h} // 简化测试
+	cfg.Periods = []md.Period{md.Period15m, md.Period4h} // 简化测试
 	cfg.BufferSize = 100
 
 	agg := NewMultiPeriodAggregator(cfg)
@@ -115,10 +115,10 @@ func TestOKXMultiPeriodAggregator(t *testing.T) {
 	baseTime := int64(1609459200000)
 
 	// 推送 15m kline
-	klines := []exchange.Kline{
-		{Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime, Open: 100.0, High: 110.0, Low: 95.0, Close: 105.0, Volume: 1000.0, BuyVolume: 0, TradeType: exchange.Futures},
-		{Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime + 15*60*1000, Open: 105.0, High: 115.0, Low: 100.0, Close: 108.0, Volume: 1500.0, BuyVolume: 0, TradeType: exchange.Futures},
-		{Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime + 30*60*1000, Open: 108.0, High: 120.0, Low: 88.0, Close: 112.0, Volume: 2000.0, BuyVolume: 0, Closed: true, TradeType: exchange.Futures},
+	klines := []md.Kline{
+		{Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime, Open: 100.0, High: 110.0, Low: 95.0, Close: 105.0, Volume: 1000.0, BuyVolume: 0, TradeType: md.Futures},
+		{Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime + 15*60*1000, Open: 105.0, High: 115.0, Low: 100.0, Close: 108.0, Volume: 1500.0, BuyVolume: 0, TradeType: md.Futures},
+		{Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime + 30*60*1000, Open: 108.0, High: 120.0, Low: 88.0, Close: 112.0, Volume: 2000.0, BuyVolume: 0, Closed: true, TradeType: md.Futures},
 	}
 	for _, kline := range klines {
 		agg.ProcessKline(kline)
@@ -126,7 +126,7 @@ func TestOKXMultiPeriodAggregator(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// 推送 trade（OKX 通过 trade 累加 BuyVolume）
-	trades := []exchange.Trade{
+	trades := []md.Trade{
 		{Symbol: "BTC-USDT", Timestamp: baseTime + 1000, Quantity: 50.0, IsBuy: true},
 		{Symbol: "BTC-USDT", Timestamp: baseTime + 16*60*1000, Quantity: 80.0, IsBuy: true},
 		{Symbol: "BTC-USDT", Timestamp: baseTime + 31*60*1000, Quantity: 120.0, IsBuy: true},
@@ -138,12 +138,12 @@ func TestOKXMultiPeriodAggregator(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// 验证 15m 和 4h 周期都有数据
-	candle15m := agg.GetCurrentCandle("BTC-USDT", exchange.Period15m)
+	candle15m := agg.GetCurrentCandle("BTC-USDT", md.Period15m)
 	if candle15m == nil {
 		t.Fatal("expected 15m candle to exist")
 	}
 
-	candle4h := agg.GetCurrentCandle("BTC-USDT", exchange.Period4h)
+	candle4h := agg.GetCurrentCandle("BTC-USDT", md.Period4h)
 	if candle4h == nil {
 		t.Fatal("expected 4h candle to exist")
 	}
@@ -164,7 +164,7 @@ func TestOKXMultiPeriodAggregator(t *testing.T) {
 func TestMultiPeriodConcurrency(t *testing.T) {
 	cfg := MultiPeriodConfig{
 		Exchange:   "binance",
-		Periods:    []exchange.Period{exchange.Period4h, exchange.Period1d},
+		Periods:    []md.Period{md.Period4h, md.Period1d},
 		SkipTrade:  false,
 		BufferSize: 10000,
 	}
@@ -181,9 +181,9 @@ func TestMultiPeriodConcurrency(t *testing.T) {
 		go func(goroutineID int) {
 			defer wg.Done()
 			for j := 0; j < 100; j++ {
-				kline := exchange.Kline{
+				kline := md.Kline{
 					Symbol:    "BTC-USDT",
-					Period:    exchange.Period15m,
+					Period:    md.Period15m,
 					Timestamp: baseTime + int64(j)*15*60*1000,
 					Open:      100.0 + float64(j),
 					High:      110.0 + float64(j),
@@ -191,7 +191,7 @@ func TestMultiPeriodConcurrency(t *testing.T) {
 					Close:     105.0 + float64(j),
 					Volume:    100.0,
 					BuyVolume: 50.0,
-					TradeType: exchange.Spot,
+					TradeType: md.Spot,
 				}
 				agg.ProcessKline(kline)
 			}
@@ -204,7 +204,7 @@ func TestMultiPeriodConcurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 100; j++ {
-				trade := exchange.Trade{
+				trade := md.Trade{
 					Symbol:    "BTC-USDT",
 					Timestamp: baseTime + int64(j)*60*1000,
 					Quantity:  1.0,
@@ -219,8 +219,8 @@ func TestMultiPeriodConcurrency(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// 验证没有 panic，数据可以正常读取
-	candle4h := agg.GetCurrentCandle("BTC-USDT", exchange.Period4h)
-	candle1d := agg.GetCurrentCandle("BTC-USDT", exchange.Period1d)
+	candle4h := agg.GetCurrentCandle("BTC-USDT", md.Period4h)
+	candle1d := agg.GetCurrentCandle("BTC-USDT", md.Period1d)
 
 	if candle4h == nil {
 		t.Error("expected 4h candle to exist after concurrent writes")
@@ -233,10 +233,10 @@ func TestMultiPeriodConcurrency(t *testing.T) {
 	agg.Close()
 
 	// Close 后推送不应该 panic
-	kline := exchange.Kline{
-		Symbol: "BTC-USDT", Period: exchange.Period15m, Timestamp: baseTime,
+	kline := md.Kline{
+		Symbol: "BTC-USDT", Period: md.Period15m, Timestamp: baseTime,
 		Open: 100.0, High: 110.0, Low: 90.0, Close: 105.0, Volume: 1000.0,
-		TradeType: exchange.Spot,
+		TradeType: md.Spot,
 	}
 	agg.ProcessKline(kline) // 不应该 panic
 }

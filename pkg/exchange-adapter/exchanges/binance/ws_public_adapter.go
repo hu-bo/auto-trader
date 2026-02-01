@@ -386,16 +386,16 @@ func (a *WsPublicAdapter) handleMiniTicker(msg map[string]interface{}, tradeType
 	lastStr, _ := msg["c"].(string)
 	quoteVolStr, _ := msg["q"].(string)
 
-	eventTimeMs := int64FromAny(msg["E"])
+	eventTimeMs := core.Int64FromAny(msg["E"])
 
 	a.onMiniTicker(marketdata.MiniTicker{
 		Symbol:         symbol,
 		Exchange:       string(marketdata.Binance),
 		TradeType:      tradeType,
 		EventTimeMs:    eventTimeMs,
-		OpenPrice24h:   parseFloat(openStr),
-		LastPrice:      parseFloat(lastStr),
-		QuoteVolume24h: parseFloat(quoteVolStr),
+		OpenPrice24h:   core.ParseFloat(openStr),
+		LastPrice:      core.ParseFloat(lastStr),
+		QuoteVolume24h: core.ParseFloat(quoteVolStr),
 	})
 }
 
@@ -414,13 +414,13 @@ func (a *WsPublicAdapter) handleKline(msg map[string]interface{}, tradeType mark
 		Exchange:  string(marketdata.Binance),
 		TradeType: tradeType,
 		Period:    marketdata.Period15m,
-		Timestamp: int64FromAny(k["t"]),
-		Open:      parseFloat(stringFromAny(k["o"])),
-		High:      parseFloat(stringFromAny(k["h"])),
-		Low:       parseFloat(stringFromAny(k["l"])),
-		Close:     parseFloat(stringFromAny(k["c"])),
-		Volume:    parseFloat(stringFromAny(k["v"])),
-		BuyVolume: parseFloat(stringFromAny(k["V"])),
+		Timestamp: core.Int64FromAny(k["t"]),
+		Open:      core.ParseFloat(core.StringFromAny(k["o"])),
+		High:      core.ParseFloat(core.StringFromAny(k["h"])),
+		Low:       core.ParseFloat(core.StringFromAny(k["l"])),
+		Close:     core.ParseFloat(core.StringFromAny(k["c"])),
+		Volume:    core.ParseFloat(core.StringFromAny(k["v"])),
+		BuyVolume: core.ParseFloat(core.StringFromAny(k["V"])),
 		Closed:    closed,
 	})
 }
@@ -435,9 +435,9 @@ func (a *WsPublicAdapter) handleAggTrade(msg map[string]interface{}, tradeType m
 		Symbol:    symbol,
 		Exchange:  string(marketdata.Binance),
 		TradeType: tradeType,
-		Price:     parseFloat(stringFromAny(msg["p"])),
-		Quantity:  parseFloat(stringFromAny(msg["q"])),
-		Timestamp: int64FromAny(msg["T"]),
+		Price:     core.ParseFloat(core.StringFromAny(msg["p"])),
+		Quantity:  core.ParseFloat(core.StringFromAny(msg["q"])),
+		Timestamp: core.Int64FromAny(msg["T"]),
 		IsBuy:     !isBuyerMaker,
 	})
 }
@@ -452,7 +452,7 @@ func (a *WsPublicAdapter) handleDepth(msg map[string]interface{}, tradeType mark
 		TradeType: tradeType,
 		Bids:      parseDepthEntries(msg["b"]),
 		Asks:      parseDepthEntries(msg["a"]),
-		Timestamp: int64FromAny(msg["E"]),
+		Timestamp: core.Int64FromAny(msg["E"]),
 	})
 }
 
@@ -468,8 +468,8 @@ func parseDepthEntries(data interface{}) []marketdata.DepthEntry {
 			continue
 		}
 		entries = append(entries, marketdata.DepthEntry{
-			Price:    parseFloat(stringFromAny(entry[0])),
-			Quantity: parseFloat(stringFromAny(entry[1])),
+			Price:    core.ParseFloat(core.StringFromAny(entry[0])),
+			Quantity: core.ParseFloat(core.StringFromAny(entry[1])),
 		})
 	}
 	return entries
