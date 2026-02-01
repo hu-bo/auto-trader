@@ -831,14 +831,18 @@ func (r *RiskEvaluator) EvaluateOrder(
 **目标**: 集成 exchange-sync 市场数据
 
 - [ ] ExchangeSyncClient HTTP 客户端
+- [ ] NATS 订阅器实现（订阅实时 K 线和订单簿）
+- [ ] Cron 定时任务服务（定期同步交易对信息）
 - [ ] GetCandles RPC 实现
-- [ ] GetCurrentCandle RPC 实现
+- [ ] GetCurrentCandle RPC 实现（优先从 NATS 缓存获取）
 - [ ] GetOrderBook RPC 实现
 - [ ] GetPrice RPC 实现
 - [ ] GetSymbolInfo RPC 实现
 
 **验收标准**:
 - 可以查询历史 K 线数据
+- 可以通过 NATS 订阅实时市场数据
+- Cron 任务可定期同步交易对信息
 - 可以获取订单簿和交易对信息
 - exchange-sync 服务不可用时能正确降级
 
