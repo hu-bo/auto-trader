@@ -1,5 +1,6 @@
 from .exchange import ExchangeCreate, ExchangeRead, ExchangeUpdate
 from .exchange_grpc import ClosePositionIn, PlaceOrderIn, SetLeverageIn
+from .response import ApiResponse
 from .strategy import StrategyCreate, StrategyRead, StrategyTag, StrategyUpdate
 from .strategy_order import StrategyOrderCreate, StrategyOrderRead, StrategyOrderUpdate
 from .user import UserRead
@@ -19,4 +20,5 @@ __all__ = [
     "StrategyOrderCreate",
     "StrategyOrderUpdate",
     "StrategyOrderRead",
+    "ApiResponse",
 ]

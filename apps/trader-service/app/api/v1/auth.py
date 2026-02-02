@@ -6,12 +6,13 @@ from casdoor_py import CasdoorConfig, create_casdoor_server
 from fastapi import APIRouter, HTTPException, status
 
 from app.config import get_settings
+from app.schemas import ApiResponse
 
 router = APIRouter()
 
 
-@router.get("/callback")
-async def callback(code: str) -> dict:
+@router.get("/callback", response_model=ApiResponse[dict])
+async def callback(code: str) -> ApiResponse[dict]:
     settings = get_settings()
     if settings.auth_mode != "casdoor":
         raise HTTPException(
@@ -40,9 +41,9 @@ async def callback(code: str) -> dict:
         )
     )
     token = await server.get_token(code)
-    return asdict(token)
+    return ApiResponse.success(data=asdict(token))
 
 
-@router.post("/logout")
-async def logout() -> dict:
-    return {"status": "ok"}
+@router.post("/logout", response_model=ApiResponse[None])
+async def logout() -> ApiResponse[None]:
+    return ApiResponse.success()

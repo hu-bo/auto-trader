@@ -11,34 +11,34 @@ from app.dependencies import (
     get_strategy_order_service,
     get_user_service,
 )
-from app.schemas import StrategyOrderCreate, StrategyOrderRead, StrategyOrderUpdate
+from app.schemas import ApiResponse, StrategyOrderCreate, StrategyOrderRead, StrategyOrderUpdate
 from app.services import StrategyOrderService, UserService
 
 router = APIRouter()
 
 
-@router.get("", response_model=list[StrategyOrderRead])
+@router.get("", response_model=ApiResponse[list[StrategyOrderRead]])
 async def list_strategy_orders(
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     user_service: UserService = Depends(get_user_service),
     strategy_order_service: StrategyOrderService = Depends(get_strategy_order_service),
-) -> list[StrategyOrderRead]:
+) -> ApiResponse[list[StrategyOrderRead]]:
     await user_service.get_or_create(
         session, user_id=current_user.user_id, username=current_user.username
     )
     orders = await strategy_order_service.list_for_user(session, user_id=current_user.user_id)
-    return [StrategyOrderRead.model_validate(x) for x in orders]
+    return ApiResponse.success(data=[StrategyOrderRead.model_validate(x) for x in orders])
 
 
-@router.post("", response_model=StrategyOrderRead)
+@router.post("", response_model=ApiResponse[StrategyOrderRead])
 async def create_strategy_order(
     payload: StrategyOrderCreate,
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     user_service: UserService = Depends(get_user_service),
     strategy_order_service: StrategyOrderService = Depends(get_strategy_order_service),
-) -> StrategyOrderRead:
+) -> ApiResponse[StrategyOrderRead]:
     await user_service.get_or_create(
         session, user_id=current_user.user_id, username=current_user.username
     )
@@ -61,31 +61,31 @@ async def create_strategy_order(
         risk_config=payload.risk_config,
         live=payload.live,
     )
-    return StrategyOrderRead.model_validate(order)
+    return ApiResponse.success(data=StrategyOrderRead.model_validate(order))
 
 
-@router.get("/{order_id}", response_model=StrategyOrderRead)
+@router.get("/{order_id}", response_model=ApiResponse[StrategyOrderRead])
 async def get_strategy_order(
     order_id: str,
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     strategy_order_service: StrategyOrderService = Depends(get_strategy_order_service),
-) -> StrategyOrderRead:
+) -> ApiResponse[StrategyOrderRead]:
     try:
         order = await strategy_order_service.get(session, user_id=current_user.user_id, order_id=order_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return StrategyOrderRead.model_validate(order)
+    return ApiResponse.success(data=StrategyOrderRead.model_validate(order))
 
 
-@router.put("/{order_id}", response_model=StrategyOrderRead)
+@router.put("/{order_id}", response_model=ApiResponse[StrategyOrderRead])
 async def update_strategy_order(
     order_id: str,
     payload: StrategyOrderUpdate,
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     strategy_order_service: StrategyOrderService = Depends(get_strategy_order_service),
-) -> StrategyOrderRead:
+) -> ApiResponse[StrategyOrderRead]:
     try:
         order = await strategy_order_service.update(
             session,
@@ -98,51 +98,51 @@ async def update_strategy_order(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return StrategyOrderRead.model_validate(order)
+    return ApiResponse.success(data=StrategyOrderRead.model_validate(order))
 
 
-@router.delete("/{order_id}")
+@router.delete("/{order_id}", response_model=ApiResponse[None])
 async def delete_strategy_order(
     order_id: str,
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     strategy_order_service: StrategyOrderService = Depends(get_strategy_order_service),
-) -> dict:
+) -> ApiResponse[None]:
     try:
         await strategy_order_service.delete(session, user_id=current_user.user_id, order_id=order_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"status": "ok"}
+    return ApiResponse.success()
 
 
-@router.post("/{order_id}/start", response_model=StrategyOrderRead)
+@router.post("/{order_id}/start", response_model=ApiResponse[StrategyOrderRead])
 async def start_strategy_order(
     order_id: str,
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     strategy_order_service: StrategyOrderService = Depends(get_strategy_order_service),
-) -> StrategyOrderRead:
+) -> ApiResponse[StrategyOrderRead]:
     try:
         order = await strategy_order_service.start(session, user_id=current_user.user_id, order_id=order_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return StrategyOrderRead.model_validate(order)
+    return ApiResponse.success(data=StrategyOrderRead.model_validate(order))
 
 
-@router.post("/{order_id}/stop", response_model=StrategyOrderRead)
+@router.post("/{order_id}/stop", response_model=ApiResponse[StrategyOrderRead])
 async def stop_strategy_order(
     order_id: str,
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     strategy_order_service: StrategyOrderService = Depends(get_strategy_order_service),
-) -> StrategyOrderRead:
+) -> ApiResponse[StrategyOrderRead]:
     try:
         order = await strategy_order_service.stop(session, user_id=current_user.user_id, order_id=order_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return StrategyOrderRead.model_validate(order)
+    return ApiResponse.success(data=StrategyOrderRead.model_validate(order))
 
 
-@router.get("/{order_id}/stats")
-async def strategy_order_stats(order_id: str) -> dict:
-    return {"id": order_id, "stats": {}}
+@router.get("/{order_id}/stats", response_model=ApiResponse[dict])
+async def strategy_order_stats(order_id: str) -> ApiResponse[dict]:
+    return ApiResponse.success(data={"id": order_id, "stats": {}})

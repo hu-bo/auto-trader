@@ -18,7 +18,7 @@ from app.grpc.errors import (
 )
 from app.grpc.exchange_client import ExchangeGrpcClient
 from app.grpc.utils import protobuf_to_dict
-from app.schemas import ExchangeCreate, ExchangeRead, ExchangeUpdate
+from app.schemas import ApiResponse, ExchangeCreate, ExchangeRead, ExchangeUpdate
 from app.services import ExchangeService, UserService
 
 router = APIRouter()
@@ -32,21 +32,21 @@ def _raise_grpc_http_error(exc: Exception) -> None:
     raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("", response_model=list[ExchangeRead])
+@router.get("", response_model=ApiResponse[list[ExchangeRead]])
 async def list_exchanges(
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     user_service: UserService = Depends(get_user_service),
     exchange_service: ExchangeService = Depends(get_exchange_service),
-) -> list[ExchangeRead]:
+) -> ApiResponse[list[ExchangeRead]]:
     await user_service.get_or_create(
         session, user_id=current_user.user_id, username=current_user.username
     )
     exchanges = await exchange_service.list_for_user(session, user_id=current_user.user_id)
-    return [ExchangeRead.model_validate(x) for x in exchanges]
+    return ApiResponse.success(data=[ExchangeRead.model_validate(x) for x in exchanges])
 
 
-@router.post("", response_model=ExchangeRead)
+@router.post("", response_model=ApiResponse[ExchangeRead])
 async def create_exchange(
     payload: ExchangeCreate,
     current_user: CurrentUser = Depends(get_current_user),
@@ -54,7 +54,7 @@ async def create_exchange(
     user_service: UserService = Depends(get_user_service),
     exchange_service: ExchangeService = Depends(get_exchange_service),
     grpc_client: ExchangeGrpcClient = Depends(get_exchange_grpc_client),
-) -> ExchangeRead:
+) -> ApiResponse[ExchangeRead]:
     await user_service.get_or_create(
         session, user_id=current_user.user_id, username=current_user.username
     )
@@ -92,17 +92,17 @@ async def create_exchange(
     except Exception:
         pass
 
-    return ExchangeRead.model_validate(exchange)
+    return ApiResponse.success(data=ExchangeRead.model_validate(exchange))
 
 
-@router.put("/{exchange_id}", response_model=ExchangeRead)
+@router.put("/{exchange_id}", response_model=ApiResponse[ExchangeRead])
 async def update_exchange(
     exchange_id: str,
     payload: ExchangeUpdate,
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     exchange_service: ExchangeService = Depends(get_exchange_service),
-) -> ExchangeRead:
+) -> ApiResponse[ExchangeRead]:
     try:
         exchange = await exchange_service.update(
             session,
@@ -121,17 +121,17 @@ async def update_exchange(
             raise HTTPException(status_code=404, detail=message) from exc
         raise HTTPException(status_code=500, detail=message) from exc
 
-    return ExchangeRead.model_validate(exchange)
+    return ApiResponse.success(data=ExchangeRead.model_validate(exchange))
 
 
-@router.delete("/{exchange_id}")
+@router.delete("/{exchange_id}", response_model=ApiResponse[None])
 async def delete_exchange(
     exchange_id: str,
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     exchange_service: ExchangeService = Depends(get_exchange_service),
     grpc_client: ExchangeGrpcClient = Depends(get_exchange_grpc_client),
-) -> dict:
+) -> ApiResponse[None]:
     try:
         try:
             token = await exchange_service.get_grpc_token(
@@ -144,17 +144,17 @@ async def delete_exchange(
         await exchange_service.delete(session, user_id=current_user.user_id, exchange_id=exchange_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"status": "ok"}
+    return ApiResponse.success()
 
 
-@router.post("/{exchange_id}/test")
+@router.post("/{exchange_id}/test", response_model=ApiResponse[dict])
 async def test_exchange(
     exchange_id: str,
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     exchange_service: ExchangeService = Depends(get_exchange_service),
     grpc_client: ExchangeGrpcClient = Depends(get_exchange_grpc_client),
-) -> dict:
+) -> ApiResponse[dict]:
     did_init = False
 
     try:
@@ -170,7 +170,7 @@ async def test_exchange(
         if getattr(validate_resp, "valid", False):
             result = protobuf_to_dict(validate_resp)
             result["initialized"] = False
-            return result
+            return ApiResponse.success(data=result)
     except ValueError:
         token = None
     except Exception as exc:  # noqa: BLE001
@@ -201,7 +201,7 @@ async def test_exchange(
         validate_resp = await grpc_client.validate_token(token=init_resp.token)
         result = protobuf_to_dict(validate_resp)
         result["initialized"] = did_init
-        return result
+        return ApiResponse.success(data=result)
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001

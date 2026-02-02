@@ -17,7 +17,7 @@ from app.grpc.errors import (
 )
 from app.grpc.exchange_client import ExchangeGrpcClient
 from app.grpc.utils import protobuf_to_dict
-from app.schemas import ClosePositionIn
+from app.schemas import ApiResponse, ClosePositionIn
 from app.services import ExchangeService
 
 router = APIRouter()
@@ -31,7 +31,7 @@ def _raise_grpc_http_error(exc: Exception) -> None:
     raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("")
+@router.get("", response_model=ApiResponse[dict])
 async def list_positions(
     exchange_id: str,
     symbol: str | None = None,
@@ -39,7 +39,7 @@ async def list_positions(
     session: AsyncSession = Depends(get_db_session),
     exchange_service: ExchangeService = Depends(get_exchange_service),
     grpc_client: ExchangeGrpcClient = Depends(get_exchange_grpc_client),
-) -> dict:
+) -> ApiResponse[dict]:
     try:
         token = await exchange_service.get_grpc_token(
             session, user_id=current_user.user_id, exchange_id=exchange_id
@@ -52,17 +52,17 @@ async def list_positions(
     except Exception as exc:  # noqa: BLE001
         _raise_grpc_http_error(exc)
 
-    return protobuf_to_dict(resp)
+    return ApiResponse.success(data=protobuf_to_dict(resp))
 
 
-@router.post("/sync")
+@router.post("/sync", response_model=ApiResponse[dict])
 async def sync_positions(
     exchange_id: str,
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     exchange_service: ExchangeService = Depends(get_exchange_service),
     grpc_client: ExchangeGrpcClient = Depends(get_exchange_grpc_client),
-) -> dict:
+) -> ApiResponse[dict]:
     try:
         token = await exchange_service.get_grpc_token(
             session, user_id=current_user.user_id, exchange_id=exchange_id
@@ -75,10 +75,10 @@ async def sync_positions(
     except Exception as exc:  # noqa: BLE001
         _raise_grpc_http_error(exc)
 
-    return protobuf_to_dict(resp)
+    return ApiResponse.success(data=protobuf_to_dict(resp))
 
 
-@router.post("/{position_id}/close")
+@router.post("/{position_id}/close", response_model=ApiResponse[dict])
 async def close_position(
     position_id: str,
     payload: ClosePositionIn,
@@ -86,7 +86,7 @@ async def close_position(
     session: AsyncSession = Depends(get_db_session),
     exchange_service: ExchangeService = Depends(get_exchange_service),
     grpc_client: ExchangeGrpcClient = Depends(get_exchange_grpc_client),
-) -> dict:
+) -> ApiResponse[dict]:
     try:
         token = await exchange_service.get_grpc_token(
             session, user_id=current_user.user_id, exchange_id=payload.exchange_id
@@ -139,4 +139,4 @@ async def close_position(
     except Exception as exc:  # noqa: BLE001
         _raise_grpc_http_error(exc)
 
-    return protobuf_to_dict(resp)
+    return ApiResponse.success(data=protobuf_to_dict(resp))

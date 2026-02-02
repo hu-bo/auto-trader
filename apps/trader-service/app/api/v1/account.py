@@ -17,7 +17,7 @@ from app.grpc.errors import (
 )
 from app.grpc.exchange_client import ExchangeGrpcClient
 from app.grpc.utils import protobuf_to_dict
-from app.schemas import SetLeverageIn
+from app.schemas import ApiResponse, SetLeverageIn
 from app.services import ExchangeService
 
 router = APIRouter()
@@ -31,7 +31,7 @@ def _raise_grpc_http_error(exc: Exception) -> None:
     raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/balance")
+@router.get("/balance", response_model=ApiResponse[dict])
 async def get_balance(
     exchange_id: str,
     trade_type: str,
@@ -39,7 +39,7 @@ async def get_balance(
     session: AsyncSession = Depends(get_db_session),
     exchange_service: ExchangeService = Depends(get_exchange_service),
     grpc_client: ExchangeGrpcClient = Depends(get_exchange_grpc_client),
-) -> dict:
+) -> ApiResponse[dict]:
     try:
         token = await exchange_service.get_grpc_token(
             session, user_id=current_user.user_id, exchange_id=exchange_id
@@ -52,17 +52,17 @@ async def get_balance(
     except Exception as exc:  # noqa: BLE001
         _raise_grpc_http_error(exc)
 
-    return protobuf_to_dict(resp)
+    return ApiResponse.success(data=protobuf_to_dict(resp))
 
 
-@router.post("/leverage")
+@router.post("/leverage", response_model=ApiResponse[dict])
 async def set_leverage(
     payload: SetLeverageIn,
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     exchange_service: ExchangeService = Depends(get_exchange_service),
     grpc_client: ExchangeGrpcClient = Depends(get_exchange_grpc_client),
-) -> dict:
+) -> ApiResponse[dict]:
     try:
         token = await exchange_service.get_grpc_token(
             session, user_id=current_user.user_id, exchange_id=payload.exchange_id
@@ -81,4 +81,4 @@ async def set_leverage(
     except Exception as exc:  # noqa: BLE001
         _raise_grpc_http_error(exc)
 
-    return protobuf_to_dict(resp)
+    return ApiResponse.success(data=protobuf_to_dict(resp))
