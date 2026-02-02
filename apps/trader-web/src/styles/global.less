@@ -1,0 +1,255 @@
+// 全局样式
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: @font-family;
+  font-size: @font-size-md;
+  line-height: @line-height-md;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+}
+
+// 暗色主题
+body[theme-mode='dark'] {
+  background-color: @dark-bg-0;
+  color: @dark-text-0;
+
+  --bg-0: @dark-bg-0;
+  --bg-1: @dark-bg-1;
+  --bg-2: @dark-bg-2;
+  --bg-3: @dark-bg-3;
+  --border-color: @dark-border;
+  --text-0: @dark-text-0;
+  --text-1: @dark-text-1;
+  --text-2: @dark-text-2;
+  --text-3: @dark-text-3;
+}
+
+// 亮色主题
+body[theme-mode='light'] {
+  background-color: @light-bg-0;
+  color: @light-text-0;
+
+  --bg-0: @light-bg-0;
+  --bg-1: @light-bg-1;
+  --bg-2: @light-bg-2;
+  --bg-3: @light-bg-3;
+  --border-color: @light-border;
+  --text-0: @light-text-0;
+  --text-1: @light-text-1;
+  --text-2: @light-text-2;
+  --text-3: @light-text-3;
+}
+
+// 滚动条样式
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+
+  &:hover {
+    background: var(--text-3);
+  }
+}
+
+// 链接
+a {
+  color: @primary-color;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+// 代码
+code {
+  font-family: @font-family-mono;
+  font-size: 0.9em;
+  padding: 2px 6px;
+  background: var(--bg-2);
+  border-radius: @border-radius-sm;
+}
+
+// 通用工具类
+.text-success {
+  color: @success-color !important;
+}
+
+.text-danger {
+  color: @danger-color !important;
+}
+
+.text-warning {
+  color: @warning-color !important;
+}
+
+.text-info {
+  color: @info-color !important;
+}
+
+.text-muted {
+  color: var(--text-3) !important;
+}
+
+.text-mono {
+  font-family: @font-family-mono !important;
+}
+
+// Flex 工具类
+.flex {
+  display: flex;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gap-xs {
+  gap: @spacing-xs;
+}
+
+.gap-sm {
+  gap: @spacing-sm;
+}
+
+.gap-md {
+  gap: @spacing-md;
+}
+
+.gap-lg {
+  gap: @spacing-lg;
+}
+
+// 间距工具类
+.mt-sm {
+  margin-top: @spacing-sm;
+}
+
+.mt-md {
+  margin-top: @spacing-md;
+}
+
+.mt-lg {
+  margin-top: @spacing-lg;
+}
+
+.mb-sm {
+  margin-bottom: @spacing-sm;
+}
+
+.mb-md {
+  margin-bottom: @spacing-md;
+}
+
+.mb-lg {
+  margin-bottom: @spacing-lg;
+}
+
+// Glassmorphism 效果
+.glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: @border-radius-lg;
+}
+
+// 发光边框
+.glow-border {
+  border: 1px solid transparent;
+  background: linear-gradient(var(--bg-1), var(--bg-1)) padding-box,
+    linear-gradient(135deg, @neon-purple, @neon-blue) border-box;
+}
+
+// 霓虹发光效果
+.neon-text {
+  text-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 40px currentColor;
+}
+
+// 价格上涨/下跌颜色
+.price-up {
+  color: @success-color !important;
+}
+
+.price-down {
+  color: @danger-color !important;
+}
+
+// Semi Design 覆盖
+.semi-card {
+  background: var(--bg-1) !important;
+  border-color: var(--border-color) !important;
+}
+
+.semi-table {
+  background: transparent !important;
+}
+
+.semi-table-thead {
+  background: var(--bg-2) !important;
+}
+
+.semi-table-row {
+  &:hover {
+    background: var(--bg-2) !important;
+  }
+}
+
+// 动画
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes glow {
+  0%,
+  100% {
+    box-shadow: 0 0 5px @neon-blue;
+  }
+  50% {
+    box-shadow: 0 0 20px @neon-blue, 0 0 30px @neon-blue;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}

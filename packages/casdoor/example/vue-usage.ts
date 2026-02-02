@@ -3,7 +3,7 @@
  */
 
 // ============ main.ts ============
-import { initCasdoor } from '@hquant/casdoor/client';
+import { initCasdoor } from '@hquant/casdoor/client/vue';
 
 // 应用入口初始化
 initCasdoor({

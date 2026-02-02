@@ -8,7 +8,7 @@ import {
   useCasdoor as useCasdoorReact,
   useCasdoorCallbackReact,
   useRequireAuth,
-} from '@hquant/casdoor/client';
+} from '@hquant/casdoor/client/react';
 
 // ============ App.tsx - Provider 包裹 ============
 export function App() {

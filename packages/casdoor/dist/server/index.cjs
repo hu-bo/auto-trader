@@ -1,0 +1,261 @@
+"use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __reExport = (target, mod, secondTarget) => (__copyProps(target, mod, "default"), secondTarget && __copyProps(secondTarget, mod, "default"));
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+var server_exports = {};
+__export(server_exports, {
+  CasdoorServer: () => CasdoorServer,
+  createCasdoorServer: () => createCasdoorServer,
+  createExpressAuthMiddleware: () => createExpressAuthMiddleware,
+  createKoaAuthMiddleware: () => createKoaAuthMiddleware,
+  createTokenVerifier: () => createTokenVerifier,
+  default: () => server_default
+});
+module.exports = __toCommonJS(server_exports);
+var import_casdoor_nodejs_sdk = require("casdoor-nodejs-sdk");
+var import_path = __toESM(require("path"), 1);
+var import_fs = __toESM(require("fs"), 1);
+__reExport(server_exports, require("../types.js"), module.exports);
+function decodeJwt(token) {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    throw new Error("Invalid JWT format");
+  }
+  const payload = parts[1];
+  const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64 + "=".repeat((4 - base64.length % 4) % 4);
+  const decoded = Buffer.from(padded, "base64").toString("utf-8");
+  return JSON.parse(decoded);
+}
+const DEFAULT_CERT_PATH = import_path.default.join(__dirname, "8plus1.png");
+console.log(DEFAULT_CERT_PATH);
+const certificate = import_fs.default.readFileSync(DEFAULT_CERT_PATH, "utf-8");
+class CasdoorServer {
+  sdk;
+  config;
+  constructor(config) {
+    if (certificate) {
+      config.certificate = certificate;
+    }
+    if (!config.clientSecret) {
+      throw new Error("clientSecret is required for server-side SDK");
+    }
+    if (!config.certificate) {
+      throw new Error("certificate is required for server-side SDK");
+    }
+    this.config = config;
+    this.sdk = new import_casdoor_nodejs_sdk.SDK({
+      endpoint: config.endpoint,
+      clientId: config.clientId,
+      clientSecret: config.clientSecret,
+      certificate: config.certificate,
+      orgName: config.orgName,
+      appName: config.appName
+    });
+  }
+  /**
+   * 获取登录 URL
+   * @param redirectUri 回调地址
+   */
+  getSigninUrl(redirectUri) {
+    return this.sdk.getSignInUrl(redirectUri);
+  }
+  /**
+   * 获取注册 URL
+   * @param redirectUri 回调地址
+   * @param enablePassword 是否启用密码注册
+   */
+  getSignupUrl(redirectUri, enablePassword = true) {
+    return this.sdk.getSignUpUrl(enablePassword, redirectUri);
+  }
+  /**
+   * 使用授权码获取 Token
+   * @param code 授权码
+   */
+  async getToken(code) {
+    const token = await this.sdk.getAuthToken(code);
+    return token;
+  }
+  /**
+   * 刷新 Token
+   * @param refreshToken 刷新令牌
+   */
+  async refreshToken(refreshToken) {
+    const token = await this.sdk.refreshToken(refreshToken);
+    return token;
+  }
+  /**
+   * 解析并验证 JWT Token
+   * @param token JWT Token
+   */
+  parseJwtToken(token) {
+    return decodeJwt(token);
+  }
+  /**
+   * 验证 Token 并返回用户信息
+   * @param token JWT Token
+   */
+  async verifyToken(token) {
+    try {
+      const claims = this.parseJwtToken(token);
+      const now = Math.floor(Date.now() / 1e3);
+      if (claims.exp && claims.exp < now) {
+        return {
+          valid: false,
+          error: "Token has expired"
+        };
+      }
+      const user = await this.getUser(claims.name || claims.sub);
+      return {
+        valid: true,
+        user,
+        claims
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        error: error instanceof Error ? error.message : "Token verification failed"
+      };
+    }
+  }
+  /**
+   * 获取用户信息
+   * @param name 用户名
+   */
+  async getUser(name) {
+    const response = await this.sdk.getUser(name);
+    const user = response.data ?? response;
+    return user;
+  }
+  /**
+   * 获取用户列表
+   */
+  async getUsers() {
+    const response = await this.sdk.getUsers();
+    const users = response.data ?? response;
+    return users;
+  }
+  /**
+   * 更新用户信息
+   * @param user 用户信息
+   */
+  async updateUser(user) {
+    const result = await this.sdk.updateUser(user);
+    const data = result.data ?? result;
+    return data.status === "ok";
+  }
+  /**
+   * 删除用户
+   * @param name 用户名
+   */
+  async deleteUser(name) {
+    const result = await this.sdk.deleteUser({ name, owner: this.config.orgName });
+    const data = result.data ?? result;
+    return data.status === "ok";
+  }
+  /**
+   * 获取底层 SDK 实例 (用于高级操作)
+   */
+  getRawSdk() {
+    return this.sdk;
+  }
+}
+function createExpressAuthMiddleware(server, options) {
+  const getToken = options?.getToken ?? ((req) => {
+    const auth = req.headers.authorization;
+    if (typeof auth === "string" && auth.startsWith("Bearer ")) {
+      return auth.slice(7);
+    }
+    return null;
+  });
+  const onUnauthorized = options?.onUnauthorized ?? ((res, error) => {
+    res.status(401).json({ error: "Unauthorized", message: error });
+  });
+  return async (req, res, next) => {
+    const token = getToken(req);
+    if (!token) {
+      onUnauthorized(res, "No token provided");
+      return;
+    }
+    const result = await server.verifyToken(token);
+    if (!result.valid) {
+      onUnauthorized(res, result.error ?? "Invalid token");
+      return;
+    }
+    req.user = result.user;
+    req.claims = result.claims;
+    next();
+  };
+}
+function createKoaAuthMiddleware(server, options) {
+  const getToken = options?.getToken ?? ((ctx) => {
+    const auth = ctx.headers.authorization;
+    if (typeof auth === "string" && auth.startsWith("Bearer ")) {
+      return auth.slice(7);
+    }
+    return null;
+  });
+  const onUnauthorized = options?.onUnauthorized ?? ((ctx, error) => {
+    ctx.status = 401;
+    ctx.body = { error: "Unauthorized", message: error };
+  });
+  return async (ctx, next) => {
+    const token = getToken(ctx);
+    if (!token) {
+      onUnauthorized(ctx, "No token provided");
+      return;
+    }
+    const result = await server.verifyToken(token);
+    if (!result.valid) {
+      onUnauthorized(ctx, result.error ?? "Invalid token");
+      return;
+    }
+    ctx.state.user = result.user;
+    ctx.state.claims = result.claims;
+    await next();
+  };
+}
+function createTokenVerifier(server) {
+  return async (token) => {
+    return server.verifyToken(token);
+  };
+}
+function createCasdoorServer(config) {
+  return new CasdoorServer(config);
+}
+var server_default = CasdoorServer;
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  CasdoorServer,
+  createCasdoorServer,
+  createExpressAuthMiddleware,
+  createKoaAuthMiddleware,
+  createTokenVerifier,
+  ...require("../types.js")
+});
+//# sourceMappingURL=index.cjs.map

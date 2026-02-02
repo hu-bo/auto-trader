@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
+import { useRef, useEffect, useCallback, useImperativeHandle } from 'react'
 import { KLineChartPro } from '../core/KLineChartPro'
 import { createChartInstance } from '../core/createChartInstance'
 import type {
@@ -16,6 +16,7 @@ export interface KLineChartProps extends Omit<KLineChartProOptions, 'container'>
   className?: string
   style?: React.CSSProperties
   markers?: TradeMarker[]
+  ref?: React.Ref<KLineChartInstance>
   onReady?: (chart: KLineChartPro) => void
   onSymbolChange?: (data: { oldSymbol: SymbolInfo; newSymbol: SymbolInfo }) => void
   onPeriodChange?: (data: { oldPeriod: Period; newPeriod: Period }) => void
@@ -24,14 +25,12 @@ export interface KLineChartProps extends Omit<KLineChartProOptions, 'container'>
   onScroll?: (data: unknown) => void
 }
 
-function KLineChartInner(
-  props: KLineChartProps,
-  ref: React.ForwardedRef<KLineChartInstance>
-): React.ReactElement {
+export function KLineChart(props: KLineChartProps): React.ReactElement {
   const {
     className,
     style,
     markers,
+    ref,
     onReady,
     onSymbolChange,
     onPeriodChange,
@@ -182,9 +181,5 @@ function KLineChartInner(
     },
   })
 }
-
-export const KLineChart = forwardRef<KLineChartInstance, KLineChartProps>(KLineChartInner)
-
-KLineChart.displayName = 'KLineChart'
 
 export type { KLineChartInstance as KLineChartRef }

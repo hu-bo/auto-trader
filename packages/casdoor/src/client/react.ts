@@ -1,4 +1,13 @@
-import { useState, useEffect, useCallback, useMemo, createContext, useContext, type ReactNode } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  createContext,
+  useContext,
+  createElement,
+  type ReactNode,
+} from 'react';
 import type { ClientConfig, AuthState, CasdoorUser, TokenResponse } from '../types.js';
 import { CasdoorClient } from './core.js';
 
@@ -31,14 +40,7 @@ export function CasdoorProvider({ config, children }: CasdoorProviderProps): Rea
     return () => client.destroy();
   }, [client]);
 
-  // 使用 createElement 避免 JSX
-  return {
-    $$typeof: Symbol.for('react.element'),
-    type: CasdoorContext.Provider,
-    props: { value: client, children },
-    key: null,
-    ref: null,
-  } as unknown as ReactNode;
+  return createElement(CasdoorContext.Provider, { value: client }, children);
 }
 
 /**

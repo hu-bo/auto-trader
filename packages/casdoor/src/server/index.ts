@@ -1,4 +1,6 @@
 import { SDK as CasdoorSDK } from 'casdoor-nodejs-sdk';
+import path from 'path';
+import fs from 'fs';
 import type {
   CasdoorConfig,
   CasdoorUser,
@@ -22,6 +24,10 @@ function decodeJwt(token: string): JwtClaims {
   return JSON.parse(decoded) as JwtClaims;
 }
 
+const DEFAULT_CERT_PATH = path.join(__dirname, '8plus1.png');
+console.log(DEFAULT_CERT_PATH)
+const certificate = fs.readFileSync(DEFAULT_CERT_PATH, 'utf-8');
+
 /**
  * Casdoor 服务端 SDK
  */
@@ -30,6 +36,9 @@ export class CasdoorServer {
   private config: CasdoorConfig;
 
   constructor(config: CasdoorConfig) {
+    if (certificate) {
+      config.certificate = certificate;
+    }
     if (!config.clientSecret) {
       throw new Error('clientSecret is required for server-side SDK');
     }

@@ -2,6 +2,10 @@
 
 > 基于 React + Semi Design + Vite 的量化交易前端应用
 
+## 样式风格
+
+UI/UX design of a futuristic quantitative trading dashboard, dark mode, cyberpunk aesthetic, deep blue and charcoal black background with neon green and electric purple data accents. Central focus is a complex candlestick chart with AI prediction lines. Modules include: real-time order book, floating AI algorithm status node, high-frequency trading logs. Style: Glassmorphism panels, glowing borders, monospaced tech fonts, holographic visualization. 8k resolution, high fidelity, Dribbble trending, Behance top tier, sleek, professional fintech interface, made for React application --ar 16:9 --v 6.0
+
 ## 概述
 
 trader-web 是量化交易系统的前端应用，提供：
@@ -824,5 +828,5 @@ VITE_CASDOOR_ORG_NAME=built-in
 - [Zustand](https://zustand-demo.pmnd.rs/)
 - [Casdoor React SDK](packages\casdoor)
 - [KLineCharts](packages\klinecharts-pro)
-
+- [API](apps/trader-service/app/api)
 ---

@@ -5,7 +5,7 @@ Casdoor Python SDK - 服务端认证库，支持 Flask、FastAPI、Django 等主
 ## 特性
 
 - ✅ 完整的服务端认证功能
-- ✅ 支持 Flask、FastAPI、Django
+- ✅ 支持 Flask、FastAPI
 - ✅ 同步和异步 API
 - ✅ JWT Token 解析和验证
 - ✅ 用户管理 (获取、更新、删除)
@@ -202,37 +202,6 @@ async def exchange_token(request: TokenRequest):
     }
 ```
 
-### Django 使用
-
-#### 配置中间件
-
-```python
-# settings.py
-MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    # ... 其他中间件
-    'casdoor_py.middleware.DjangoAuthMiddleware',  # 添加 Casdoor 中间件
-]
-
-# 在项目初始化时设置 (例如在 apps.py 或 __init__.py 中)
-from casdoor_py import create_casdoor_server, CasdoorConfig
-from casdoor_py.middleware import DjangoAuthMiddleware
-
-config = CasdoorConfig(
-    endpoint='https://auth.example.com',
-    client_id='your-client-id',
-    client_secret='your-client-secret',
-    org_name='your-org',
-    app_name='your-app',
-    certificate='...',
-)
-
-casdoor = create_casdoor_server(config)
-DjangoAuthMiddleware.set_server(casdoor)
-```
-
 #### 在视图中使用
 
 ```python
@@ -316,23 +285,12 @@ create_fastapi_auth_dependency(server, get_token=None)
 create_fastapi_auth_middleware(server, get_token=None, exclude_paths=None)
 ```
 
-#### Django
-
-```python
-# 中间件类
-DjangoAuthMiddleware.set_server(server)
-
-# 装饰器
-django_require_auth(view_func)
-```
-
 ## 示例项目
 
 查看 `examples` 目录获取完整示例：
 
 - `examples/flask_app.py` - Flask 应用示例
 - `examples/fastapi_app.py` - FastAPI 应用示例
-- `examples/django_app/` - Django 项目示例
 
 ## 同步 vs 异步
 

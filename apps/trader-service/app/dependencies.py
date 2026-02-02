@@ -1,75 +1,66 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any
 
-import jwt
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.db.session import Database
 from app.grpc.exchange_client import ExchangeGrpcClient
+from app.middleware.auth import CurrentUser  # noqa: F401 - 导出供其他模块使用
 from app.services import ExchangeService, StrategyOrderService, StrategyService, UserService
 from app.utils.encryption import AesGcmEncryptor
 
-
-class CurrentUser:
-    def __init__(self, user_id: str, username: str):
-        self.user_id = user_id
-        self.username = username
+# 导出 CurrentUser 供其他模块使用
+__all__ = ["CurrentUser", "get_current_user"]
 
 
-def get_current_user(
-    settings: Settings = Depends(get_settings),
-    authorization: str | None = Header(default=None, alias="Authorization"),
-    x_user_id: str | None = Header(default=None, alias="X-User-Id"),
-    x_username: str | None = Header(default=None, alias="X-Username"),
-) -> CurrentUser:
-    if settings.auth_mode == "mock":
-        user_id = x_user_id or "demo-user"
-        username = x_username or "demo"
-        return CurrentUser(user_id=user_id, username=username)
+def get_current_user(request: Request) -> CurrentUser:
+    """
+    获取当前用户依赖
 
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Bearer token",
-            headers={"WWW-Authenticate": "Bearer"},
+    从 request.state.user 获取用户信息（由认证中间件设置）
+
+    使用方式：
+        @router.get("/protected")
+        async def protected(user: CurrentUser = Depends(get_current_user)):
+            return {"user": user.username}
+    """
+    if not hasattr(request.state, "user"):
+        # 这种情况不应该发生，因为中间件应该已经设置了 user
+        # 如果发生，说明路径可能没有被中间件处理
+        from fastapi import HTTPException, status
+        from hquant_logger import create_logger
+
+        logger = create_logger("trader-service").child("dependencies")
+        logger.error(
+            f"User not found in request.state for path: {request.url.path}. "
+            f"This path might be missing from exclude_paths or middleware not properly set."
         )
 
-    token = authorization[7:]
-    certificate = settings.casdoor_certificate
-    if not certificate:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not authenticated",
+        )
+
+    user = request.state.user
+    if not isinstance(user, CurrentUser):
+        from fastapi import HTTPException, status
+        from hquant_logger import create_logger
+
+        logger = create_logger("trader-service").child("dependencies")
+        logger.error(
+            f"Invalid user type in request.state: {type(user)}. Expected CurrentUser. "
+            f"Path: {request.url.path}"
+        )
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="CASDOOR_CERTIFICATE is required when AUTH_MODE=casdoor",
+            detail="Invalid user type",
         )
 
-    try:
-        claims: dict[str, Any] = jwt.decode(
-            token,
-            certificate,
-            algorithms=["RS256"],
-            options={"verify_aud": False},
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {exc}",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
-
-    user_id = str(claims.get("sub") or claims.get("name") or "")
-    username = str(claims.get("name") or claims.get("sub") or "")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload: missing sub/name",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    return CurrentUser(user_id=user_id, username=username)
+    return user
 
 
 async def get_db_session(request: Request) -> AsyncIterator[AsyncSession]:

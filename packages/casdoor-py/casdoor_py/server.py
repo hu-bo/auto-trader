@@ -137,6 +137,7 @@ class CasdoorServer:
     async def get_token(self, code: str) -> TokenResponse:
         """使用授权码获取 Token"""
         url = f"{self.config.endpoint}/api/login/oauth/access_token"
+        # Casdoor 需要 form data 格式，不是 JSON
         data = {
             'grant_type': 'authorization_code',
             'client_id': self.config.client_id,
@@ -144,22 +145,34 @@ class CasdoorServer:
             'code': code,
         }
 
-        response = await self.client.post(url, data=data)
-        response.raise_for_status()
-        result = response.json()
+        try:
+            # 使用 data 参数发送 form data
+            response = await self.client.post(url, data=data)
+            response.raise_for_status()
+            result = response.json()
 
-        return TokenResponse(
-            access_token=result['access_token'],
-            token_type=result.get('token_type', 'Bearer'),
-            expires_in=result.get('expires_in', 7200),
-            refresh_token=result.get('refresh_token'),
-            scope=result.get('scope'),
-            id_token=result.get('id_token'),
-        )
+            return TokenResponse(
+                access_token=result['access_token'],
+                token_type=result.get('token_type', 'Bearer'),
+                expires_in=result.get('expires_in', 7200),
+                refresh_token=result.get('refresh_token'),
+                scope=result.get('scope'),
+                id_token=result.get('id_token'),
+            )
+        except Exception as e:
+            # 打印详细错误信息用于调试
+            print(f"[Casdoor] Error getting token:")
+            print(f"  URL: {url}")
+            print(f"  Request data: {data}")
+            if hasattr(e, 'response'):
+                print(f"  Status code: {e.response.status_code}")
+                print(f"  Response: {e.response.text}")
+            raise
 
     def get_token_sync(self, code: str) -> TokenResponse:
         """使用授权码获取 Token (同步版本)"""
         url = f"{self.config.endpoint}/api/login/oauth/access_token"
+        # Casdoor 需要 form data 格式，不是 JSON
         data = {
             'grant_type': 'authorization_code',
             'client_id': self.config.client_id,
@@ -183,6 +196,7 @@ class CasdoorServer:
     async def refresh_token(self, refresh_token: str) -> TokenResponse:
         """刷新 Token"""
         url = f"{self.config.endpoint}/api/login/oauth/refresh_token"
+        # Casdoor 需要 form data 格式，不是 JSON
         data = {
             'grant_type': 'refresh_token',
             'client_id': self.config.client_id,
@@ -206,6 +220,7 @@ class CasdoorServer:
     def refresh_token_sync(self, refresh_token: str) -> TokenResponse:
         """刷新 Token (同步版本)"""
         url = f"{self.config.endpoint}/api/login/oauth/refresh_token"
+        # Casdoor 需要 form data 格式，不是 JSON
         data = {
             'grant_type': 'refresh_token',
             'client_id': self.config.client_id,

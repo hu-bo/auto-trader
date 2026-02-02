@@ -1,0 +1,35 @@
+{
+  "name": "@hquant/trader-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+  },
+  "dependencies": {
+    "@douyinfe/semi-icons": "^2.90.13",
+    "@douyinfe/semi-ui-19": "^2.90.13",
+    "@hquant/casdoor": "workspace:*",
+    "@hquant/klinecharts-pro": "workspace:*",
+    "@tanstack/react-query": "^5.62.0",
+    "axios": "^1.7.8",
+    "dayjs": "^1.11.13",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.0",
+    "socket.io-client": "^4.8.1",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.10",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.2",
+    "less": "^4.5.1",
+    "typescript": "~5.6.3",
+    "vite": "^7.3.1"
+  }
+}

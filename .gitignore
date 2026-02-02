@@ -16,7 +16,7 @@ logs/
 .env.local
 #nodejs
 node_modules/
-dist/
+apps/**/dist/
 
 #rust
 debug
