@@ -11,5 +11,5 @@
 - 配置：`cp config/.env.example .env`（至少补齐 `ENCRYPTION_KEY`、`EXCHANGE_GRPC_URL`）
 - 启动：`bash scripts/start.sh`
 
-conda activate python12
+conda activate python312
 poetry env use /Users/yourname/miniconda3/envs/python312/bin/python

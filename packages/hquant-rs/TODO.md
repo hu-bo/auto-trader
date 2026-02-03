@@ -295,7 +295,7 @@ const bt = new Backtest({
   "maker_fee_rate": 0.00044,
   "taker_fee_rate": 0.00044,
 })
-hquant_multi_period.add_strategy("multi_period_vector_strategy", `
+hquant_multi_period.add_multi_strategy("multi_period_vector_strategy", `
   vector_4h = VEC_STORE("4h_BTC")
   vector_15m = VEC_STORE("15m_BTC")
   close_vector_4h = NORMALIZE(close@4h, length=30)

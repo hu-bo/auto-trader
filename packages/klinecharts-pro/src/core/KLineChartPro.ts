@@ -10,6 +10,7 @@ import type {
   KLineData,
   ChartActionType,
   ChartActionCallback,
+  BarClickEvent,
   TradeMarker,
 } from '../types'
 import { DEFAULT_PERIODS, getDefaultMainIndicators, getDefaultSubIndicators } from './defaults'
@@ -124,6 +125,17 @@ export class KLineChartPro {
 
     this.chart.subscribeAction('onScroll' as ActionType, (data: unknown) => {
       this.emitAction('onScroll', data)
+    })
+
+    // Map klinecharts built-in candle bar click action to a simpler "bar click" event.
+    this.chart.subscribeAction('onCandleBarClick' as ActionType, (data: unknown) => {
+      const partial = data as { dataIndex?: unknown; x?: unknown; data?: unknown } | null
+      const event: BarClickEvent = {
+        dataIndex: typeof partial?.dataIndex === 'number' ? partial.dataIndex : -1,
+        x: typeof partial?.x === 'number' ? partial.x : 0,
+        data: (partial?.data as KLineData) || null,
+      }
+      this.emitAction('onBarClick', event)
     })
   }
 

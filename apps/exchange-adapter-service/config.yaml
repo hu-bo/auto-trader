@@ -1,0 +1,48 @@
+# Exchange Adapter Service configuration
+server:
+  grpc_port: 9001
+  http_port: 9002
+  # HTTP API auth (optional). If empty, no auth.
+  api_key: ""
+  # HTTP API rate limit (requests/sec). 0 disables rate limiting.
+  rate_limit_rps: 100
+
+session:
+  token_ttl_hours: 24
+  cleanup_interval_minutes: 60
+
+# Embedded market-data sync (ported from apps/exchange-sync)
+market:
+  enabled: true
+
+database:
+  host: "127.0.0.1"
+  port: 15000
+  user: exchange_sync_user
+  password: 123456
+  database: exchange_info
+  ssl_mode: disable
+
+# NATS publisher for market data (optional)
+nats:
+  enabled: true
+  url: "nats://localhost:15002"
+  username: "exchange_sync"
+  password: "123456"
+  subject_prefix: "exchange"
+
+log:
+  level: info
+  format: json
+  output: stdout # stdout|file
+  file: "./logs/exchange-adapter-service.log"
+
+proxy:
+  http: "" # HTTP 代理，用于 REST API
+  socks5: "" # SOCKS5 代理，用于 WebSocket
+
+security:
+  tls_enabled: false
+  cert_file: ""
+  key_file: ""
+  ca_file: ""

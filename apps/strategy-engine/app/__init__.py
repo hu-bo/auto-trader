@@ -1,0 +1,2 @@
+"""Strategy Engine application package."""
+

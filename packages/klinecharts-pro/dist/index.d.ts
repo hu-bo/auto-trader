@@ -11,6 +11,17 @@ interface KLineData extends KLineData$1 {
     volume?: number;
     turnover?: number;
 }
+interface TradeMarker {
+    timestamp: number;
+    text: string;
+    color?: string;
+    position?: 'above' | 'below';
+}
+interface BarClickEvent {
+    dataIndex: number;
+    x: number;
+    data: KLineData | null;
+}
 interface SymbolInfo {
     ticker: string;
     name?: string;
@@ -71,7 +82,7 @@ interface KLineChartProOptions {
 interface ChartReadyCallback {
     (chart: Chart): void;
 }
-type ChartActionType = 'onCrosshairChange' | 'onPeriodChange' | 'onSymbolChange' | 'onZoom' | 'onScroll';
+type ChartActionType = 'onCrosshairChange' | 'onBarClick' | 'onPeriodChange' | 'onSymbolChange' | 'onZoom' | 'onScroll';
 interface ChartActionCallback {
     (data: unknown): void;
 }
@@ -102,6 +113,8 @@ interface KLineChartInstance {
         groupId?: string;
         name?: string;
     }) => void;
+    setMarkers: (markers: TradeMarker[]) => void;
+    clearMarkers: () => void;
     subscribeAction: (type: ChartActionType, callback: ChartActionCallback) => void;
     unsubscribeAction: (type: ChartActionType, callback?: ChartActionCallback) => void;
     searchSymbols: (search: string) => Promise<SymbolInfo[]>;
@@ -136,6 +149,7 @@ declare class KLineChartPro {
     private subPaneIds;
     private isLoading;
     private actionCallbacks;
+    private markerGroupId;
     constructor(options: KLineChartProOptions);
     private registerBuiltinLocales;
     private registerBuiltinThemes;
@@ -171,6 +185,8 @@ declare class KLineChartPro {
         groupId?: string;
         name?: string;
     }): void;
+    setMarkers(markers: TradeMarker[]): void;
+    clearMarkers(): void;
     subscribeAction(type: ChartActionType, callback: ChartActionCallback): void;
     unsubscribeAction(type: ChartActionType, callback?: ChartActionCallback): void;
     getChart(): Chart | null;
@@ -282,4 +298,4 @@ declare const BUILT_IN_INDICATORS: {
 declare const DRAWING_TOOL_GROUPS: DrawingToolGroup[];
 declare const DEFAULT_TIMEZONE: string;
 
-export { BUILT_IN_INDICATORS, BaseDatafeed, type ChartActionCallback, type ChartActionType, type ChartReadyCallback, DEFAULT_PERIODS, DEFAULT_TIMEZONE, DRAWING_TOOL_GROUPS, type Datafeed, type DatafeedSubscribeCallback, type DeepPartial, DefaultDatafeed, type DrawingTool, type DrawingToolGroup, type IndicatorInfo, type KLineChartInstance, KLineChartPro, type KLineChartProOptions, type KLineData, type LocaleType, type Period, type PeriodTimespan, type SymbolInfo, type ThemeType, darkTheme, enUS, getDefaultMainIndicators, getDefaultSubIndicators, lightTheme, zhCN, zhTW };
+export { BUILT_IN_INDICATORS, type BarClickEvent, BaseDatafeed, type ChartActionCallback, type ChartActionType, type ChartReadyCallback, DEFAULT_PERIODS, DEFAULT_TIMEZONE, DRAWING_TOOL_GROUPS, type Datafeed, type DatafeedSubscribeCallback, type DeepPartial, DefaultDatafeed, type DrawingTool, type DrawingToolGroup, type IndicatorInfo, type KLineChartInstance, KLineChartPro, type KLineChartProOptions, type KLineData, type LocaleType, type Period, type PeriodTimespan, type SymbolInfo, type ThemeType, type TradeMarker, darkTheme, enUS, getDefaultMainIndicators, getDefaultSubIndicators, lightTheme, zhCN, zhTW };

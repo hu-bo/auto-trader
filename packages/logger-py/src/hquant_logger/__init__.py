@@ -100,7 +100,7 @@ def create_logger(service: str) -> Logger:
             colorize=True,
             format=(
                 "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
-                "<level>{level: <8}</level> | "
+                "<level>{level: <8}</level>|"
                 "<cyan>{extra[service]}</cyan>:<cyan>{extra[scope]}</cyan> | "
                 "<level>{message}</level>"
             ),

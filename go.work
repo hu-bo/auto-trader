@@ -1,10 +1,12 @@
 go 1.23.0
 
 use (
+	./apps/exchange-adapter-service
 	./apps/exchange-sync
 	./pkg/binance-api
 	./pkg/bybit-api
 	./pkg/exchange-adapter
+	./pkg/logger
 	./pkg/okx-api
 	./pkg/risk
 )

@@ -21,6 +21,12 @@ export interface TradeMarker {
   position?: 'above' | 'below'
 }
 
+export interface BarClickEvent {
+  dataIndex: number
+  x: number
+  data: KLineData | null
+}
+
 export interface SymbolInfo {
   ticker: string
   name?: string
@@ -104,6 +110,7 @@ export interface ChartReadyCallback {
 
 export type ChartActionType =
   | 'onCrosshairChange'
+  | 'onBarClick'
   | 'onPeriodChange'
   | 'onSymbolChange'
   | 'onZoom'

@@ -29,3 +29,7 @@ pest_derive = "2.7"
 napi-build = "2"
 
 [dev-dependencies]
+
+[[example]]
+name = "comprehensive_strategy"
+path = "example.rs"

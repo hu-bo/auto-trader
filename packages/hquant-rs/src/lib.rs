@@ -212,6 +212,19 @@ mod tests {
     }
 
     #[test]
+    fn dsl_series_ref_trims_trailing_whitespace() {
+        // `series_ref` in the pest grammar isn't atomic; when `@<period>` is omitted,
+        // implicit whitespace skipping can end up in the captured span (e.g. `"close "`).
+        // The compiler should trim it so field/var lookup works.
+        let mut hq = HQuant::new(64);
+        hq.add_strategy("s", "IF close > 0 THEN BUY").unwrap();
+
+        let mut hq2 = HQuant::new(64);
+        hq2.add_strategy("s", "LET x = RSI(3)\nIF x < 30 THEN BUY")
+            .unwrap();
+    }
+
+    #[test]
     fn multi_hquant_multi_strategy_can_use_period_suffix_in_normalize() {
         let p15m = Period::parse("15m").unwrap();
         let p4h = Period::parse("4h").unwrap();

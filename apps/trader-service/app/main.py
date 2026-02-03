@@ -9,7 +9,7 @@ from hquant_logger import create_logger
 
 from app.api.v1.router import router as v1_router
 from app.config import get_settings
-from app.db import Base  # noqa: F401
+from app.db import Base
 from app.db.session import create_database
 from app.grpc.exchange_client import ExchangeGrpcClient
 from app.middleware.auth import create_auth_middleware
@@ -46,8 +46,10 @@ def create_app() -> FastAPI:
         app.state.casdoor_server = casdoor_server
 
         if settings.app_env in {"development", "test"}:
+            logger.info(f"Creating database tables in {settings.app_env} mode...")
             async with db.engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+            logger.info("Database tables created successfully")
 
         yield
         await app.state.exchange_grpc.close()
@@ -69,7 +71,6 @@ def create_app() -> FastAPI:
     ]
     auth_middleware = create_auth_middleware(settings, casdoor_server, exclude_paths)
     app.middleware("http")(auth_middleware)
-    logger.info(f"Auth middleware registered with mode: {settings.auth_mode}")
 
     @app.get("/health")
     async def health() -> dict:

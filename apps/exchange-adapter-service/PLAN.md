@@ -45,10 +45,10 @@
 | 原依赖（Node.js） | 新依赖（Go） | 说明 |
 |-----------------|-------------|------|
 | `@hquant/exchange-adapter` | [pkg/exchange-adapter](../../pkg/exchange-adapter) | 交易所适配器（OKX/Binance/Bybit） |
-| `@hquant/risk-model` | [pkg/risk](../../pkg/risk) | 风控引擎 |
-| - | [apps/exchange-sync](../exchange-sync) | 市场数据服务（K线、订单簿） |
-| - | `github.com/nats-io/nats.go` | NATS 消息队列（实时推送市场数据） |
-| - | `github.com/robfig/cron/v3` | 定时任务（定期同步交易对信息） |
+| `@hquant/risk-model` | [pkg/risk](../../pkg/risk) | 风控引擎（可选：需协议扩展/明确边界后启用） |
+| - | [apps/exchange-sync](../exchange-sync) | 市场数据服务（可选：本服务可作为网关/缓存） |
+| - | `github.com/nats-io/nats.go` | 可选：市场数据订阅缓存 |
+| - | `github.com/robfig/cron/v3` | 可选：定期同步交易对信息 |
 
 ---
 
@@ -114,7 +114,7 @@ apps/exchange-adapter-service/
 │   │   └── interceptors/           # 拦截器（日志/鉴权/恢复）
 │   ├── api/                        # HTTP API（健康检查/管理）
 │   │   ├── server.go               # Echo server
-│   │   ├── handler_market.go       # 市场数据(保持现状：/Users/hubo/Work/Coding/MyProject/auto-trader/apps/exchange-sync/internal/api/handler.go)
+│   │   ├── handler_market.go       # 市场数据（参考 ../exchange-sync/internal/api/handler.go）
 │   │   └── handler.go              # /health, /ready, /version
 │   ├── session/                    # 会话管理
 │   │   ├── store.go                # Token → AccountConfig 映射
@@ -123,16 +123,16 @@ apps/exchange-adapter-service/
 │   │   ├── manager.go              # ExchangeManager: 管理 adapter 实例
 │   │   ├── service.go              # 下单/撤单业务逻辑
 │   │   └── stream.go               # 订单更新流推送
-│   ├── market/                     # 市场数据层（集成 exchange-sync）
+│   ├── market/                     # 市场数据层（可选：集成 exchange-sync）
 │   │   ├── client.go               # Exchange Sync HTTP Client
 │   │   ├── nats_subscriber.go      # NATS 订阅器（实时数据）
 │   │   └── service.go              # K线/订单簿查询服务
-│   ├── risk/                       # 风控集成
+│   ├── risk/                       # 风控（可选）
 │   │   └── evaluator.go            # 调用 pkg/risk 评估
 │   └── service/                    # 后台服务
 │       └── cron_service.go         # Cron 定时任务
 ├── proto/
-│   └── exchange.proto              # gRPC 接口定义
+│   └── exchange.proto              # gRPC 接口定义（来源：packages/contracts/proto/exchange.proto）
 ├── gen/                            # protoc 生成代码
 ├── config.yaml                     # 配置文件
 ├── Makefile
@@ -141,134 +141,67 @@ apps/exchange-adapter-service/
 
 ---
 
-## 4. 核心接口设计（gRPC）
+## 4. gRPC 接口（以 contracts 为准）
 
-### 4.1 会话管理
+本服务严格实现仓库内协议文件：
+- [packages/contracts/proto/exchange.proto](../../packages/contracts/proto/exchange.proto)（`exchange.ExchangeService`）
 
-```protobuf
-service ExchangeAdapter {
-  // 初始化账户会话
-  rpc InitAccount(InitAccountRequest) returns (InitAccountResponse);
+### 4.1 RPC 列表（MVP）
 
-  // 验证 Token
-  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+| RPC | 说明 | 备注 |
+|-----|------|------|
+| `InitAccount` | 初始化账户并返回 `token` | `demonet` 统一表示测试网/模拟盘（交易所落地方式不同） |
+| `ValidateToken` | 校验 `token` 是否有效 | 返回 `valid=false` 即视为需要重新 `InitAccount` |
+| `InvalidateToken` | 注销 `token` | 需要清理 session / adapter / WS 订阅 |
+| `PlaceOrder` | 下单 | 使用 `pkg/exchange-adapter` 完成参数校验/精度格式化/余额校验 |
+| `PlaceOrders` | 批量下单 | 按单笔返回成功/失败，统计 `success_count/failed_count` |
+| `CancelOrder` | 撤单 | **协议缺少 `symbol/trade_type`**，需要订单定位策略（见 4.4） |
+| `GetOrder` | 查询订单 | **协议缺少 `symbol/trade_type`**，需要订单定位策略（见 4.4） |
+| `GetOrders` | 查询订单列表 | MVP 仅保证“未成交订单”（Open Orders）；历史订单需扩展协议/实现 |
+| `GetPositions` | 获取持仓 | `pkg/exchange-adapter` 支持 `tradeType=nil` 拉取 futures/delivery 汇总 |
+| `SyncPositions` | 同步持仓 | MVP 可等价实现为 `GetPositions` + `success=true` |
+| `GetBalance` | 获取余额 | `trade_type` 必填（协议已带） |
+| `GetPrice` | 获取行情 | 直接调用 `pkg/exchange-adapter` 的 public API 即可 |
+| `SetLeverage` | 设置杠杆 | spot 不支持；futures/delivery 支持（依交易所/仓位模式而定） |
+| `SubscribeOrders` | 订单更新流 | 基于 `WsUserDataAdapter` 转发订单更新事件 |
 
-  // 注销 Token
-  rpc InvalidateToken(InvalidateTokenRequest) returns (Empty);
-}
+### 4.2 字段与语义约定
 
-message InitAccountRequest {
-  string exchange = 1;           // okx | binance | bybit
-  string api_key = 2;
-  string api_secret = 3;
-  string passphrase = 4;         // OKX 需要
-  bool testnet = 5;
-  string risk_config_json = 7;   // 可选，风控配置
-}
+- `token`：会话标识，对应一组 API 凭证（仅内存保存）。MVP 支持 TTL；服务重启后 token 失效（上游需重新 `InitAccount`）。
+- `InitAccountRequest.name`：仅用于上游标记（日志/排查），不参与鉴权。
+- `demonet`：统一表示测试网/模拟盘开关；Binance 对应 testnet，OKX 对应 demo trading（由 `pkg/exchange-adapter` 适配）。
+- 时间戳字段（`created_at/updated_at/filled_at/update_time`）：统一使用 **毫秒**（Unix epoch ms）。
+- `Order.id` / `CancelOrderRequest.order_id`：MVP 约定 `Order.id == Order.exchange_order_id`，并把 `exchange_order_id` 同步填充，避免上游歧义。
+- `client_order_id`：上游可不传；若为空由适配器生成；所有响应尽量回填（用于幂等/排查）。
 
-message InitAccountResponse {
-  string token = 1;              // 会话 token
-  int64 expires_at = 2;          // 过期时间戳（秒）
-}
-```
+### 4.3 Adapter 调用映射（核心逻辑）
 
-### 4.2 交易执行
+- `InitAccount` → 创建 session（token→AccountConfig）→（可选）预热 `TradeAdapter.Init()` → 返回 token
+- `PlaceOrder/PlaceOrders` → `TradeAdapter.PlaceOrder(s)` → 将 `core.Order` 映射为 proto `Order` → 写入 `OrderIndex`
+- `GetBalance` → `TradeAdapter.GetBalance(tradeType)`
+- `GetPositions/SyncPositions` → `TradeAdapter.GetPositions(symbol?, tradeType=nil)`（必要时按请求过滤）
+- `GetPrice` → `TradeAdapter.GetPrice(symbol, tradeType)`（底层走 public API）
+- `SetLeverage` → `TradeAdapter.SetLeverage(symbol, leverage, tradeType, positionSide?)`
+- `SubscribeOrders` → `WsUserDataAdapter.Subscribe(tradeType)` → 仅转发 `WsEventOrder` 到 gRPC stream
 
-```protobuf
-service ExchangeAdapter {
-  // 下单
-  rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
+### 4.4 订单定位（解决 `symbol/trade_type` 缺失）
 
-  // 批量下单
-  rpc PlaceOrders(PlaceOrdersRequest) returns (PlaceOrdersResponse);
+协议 `CancelOrder/GetOrder` 只给 `order_id`，但交易所 API 通常需要 `symbol`（以及 `trade_type`）。MVP 需要在服务端补一个“订单定位层”：
 
-  // 撤单
-  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+1. **OrderIndex（内存）**：按 `token` 维度维护 `orderID/clientOrderID -> (symbol, tradeType)`，来源包括：
+   - `PlaceOrder/PlaceOrders` 的返回
+   - `SubscribeOrders` 的 WS 订单更新流（持续修正）
+2. **兜底扫描 Open Orders**：若索引缺失，则调用 `TradeAdapter.GetOpenOrders(symbol=nil, tradeType=nil)` 拉取所有未成交订单，按 `order_id` 同时匹配 `order.OrderID` 与 `order.ClientOrderID`，定位到 `(symbol, tradeType)` 后再执行撤单/查询。
+3. **边界与限制**：对“已成交/已取消/历史订单”，在没有 `symbol/trade_type` 的前提下无法保证查询；建议协议补字段（见开放问题）。
 
-  // 查询订单
-  rpc GetOrder(GetOrderRequest) returns (Order);
+### 4.5 错误返回与错误码
 
-  // 查询未成交订单
-  rpc GetOpenOrders(GetOpenOrdersRequest) returns (GetOpenOrdersResponse);
-
-  // 订阅订单更新（流式推送）
-  rpc SubscribeOrders(SubscribeOrdersRequest) returns (stream OrderUpdate);
-}
-
-message PlaceOrderRequest {
-  string token = 1;
-  string symbol = 2;              // BTC-USDT
-  TradeType trade_type = 3;       // SPOT | FUTURES
-  Side side = 4;                  // BUY | SELL
-  OrderType order_type = 5;       // MARKET | LIMIT | STOP
-  string quantity = 6;            // 数量（字符串避免精度问题）
-  string price = 7;               // 价格（LIMIT 必填）
-  string client_order_id = 8;     // 客户端订单ID（可选）
-}
-
-message PlaceOrderResponse {
-  string order_id = 1;            // 交易所订单ID
-  string client_order_id = 2;     // 客户端订单ID
-  OrderStatus status = 3;         // 订单状态
-  string raw_response = 4;        // 原始响应（JSON）
-}
-```
-
-### 4.3 市场数据
-
-```protobuf
-service ExchangeAdapter {
-  // 获取历史 K 线
-  rpc GetCandles(GetCandlesRequest) returns (GetCandlesResponse);
-
-  // 获取当前 K 线
-  rpc GetCurrentCandle(GetCurrentCandleRequest) returns (Candle);
-
-  // 获取订单簿
-  rpc GetOrderBook(GetOrderBookRequest) returns (OrderBook);
-
-  // 获取价格
-  rpc GetPrice(GetPriceRequest) returns (GetPriceResponse);
-
-  // 获取交易对信息
-  rpc GetSymbolInfo(GetSymbolInfoRequest) returns (SymbolInfo);
-}
-
-message GetCandlesRequest {
-  string exchange = 1;
-  string symbol = 2;
-  TradeType trade_type = 3;
-  string period = 4;              // 15m | 4h | 1d
-  int32 limit = 5;
-  int64 start_time = 6;           // 可选
-  int64 end_time = 7;             // 可选
-}
-
-message Candle {
-  int64 timestamp = 1;
-  double open = 2;
-  double high = 3;
-  double low = 4;
-  double close = 5;
-  double volume = 6;
-  double buy_volume = 7;
-}
-```
-
-### 4.4 账户查询
-
-```protobuf
-service ExchangeAdapter {
-  // 查询余额
-  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
-
-  // 查询持仓
-  rpc GetPositions(GetPositionsRequest) returns (GetPositionsResponse);
-
-  // 设置杠杆
-  rpc SetLeverage(SetLeverageRequest) returns (SetLeverageResponse);
-}
-```
+- **有 `Error` 字段的响应**：业务错误优先填充 `error.code/error.message`，并设置 `success=false`（如 `PlaceOrderResponse`）。
+- **无 `Error` 字段的响应**（如 `GetOrdersResponse/GetPositionsResponse`）：使用 gRPC status code 返回（如 `InvalidArgument/Unauthenticated`），避免静默吞错。
+- `error.code` 建议复用 `pkg/exchange-adapter/core/error_codes.go`，并补充服务级错误：
+  - `TOKEN_NOT_FOUND` / `TOKEN_EXPIRED`
+  - `UNSUPPORTED_EXCHANGE` / `UNSUPPORTED_ORDER_LOOKUP`
+  - `INTERNAL_ERROR`
 
 ---
 
@@ -289,41 +222,37 @@ service ExchangeAdapter {
  │                    │──Create Adapter──────┼────────────────────────→│
  │                    │  (lazy or eager)     │                         │
  │                    │                      │                         │
- │←──Token+Expires─── │                      │                         │
+ │←──Token─────────── │                      │                         │
 ```
 
 **实现要点**:
-- Token 生成：`HMAC(api_key + timestamp, secret_key)` 或随机 UUID
-- TTL：默认 24 小时，可配置
-- Adapter 创建：可懒加载（首次下单时创建）或预热（InitAccount 时创建）
+- Token 生成：使用 `crypto/rand` 生成随机 token（base64url），避免从 `api_key` 派生；token 仅用于会话索引。
+- TTL：默认 24 小时（可配置）。协议不返回 `expires_at`，上游通过 `ValidateToken` 发现失效后重新 `InitAccount`。
+- Adapter 创建：推荐在 `InitAccount` 时创建并做一次轻量连通性校验（如 `GetBalance`），失败直接返回 `success=false`；也可配置为懒加载。
 
 ### 5.2 PlaceOrder（下单）
 
 ```
-上游              Service           SessionStore      pkg/risk      pkg/exchange-adapter
- │                  │                   │                │                 │
- │──PlaceOrder────→ │                   │                │                 │
- │  (token+order)   │                   │                │                 │
- │                  │──Get Config──────→│                │                 │
- │                  │←─AccountConfig────│                │                 │
- │                  │                   │                │                 │
- │                  │──Risk Check───────┼───────────────→│                 │
- │                  │  (optional)       │                │                 │
- │                  │←─Pass/Reject──────┼────────────────│                 │
- │                  │                   │                │                 │
- │                  │──PlaceOrder───────┼────────────────┼────────────────→│
- │                  │                   │                │                 │
- │                  │──Ensure WS────────┼────────────────┼────────────────→│
- │                  │  Subscribe        │                │                 │
- │                  │                   │                │                 │
- │←─OrderResponse── │                   │                │                 │
+上游              Service           SessionStore        ExchangeManager      pkg/exchange-adapter
+ │                  │                   │                     │                 │
+ │──PlaceOrder────→ │                   │                     │                 │
+ │  (token+order)   │                   │                     │                 │
+ │                  │──Get Session─────→│                     │                 │
+ │                  │←─AccountConfig────│                     │                 │
+ │                  │──Get Adapter──────┼────────────────────→│                 │
+ │                  │                   │                     │──PlaceOrder────→│
+ │                  │                   │                     │←─core.Order─────│
+ │                  │──Update OrderIndex│                     │                 │
+ │                  │──Ensure WS Subscribe────────────────────→│                 │
+ │←─PlaceOrderResp──│                   │                     │                 │
 ```
 
 **实现要点**:
 - Token 验证：检查是否存在、是否过期
-- 风控（可选）：获取 balance/positions → 调用 `pkg/risk.Evaluate`
-- WS 订阅：确保对应 tradeType 的 WsUserDataAdapter 已订阅
-- 返回：exchangeOrderId + clientOrderId + status
+- 下单校验：依赖 `pkg/exchange-adapter` 内置校验（交易对可用性、精度、余额/持仓、reduceOnly 等）；高级风控建议由上游执行。
+- 订单定位：将返回的 `order_id/client_order_id` 写入 `OrderIndex`，用于后续 `CancelOrder/GetOrder`。
+- WS 订阅：确保对应 `trade_type` 的 `WsUserDataAdapter` 已订阅，便于 `SubscribeOrders` 推送更新。
+- 返回：`PlaceOrderResponse.success` + `Order`（含 `id/exchange_order_id/client_order_id/...`）
 
 ### 5.3 SubscribeOrders（订单更新流）
 
@@ -350,28 +279,32 @@ service ExchangeAdapter {
 - 过滤推送：只推送匹配 token 的订单更新
 - 重连处理：WS 断开自动重连，上游无感知
 
-### 5.4 GetCandles（获取K线）
+### 5.4 CancelOrder / GetOrder（撤单/查询）
 
 ```
-上游              Service         ExchangeSyncClient      exchange-sync
- │                  │                   │                     │
- │──GetCandles────→ │                   │                     │
- │                  │──HTTP Request────→│                     │
- │                  │                   │──GET /api/candles─→│
- │                  │                   │                     │
- │                  │                   │←─Response───────────│
- │                  │←─Candles──────────│                     │
- │←─Response─────── │                   │                     │
+上游              Service           SessionStore        OrderIndex        pkg/exchange-adapter
+ │                  │                   │                     │                 │
+ │──CancelOrder───→ │                   │                     │                 │
+ │ (token,order_id) │                   │                     │                 │
+ │                  │──Get Session─────→│                     │                 │
+ │                  │←─AccountConfig────│                     │                 │
+ │                  │──Resolve Order────┼────────────────────→│                 │
+ │                  │  (id→symbol/tt)   │                     │                 │
+ │                  │──If miss: Scan OpenOrders───────────────────────────────→│
+ │                  │──CancelOrder/GetOrder──────────────────────────────────→│
+ │←─Response────────│                   │                     │                 │
 ```
 
 **实现要点**:
-- HTTP Client：调用 exchange-sync 的 REST API
-- 数据转换：exchange-sync 响应 → gRPC Candle 消息
-- 错误处理：exchange-sync 不可用时返回合适的错误码
+- 优先使用 `OrderIndex`（由 `PlaceOrder`/WS 更新维护）定位 `symbol/trade_type`；缺失时兜底扫描 `GetOpenOrders(nil, nil)`。
+- 若仍无法定位，则返回 `UNSUPPORTED_ORDER_LOOKUP`（或 gRPC `NotFound`/`FailedPrecondition`），提示上游补齐上下文或重新初始化。
+- 建议协议为 `CancelOrder/GetOrder` 补充 `symbol/trade_type`（见开放问题），从根源解决可靠性问题。
 
 ---
 
-## 6. 集成 Exchange Sync
+## 6. 集成 Exchange Sync（可选：市场数据网关/缓存）
+
+> 说明：`ExchangeService` gRPC 协议目前只包含 `GetPrice`；策略侧的 K 线/订单簿等实时数据由上游直接通过 NATS/HTTP 使用 `apps/exchange-sync`。本节仅描述“需要在本服务暴露市场数据 HTTP/管理接口或做本地缓存”时的集成方案。
 
 ### 6.1 集成方式
 
@@ -388,68 +321,64 @@ service ExchangeAdapter {
 
 ### 6.2 配置
 
-```yaml
-# config.yaml
-server:
-  grpc_port: 9001
-  http_port: 9002
-
-exchange_sync:
-  enabled: true
-  base_url: "http://localhost:9003"
-  timeout_seconds: 10
-
-session:
-  token_ttl_hours: 24
-  cleanup_interval_minutes: 60
-
-risk:
-  enabled: true
-  default_config: |
-    {
-      "max_position_size": 100000,
-      "max_daily_loss": 5000
-    }
-```
+配置项见第 11 章：`exchange_sync` / `nats` / `cron`。
 
 ### 6.3 市场数据服务实现
 
 ```go
 // internal/market/client.go
+type SuccessResponse[T any] struct {
+    Code    int    `json:"code"`
+    Status  string `json:"status"`
+    Message string `json:"message"`
+    Data    T      `json:"data"`
+}
+
 type ExchangeSyncClient struct {
     baseURL string
     client  *http.Client
 }
 
-func (c *ExchangeSyncClient) GetCandles(ctx context.Context, req *GetCandlesRequest) ([]Candle, error) {
-    url := fmt.Sprintf("%s/api/candles?exchange=%s&symbol=%s&period=%s&limit=%d",
-        c.baseURL, req.Exchange, req.Symbol, req.Period, req.Limit)
+func (c *ExchangeSyncClient) GetCandles(
+    ctx context.Context,
+    exchange string,
+    symbol string,
+    period string,
+    limit int,
+    startTime int64,
+    endTime int64,
+) ([]marketdata.NormalizedCandle, error) {
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/candles", nil)
+    if err != nil {
+        return nil, err
+    }
 
-    resp, err := c.client.Get(url)
+    q := req.URL.Query()
+    q.Set("exchange", exchange)
+    q.Set("symbol", symbol)
+    q.Set("period", period)
+    q.Set("limit", strconv.Itoa(limit))
+    q.Set("start_time", strconv.FormatInt(startTime, 10))
+    q.Set("end_time", strconv.FormatInt(endTime, 10))
+    req.URL.RawQuery = q.Encode()
+
+    resp, err := c.client.Do(req)
     if err != nil {
         return nil, err
     }
     defer resp.Body.Close()
 
-    var result struct {
-        Code int      `json:"code"`
-        Data []Candle `json:"data"`
-    }
-
-    if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+    var out SuccessResponse[[]marketdata.NormalizedCandle]
+    if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
         return nil, err
     }
-
-    return result.Data, nil
+    if out.Code != 0 {
+        return nil, fmt.Errorf("exchange-sync error: %s", out.Message)
+    }
+    return out.Data, nil
 }
 
-func (c *ExchangeSyncClient) GetOrderBook(ctx context.Context, req *GetOrderBookRequest) (*OrderBook, error) {
-    // 类似实现
-}
-
-func (c *ExchangeSyncClient) GetSymbolInfo(ctx context.Context, exchange, symbol string) (*SymbolInfo, error) {
-    // 类似实现
-}
+// /api/orderbook, /api/candle/current, /api/symbols 等接口同理封装
 ```
 
 ### 6.4 NATS 订阅实时数据
@@ -471,8 +400,8 @@ type NATSSubscriber struct {
     prefix string
 
     // 内存缓存最新数据
-    candleCache    map[string]*Candle    // key: exchange.symbol.period
-    orderBookCache map[string]*OrderBook // key: exchange.symbol
+    candleCache    map[string]*marketdata.NormalizedCandle // key: exchange.symbol.period
+    orderBookCache map[string]*marketdata.OrderBook        // key: exchange.symbol
     mu             sync.RWMutex
 }
 
@@ -495,8 +424,8 @@ func NewNATSSubscriber(cfg *NATSConfig) (*NATSSubscriber, error) {
     return &NATSSubscriber{
         conn:           conn,
         prefix:         cfg.SubjectPrefix,
-        candleCache:    make(map[string]*Candle),
-        orderBookCache: make(map[string]*OrderBook),
+        candleCache:    make(map[string]*marketdata.NormalizedCandle),
+        orderBookCache: make(map[string]*marketdata.OrderBook),
     }, nil
 }
 
@@ -506,7 +435,7 @@ func (s *NATSSubscriber) SubscribeCandles(exchange, tradeType, symbol, period st
         s.prefix, exchange, tradeType, symbol, period)
 
     _, err := s.conn.Subscribe(subject, func(msg *nats.Msg) {
-        var candle Candle
+        var candle marketdata.NormalizedCandle
         if err := json.Unmarshal(msg.Data, &candle); err != nil {
             log.Error().Err(err).Msg("Failed to unmarshal candle")
             return
@@ -523,7 +452,7 @@ func (s *NATSSubscriber) SubscribeCandles(exchange, tradeType, symbol, period st
 }
 
 // GetLatestCandle 获取最新 K 线（从缓存）
-func (s *NATSSubscriber) GetLatestCandle(exchange, symbol, period string) (*Candle, bool) {
+func (s *NATSSubscriber) GetLatestCandle(exchange, symbol, period string) (*marketdata.NormalizedCandle, bool) {
     cacheKey := fmt.Sprintf("%s.%s.%s", exchange, symbol, period)
     s.mu.RLock()
     defer s.mu.RUnlock()
@@ -538,7 +467,7 @@ func (s *NATSSubscriber) SubscribeOrderBook(exchange, tradeType, symbol string) 
         s.prefix, exchange, tradeType, symbol)
 
     _, err := s.conn.Subscribe(subject, func(msg *nats.Msg) {
-        var ob OrderBook
+        var ob marketdata.OrderBook
         if err := json.Unmarshal(msg.Data, &ob); err != nil {
             log.Error().Err(err).Msg("Failed to unmarshal orderbook")
             return
@@ -563,9 +492,8 @@ func (s *NATSSubscriber) Close() {
 ```
 
 **使用场景**:
-1. **低延迟查询**: GetCurrentCandle 可直接从 NATS 缓存返回最新数据
-2. **实时推送**: 将 NATS 数据转发到 gRPC stream
-3. **降级策略**: NATS 不可用时降级到 HTTP API
+1. **低延迟查询**: 市场数据 HTTP handler 可直接从 NATS 缓存返回最新数据（如当前 K 线/订单簿）。
+2. **降级策略**: 缓存未命中或 NATS 不可用时降级到 exchange-sync HTTP API。
 
 ### 6.5 Cron 定时同步
 
@@ -639,7 +567,7 @@ func (s *CronService) Stop() {
 ```yaml
 cron:
   enabled: true
-  # Cron 表达式: "秒 分 时 日 月 星期"
+  # Cron 表达式: "分 时 日 月 星期"（robfig/cron v3 默认 5 段；如需秒级调度需 WithSeconds）
   symbols_sync: "0 0 * * *"  # 每天凌晨 0 点
 ```
 
@@ -659,12 +587,13 @@ cron:
 // internal/session/store.go
 type AccountConfig struct {
     Exchange   string
+    Name       string
     APIKey     string
     APISecret  string
     Passphrase string
-    Testnet    bool
+    Demonet    bool // 测试网/模拟盘
     Proxy      string
-    RiskConfig string // JSON
+    RiskConfig string // JSON（可选：需协议扩展后启用）
     CreatedAt  time.Time
     ExpiresAt  time.Time
 }
@@ -675,8 +604,11 @@ type SessionStore struct {
     ttl      time.Duration
 }
 
-func (s *SessionStore) Create(config *AccountConfig) (token string, err error) {
-    token = generateToken(config.APIKey)
+func (s *SessionStore) Create(config *AccountConfig) (string, error) {
+    token, err := generateToken()
+    if err != nil {
+        return "", err
+    }
     config.CreatedAt = time.Now()
     config.ExpiresAt = config.CreatedAt.Add(s.ttl)
 
@@ -722,159 +654,108 @@ func (s *SessionStore) StartCleanup(interval time.Duration) {
 
 ### 7.2 Token 生成策略
 
-```go
-func generateToken(apiKey string) string {
-    // 方案1: HMAC
-    h := hmac.New(sha256.New, []byte(secretKey))
-    h.Write([]byte(apiKey + time.Now().String()))
-    return base64.URLEncoding.EncodeToString(h.Sum(nil))
+建议使用强随机 token（与 `api_key` 无关），避免可预测/可关联：
 
-    // 方案2: UUID（简单）
-    return uuid.New().String()
+```go
+func generateToken() (string, error) {
+    b := make([]byte, 32)
+    if _, err := rand.Read(b); err != nil {
+        return "", err
+    }
+    return base64.RawURLEncoding.EncodeToString(b), nil
 }
 ```
 
 ---
 
-## 8. 风控集成
+## 8. 风控（建议放上游）
 
-### 8.1 风控调用流程
+当前 `ExchangeService` 协议未携带 session 级风控配置（无 `risk_config_json`），因此本服务 MVP 不做“策略/账户级风控决策”，只依赖两层保护：
 
-```go
-// internal/risk/evaluator.go
-type RiskEvaluator struct {
-    engine *risk.Engine
-}
+1. `pkg/exchange-adapter` 的基础校验：参数合法性、交易对状态、精度格式化、余额/持仓校验、reduceOnly 约束等。
+2. 上游（`trader-service`）在下单前执行更完整的风险控制（账户权益、日内损失、仓位限制、黑白名单等）。
 
-func (r *RiskEvaluator) EvaluateOrder(
-    ctx context.Context,
-    order *PlaceOrderRequest,
-    config *risk.Config,
-    account *AccountSnapshot,
-    positions []PositionSnapshot,
-) error {
-    riskCtx := &risk.RiskContext{
-        Account:   account,
-        Positions: positions,
-        Order: &risk.OrderSnapshot{
-            Symbol:   order.Symbol,
-            Side:     order.Side,
-            Quantity: order.Quantity,
-            Price:    order.Price,
-        },
-    }
-
-    result := r.engine.Evaluate(riskCtx, config)
-    if result.Blocked {
-        return fmt.Errorf("risk blocked: %s", result.Reason)
-    }
-
-    return nil
-}
-```
-
-### 8.2 风控配置
-
-```go
-// 上游传入的风控配置示例
-{
-  "account_rules": {
-    "max_equity_loss_pct": 0.05,      // 最大权益损失 5%
-    "max_margin_usage_pct": 0.8       // 最大保证金使用率 80%
-  },
-  "position_rules": {
-    "max_position_value": 100000,     // 单仓位最大价值
-    "max_leverage": 10                // 最大杠杆
-  }
-}
-```
+**可选扩展（后续）**:
+- 协议扩展：为 `InitAccountRequest` 增加 `risk_config_json`（或 `risk_config_id`），把风控策略与 token 绑定，并在 `PlaceOrder` 前强制评估。
+- 服务级兜底：提供“全局硬风控”配置（对所有账户统一阈值），用于防误操作；需明确其与上游风控的职责边界。
 
 ---
 
 ## 9. 实施路线图
 
-### 第一阶段：基础框架（2-3 天）
+### 第一阶段：服务骨架 + contracts 对齐（1-2 天）
 
-**目标**: 搭建服务骨架，实现会话管理
+**目标**: 服务可运行，gRPC 协议与 `ExchangeService` 对齐
 
-- [ ] 创建项目结构
-- [ ] 配置管理（Viper）
-- [ ] 日志初始化（zap）
-- [ ] HTTP Server（Echo：/health, /ready）
-- [ ] gRPC Server 启动
-- [ ] SessionStore 实现（内存 + TTL + 清理）
-- [ ] InitAccount / ValidateToken / InvalidateToken RPC
+- [ ] 创建项目结构（`cmd/`、`internal/`、`gen/`）
+- [ ] 引入并生成 [packages/contracts/proto/exchange.proto](../../packages/contracts/proto/exchange.proto) 的 Go 代码
+- [ ] gRPC Server 启动（含 reflection、grpc health）
+- [ ] HTTP Server（可选：/health, /ready, /version）
+- [ ] 配置加载（YAML/ENV）与基础日志
 
 **验收标准**:
-- `curl http://localhost:9002/health` 返回成功
-- gRPC InitAccount 可正常创建 token
-- Token 过期后自动失效
+- gRPC health 可用
+- `ValidateToken` 可被上游调用（无 token 返回 `valid=false`）
 
-### 第二阶段：交易执行（3-4 天）
+### 第二阶段：会话与适配器管理（1-2 天）
 
-**目标**: 实现核心交易能力
+**目标**: 完成 token 生命周期与 adapter 生命周期
 
-- [ ] ExchangeManager：管理 TradeAdapter 实例
-- [ ] PlaceOrder RPC 实现
-- [ ] CancelOrder RPC 实现
-- [ ] GetOrder / GetOpenOrders RPC 实现
-- [ ] WsUserDataAdapter 集成
-- [ ] SubscribeOrders 流式推送
+- [ ] SessionStore（内存 + TTL + 清理）
+- [ ] ExchangeManager：按 token 缓存 `TradeAdapter` / `WsUserDataAdapter`
+- [ ] `InitAccount / ValidateToken / InvalidateToken` 完整实现（可配置是否预热 adapter）
 
 **验收标准**:
-- 可以通过 gRPC 成功下单
-- 订单状态变化可通过 stream 实时推送
-- 支持多交易所（OKX/Binance）
+- `InitAccount` 返回 token；`InvalidateToken` 后 `ValidateToken.valid=false`
+- 日志中不出现明文 `api_key/api_secret/passphrase`
 
-### 第三阶段：市场数据（2-3 天）
+### 第三阶段：交易与账户 RPC（2-4 天）
 
-**目标**: 集成 exchange-sync 市场数据
+**目标**: 覆盖主要交易/账户能力（与 proto 一致）
 
-- [ ] ExchangeSyncClient HTTP 客户端
-- [ ] NATS 订阅器实现（订阅实时 K 线和订单簿）
-- [ ] Cron 定时任务服务（定期同步交易对信息）
-- [ ] GetCandles RPC 实现
-- [ ] GetCurrentCandle RPC 实现（优先从 NATS 缓存获取）
-- [ ] GetOrderBook RPC 实现
-- [ ] GetPrice RPC 实现
-- [ ] GetSymbolInfo RPC 实现
+- [ ] `PlaceOrder` / `PlaceOrders`（含 enum 映射、字段映射、`OrderIndex` 写入）
+- [ ] `GetBalance` / `GetPositions` / `SyncPositions`
+- [ ] `SetLeverage`
+- [ ] `GetPrice`
 
 **验收标准**:
-- 可以查询历史 K 线数据
-- 可以通过 NATS 订阅实时市场数据
-- Cron 任务可定期同步交易对信息
-- 可以获取订单簿和交易对信息
-- exchange-sync 服务不可用时能正确降级
+- 可通过 gRPC 正常下单/查余额/查持仓/设置杠杆/获取价格（至少 OKX/Binance）
 
-### 第四阶段：风控集成（1-2 天）
+### 第四阶段：订单查询与撤单（1-2 天）
 
-**目标**: 集成风控能力（可选）
+**目标**: 在“缺少 symbol/trade_type”的协议下做到可用
 
-- [ ] RiskEvaluator 实现
-- [ ] 下单前风控检查
-- [ ] 风控配置解析
-- [ ] 风控错误码映射
+- [ ] `OrderIndex`（`orderID/clientOrderID -> (symbol, tradeType)`）
+- [ ] `GetOrders`（MVP：Open Orders，支持 `symbol/status/limit/offset` 的最小语义）
+- [ ] `GetOrder` / `CancelOrder`：OrderIndex 优先 + Open Orders 兜底扫描
 
 **验收标准**:
-- 下单前可执行风控检查
-- 风控拒绝订单时返回明确错误
-- 可通过配置开关风控
+- 仅凭 `order_id` 能撤销未成交订单；无法定位时返回明确错误码
+- 文档明确 `GetOrders`/历史订单的边界
 
-### 第五阶段：稳定性与可观测性（2-3 天）
+### 第五阶段：订单更新流（1-2 天）
 
-**目标**: 生产就绪
+**目标**: `SubscribeOrders` 稳定可用
 
-- [ ] gRPC Interceptors（日志/恢复/超时）
-- [ ] 优雅退出
-- [ ] 指标采集（Prometheus）
-- [ ] 单元测试
-- [ ] 集成测试
-- [ ] 压力测试
+- [ ] `WsUserDataAdapter` 管理（连接、订阅、重连）
+- [ ] gRPC stream 转发：按 `token + trade_type` 过滤推送
+- [ ] 资源回收：stream 结束后清理订阅/监听器（无订阅者可退订）
 
 **验收标准**:
-- 进程退出时优雅关闭所有连接
-- 所有 RPC 调用有日志和指标
-- 测试覆盖率 > 60%
+- 订单状态变化能实时推送；WS 断线可自动恢复
+
+### 第六阶段：稳定性与可观测性（1-2 天）
+
+**目标**: 生产就绪的基础能力
+
+- [ ] gRPC Interceptors（日志/恢复/超时/trace-id）
+- [ ] 优雅退出（关闭 gRPC、WS、后台 goroutine）
+- [ ] 指标采集（Prometheus）与 pprof（可选）
+- [ ] 单元测试（mappers/session/orderIndex）+（可选）集成测试
+
+**验收标准**:
+- 进程退出时无资源泄露
+- 关键 RPC 有可观测指标与结构化日志
 
 ---
 
@@ -886,8 +767,8 @@ func (r *RiskEvaluator) EvaluateOrder(
 | gRPC | google.golang.org/grpc | 标准库 |
 | 配置 | Viper | 支持 YAML/ENV |
 | 日志 | Zap | 高性能结构化日志 |
-| 消息队列 | NATS | 实时推送市场数据（K线、订单簿） |
-| 定时任务 | Cron v3 | 定期同步交易对信息 |
+| 消息队列 | NATS | 可选：市场数据网关/缓存（策略侧建议直接用 exchange-sync） |
+| 定时任务 | Cron v3 | 可选：例如定期同步交易对信息 |
 | 指标 | Prometheus | 标准监控方案 |
 | 测试 | testify | 断言与 mock |
 
@@ -901,15 +782,15 @@ server:
   grpc_port: 9001
   http_port: 9002
 
-# Exchange Sync 集成
+# Exchange Sync 集成（可选：仅用于市场数据 HTTP/缓存网关）
 exchange_sync:
-  enabled: true
+  enabled: false
   base_url: "http://localhost:9003"
   timeout_seconds: 10
 
-# NATS 消息队列
+# NATS 消息队列（可选：仅用于市场数据订阅缓存；策略侧建议直接订阅 exchange-sync）
 nats:
-  enabled: true
+  enabled: false
   url: "nats://localhost:15002"
   username: "exchange_adapter"
   password: "123456"
@@ -919,9 +800,9 @@ nats:
   reconnect_wait_ms: 2000
   max_reconnects: -1  # -1 表示无限重连
 
-# 定时任务
+# 定时任务（可选：例如定期同步交易对信息）
 cron:
-  enabled: true
+  enabled: false
   # 定期同步交易对信息 (每天凌晨 0 点)
   symbols_sync: "0 0 * * *"
 
@@ -930,9 +811,9 @@ session:
   token_ttl_hours: 24
   cleanup_interval_minutes: 60
 
-# 风控
+# 风控（可选：需协议扩展/明确边界后启用）
 risk:
-  enabled: true
+  enabled: false
   default_config: |
     {
       "account_rules": {
@@ -979,7 +860,7 @@ security:
 
 ### Q4: exchange-sync 服务挂了怎么办？
 
-**A**: 市场数据查询会返回错误，但不影响交易执行。可以在上游做降级处理。
+**A**: 仅影响本服务的“可选市场数据网关/缓存”能力；核心交易执行（下单/撤单/账户查询）不依赖 exchange-sync。上游可直接通过 NATS/HTTP 使用 exchange-sync，并做降级处理。
 
 ### Q5: 如何保证订单推送的可靠性？
 
@@ -996,10 +877,11 @@ security:
 
 1. ✅ **Proto 定义来源**: 使用仓库内 [packages/contracts/proto/exchange.proto](../../packages/contracts/proto/exchange.proto)
 2. ✅ **mTLS 证书**: apps 统一使用一个证书
-3. ❓ **clientOrderId**: 上游是否需要？（答：不需要传入，但需要返回）
-4. ❓ **GetOrders 语义**: 查上游订单？还是查交易所订单？（答：查交易所）
-5. ❓ **撤单方式**: 只支持 exchangeOrderId？还是也支持 clientOrderId？
-6. ❓ **风控数据来源**: 上游提供账户权益？还是服务自行查询？
+3. ❓ **Order.id 语义**: 是否统一约定 `Order.id == exchange_order_id`，并作为 `CancelOrder/GetOrder(order_id)` 的唯一输入？
+4. ❓ **协议补字段**: `CancelOrder/GetOrder` 是否需要补充 `symbol`/`trade_type`（建议 v2，避免无法定位历史订单）？
+5. ❓ **GetOrders 语义**: MVP 仅 Open Orders 是否足够？若要支持历史订单，是否需要补 `trade_type`/时间范围等筛选条件？
+6. ❓ **撤单入参兼容**: 是否允许用 `client_order_id` 作为 `order_id` 输入（MVP 可兼容：优先按 exchangeOrderId 匹配，失败再按 clientOrderId）？
+7. ❓ **多实例部署**: token/OrderIndex 是否需要 Redis 共享（否则重启/扩缩容会丢状态）？
 
 ---
 
@@ -1008,11 +890,10 @@ security:
 ### A. 参考文档
 
 - [pkg/exchange-adapter 文档](../../pkg/exchange-adapter/doc.go)
-- [pkg/risk 文档](../../pkg/risk/types.go)
+- [pkg/risk 文档（可选）](../../pkg/risk/types.go)
 - [apps/exchange-sync README](../exchange-sync/README.md)
 - [apps/exchange-sync API 文档](../exchange-sync/docs/api-integration.md)
 
 ### B. 相关文件
 
 - [packages/contracts/proto/exchange.proto](../../packages/contracts/proto/exchange.proto)
-

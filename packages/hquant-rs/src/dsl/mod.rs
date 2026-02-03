@@ -532,9 +532,12 @@ fn compile_value(pair: pest::iterators::Pair<'_, Rule>, ctx: &mut CompileCtx<'_>
         }
         Rule::string => Ok(ValueExpr::String(parse_string(pair.as_str()))),
         Rule::series_ref => {
-            let s = pair.as_str();
+            // `series_ref` isn't atomic in the pest grammar, so when `@<period>` is omitted
+            // the implicit WHITESPACE skipping may get included in the captured span
+            // (e.g. `rsi_1h < 30` can yield `"rsi_1h "`). Trim to make variable/field lookup stable.
+            let s = pair.as_str().trim();
             let (name, period_opt) = if let Some((a, b)) = s.split_once('@') {
-                (a, Some(b))
+                (a.trim(), Some(b.trim()))
             } else {
                 (s, None)
             };

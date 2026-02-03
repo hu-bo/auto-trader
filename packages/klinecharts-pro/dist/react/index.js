@@ -1,6 +1,6 @@
 // src/react/KLineChart.tsx
 import * as React from "react";
-import { useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from "react";
+import { useRef, useEffect, useCallback, useImperativeHandle } from "react";
 
 // src/core/KLineChartPro.ts
 import { init, dispose, registerLocale, registerStyles } from "klinecharts";
@@ -700,6 +700,7 @@ var KLineChartPro = class {
     this.subPaneIds = /* @__PURE__ */ new Map();
     this.isLoading = false;
     this.actionCallbacks = /* @__PURE__ */ new Map();
+    this.markerGroupId = "trade_markers";
     const containerElement = typeof options.container === "string" ? document.getElementById(options.container) : options.container;
     if (!containerElement) {
       throw new Error("Container element not found");
@@ -768,6 +769,15 @@ var KLineChartPro = class {
     });
     this.chart.subscribeAction("onScroll", (data) => {
       this.emitAction("onScroll", data);
+    });
+    this.chart.subscribeAction("onCandleBarClick", (data) => {
+      const partial = data;
+      const event = {
+        dataIndex: typeof partial?.dataIndex === "number" ? partial.dataIndex : -1,
+        x: typeof partial?.x === "number" ? partial.x : 0,
+        data: partial?.data || null
+      };
+      this.emitAction("onBarClick", event);
     });
   }
   emitAction(type, data) {
@@ -910,6 +920,50 @@ var KLineChartPro = class {
   removeOverlay(overlayId) {
     this.chart?.removeOverlay(overlayId);
   }
+  setMarkers(markers) {
+    if (!this.chart) return;
+    this.clearMarkers();
+    markers.forEach((marker) => {
+      const defaultColor = marker.color || "#1677FF";
+      const position = marker.position || "above";
+      this.chart?.createOverlay({
+        name: "simpleAnnotation",
+        groupId: this.markerGroupId,
+        points: [{ timestamp: marker.timestamp }],
+        extendData: marker.text,
+        styles: {
+          point: {
+            color: defaultColor,
+            borderColor: defaultColor,
+            borderSize: 1,
+            radius: 3,
+            activeColor: defaultColor,
+            activeBorderColor: defaultColor,
+            activeBorderSize: 1,
+            activeRadius: 4
+          },
+          line: {
+            color: defaultColor
+          },
+          text: {
+            color: defaultColor,
+            size: 12,
+            weight: "normal",
+            paddingLeft: 4,
+            paddingRight: 4,
+            paddingTop: 2,
+            paddingBottom: 2,
+            borderRadius: 2,
+            backgroundColor: "transparent"
+          },
+          ...position === "below" ? { position: "bottom" } : {}
+        }
+      });
+    });
+  }
+  clearMarkers() {
+    this.chart?.removeOverlay({ groupId: this.markerGroupId });
+  }
   subscribeAction(type, callback) {
     if (!this.actionCallbacks.has(type)) {
       this.actionCallbacks.set(type, /* @__PURE__ */ new Set());
@@ -1013,6 +1067,8 @@ function createChartInstance(getChart, defaultSymbol, defaultPeriod) {
     removeIndicator: (paneId, name) => getChart()?.removeIndicator(paneId, name),
     createOverlay: (overlay, paneId) => getChart()?.createOverlay(overlay, paneId) || null,
     removeOverlay: (overlayId) => getChart()?.removeOverlay(overlayId),
+    setMarkers: (markers) => getChart()?.setMarkers(markers),
+    clearMarkers: () => getChart()?.clearMarkers(),
     subscribeAction: (type, callback) => getChart()?.subscribeAction(type, callback),
     unsubscribeAction: (type, callback) => getChart()?.unsubscribeAction(type, callback),
     searchSymbols: (search) => getChart()?.searchSymbols(search) || Promise.resolve([]),
@@ -1031,14 +1087,17 @@ function createChartInstance(getChart, defaultSymbol, defaultPeriod) {
 }
 
 // src/react/KLineChart.tsx
-function KLineChartInner(props, ref) {
+function KLineChart(props) {
   const {
     className,
     style,
+    markers,
+    ref,
     onReady,
     onSymbolChange,
     onPeriodChange,
     onCrosshairChange,
+    onBarClick,
     onZoom,
     onScroll,
     ...options
@@ -1062,6 +1121,12 @@ function KLineChartInner(props, ref) {
       onCrosshairChange?.(data);
     },
     [onCrosshairChange]
+  );
+  const handleBarClick = useCallback(
+    (data) => {
+      onBarClick?.(data);
+    },
+    [onBarClick]
   );
   const handleZoom = useCallback(
     (data) => {
@@ -1090,6 +1155,9 @@ function KLineChartInner(props, ref) {
     }
     if (onCrosshairChange) {
       chart.subscribeAction("onCrosshairChange", handleCrosshairChange);
+    }
+    if (onBarClick) {
+      chart.subscribeAction("onBarClick", handleBarClick);
     }
     if (onZoom) {
       chart.subscribeAction("onZoom", handleZoom);
@@ -1128,6 +1196,14 @@ function KLineChartInner(props, ref) {
     }
   }, [options.styles]);
   useEffect(() => {
+    if (!chartRef.current) return;
+    if (markers && markers.length > 0) {
+      chartRef.current.setMarkers(markers);
+    } else {
+      chartRef.current.clearMarkers();
+    }
+  }, [markers]);
+  useEffect(() => {
     const handleResize = () => {
       chartRef.current?.resize();
     };
@@ -1151,8 +1227,6 @@ function KLineChartInner(props, ref) {
     }
   });
 }
-var KLineChart = forwardRef(KLineChartInner);
-KLineChart.displayName = "KLineChart";
 
 // src/datafeed/index.ts
 var BaseDatafeed = class {

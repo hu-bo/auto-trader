@@ -57,6 +57,10 @@ function TradingChart() {
       ]}
       theme="dark"
       locale="en-US"
+      onBarClick={(e) => {
+        if (!e.data) return
+        chartRef.current?.setMarkers([{ timestamp: e.data.timestamp, text: 'LABEL' }])
+      }}
       onSymbolChange={(data) => console.log('Symbol changed:', data)}
       onPeriodChange={(data) => console.log('Period changed:', data)}
       style={{ width: '100%', height: 500 }}
@@ -192,6 +196,12 @@ interface KLineData {
   close: number
   volume?: number
   turnover?: number
+}
+
+interface BarClickEvent {
+  dataIndex: number
+  x: number
+  data: KLineData | null
 }
 ```
 

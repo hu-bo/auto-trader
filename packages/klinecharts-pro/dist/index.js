@@ -696,6 +696,7 @@ var KLineChartPro = class {
     this.subPaneIds = /* @__PURE__ */ new Map();
     this.isLoading = false;
     this.actionCallbacks = /* @__PURE__ */ new Map();
+    this.markerGroupId = "trade_markers";
     const containerElement = typeof options.container === "string" ? document.getElementById(options.container) : options.container;
     if (!containerElement) {
       throw new Error("Container element not found");
@@ -764,6 +765,15 @@ var KLineChartPro = class {
     });
     this.chart.subscribeAction("onScroll", (data) => {
       this.emitAction("onScroll", data);
+    });
+    this.chart.subscribeAction("onCandleBarClick", (data) => {
+      const partial = data;
+      const event = {
+        dataIndex: typeof partial?.dataIndex === "number" ? partial.dataIndex : -1,
+        x: typeof partial?.x === "number" ? partial.x : 0,
+        data: partial?.data || null
+      };
+      this.emitAction("onBarClick", event);
     });
   }
   emitAction(type, data) {
@@ -905,6 +915,50 @@ var KLineChartPro = class {
   }
   removeOverlay(overlayId) {
     this.chart?.removeOverlay(overlayId);
+  }
+  setMarkers(markers) {
+    if (!this.chart) return;
+    this.clearMarkers();
+    markers.forEach((marker) => {
+      const defaultColor = marker.color || "#1677FF";
+      const position = marker.position || "above";
+      this.chart?.createOverlay({
+        name: "simpleAnnotation",
+        groupId: this.markerGroupId,
+        points: [{ timestamp: marker.timestamp }],
+        extendData: marker.text,
+        styles: {
+          point: {
+            color: defaultColor,
+            borderColor: defaultColor,
+            borderSize: 1,
+            radius: 3,
+            activeColor: defaultColor,
+            activeBorderColor: defaultColor,
+            activeBorderSize: 1,
+            activeRadius: 4
+          },
+          line: {
+            color: defaultColor
+          },
+          text: {
+            color: defaultColor,
+            size: 12,
+            weight: "normal",
+            paddingLeft: 4,
+            paddingRight: 4,
+            paddingTop: 2,
+            paddingBottom: 2,
+            borderRadius: 2,
+            backgroundColor: "transparent"
+          },
+          ...position === "below" ? { position: "bottom" } : {}
+        }
+      });
+    });
+  }
+  clearMarkers() {
+    this.chart?.removeOverlay({ groupId: this.markerGroupId });
   }
   subscribeAction(type, callback) {
     if (!this.actionCallbacks.has(type)) {

@@ -9,6 +9,7 @@ import type {
   KLineChartInstance,
   ChartActionCallback,
   TradeMarker,
+  BarClickEvent,
 } from '../types'
 import type { DeepPartial, Styles } from 'klinecharts'
 
@@ -21,6 +22,7 @@ export interface KLineChartProps extends Omit<KLineChartProOptions, 'container'>
   onSymbolChange?: (data: { oldSymbol: SymbolInfo; newSymbol: SymbolInfo }) => void
   onPeriodChange?: (data: { oldPeriod: Period; newPeriod: Period }) => void
   onCrosshairChange?: (data: unknown) => void
+  onBarClick?: (data: BarClickEvent) => void
   onZoom?: (data: unknown) => void
   onScroll?: (data: unknown) => void
 }
@@ -35,6 +37,7 @@ export function KLineChart(props: KLineChartProps): React.ReactElement {
     onSymbolChange,
     onPeriodChange,
     onCrosshairChange,
+    onBarClick,
     onZoom,
     onScroll,
     ...options
@@ -62,6 +65,13 @@ export function KLineChart(props: KLineChartProps): React.ReactElement {
       onCrosshairChange?.(data)
     },
     [onCrosshairChange]
+  )
+
+  const handleBarClick = useCallback(
+    (data: BarClickEvent) => {
+      onBarClick?.(data)
+    },
+    [onBarClick]
   )
 
   const handleZoom = useCallback(
@@ -96,6 +106,9 @@ export function KLineChart(props: KLineChartProps): React.ReactElement {
     }
     if (onCrosshairChange) {
       chart.subscribeAction('onCrosshairChange', handleCrosshairChange)
+    }
+    if (onBarClick) {
+      chart.subscribeAction('onBarClick', handleBarClick as ChartActionCallback)
     }
     if (onZoom) {
       chart.subscribeAction('onZoom', handleZoom)

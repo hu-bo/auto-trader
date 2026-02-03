@@ -24,6 +24,7 @@ async def list_strategy_orders(
     user_service: UserService = Depends(get_user_service),
     strategy_order_service: StrategyOrderService = Depends(get_strategy_order_service),
 ) -> ApiResponse[list[StrategyOrderRead]]:
+
     await user_service.get_or_create(
         session, user_id=current_user.user_id, username=current_user.username
     )

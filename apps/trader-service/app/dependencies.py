@@ -27,6 +27,7 @@ def get_current_user(request: Request) -> CurrentUser:
         async def protected(user: CurrentUser = Depends(get_current_user)):
             return {"user": user.username}
     """
+
     if not hasattr(request.state, "user"):
         # 这种情况不应该发生，因为中间件应该已经设置了 user
         # 如果发生，说明路径可能没有被中间件处理
@@ -64,6 +65,7 @@ def get_current_user(request: Request) -> CurrentUser:
 
 
 async def get_db_session(request: Request) -> AsyncIterator[AsyncSession]:
+
     db: Database = request.app.state.db
     async with db.sessionmaker() as session:
         yield session
