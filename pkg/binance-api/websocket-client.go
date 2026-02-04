@@ -2,6 +2,7 @@ package binanceapi
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/url"
 	"strings"
@@ -120,6 +121,15 @@ func (c *WebsocketClient) connectInternal(wsKey websockets.WsKey, listenKey stri
 		ParallelEnabled:     true,
 		ReadMaxPayloadSize:  1024 * 1024, // 1MB
 		WriteMaxPayloadSize: 1024 * 1024,
+	}
+
+	// Parse URL to get hostname for TLS ServerName
+	parsedURL, err := url.Parse(fullURL)
+	if err == nil && parsedURL.Scheme == "wss" {
+		// Configure TLS with proper ServerName (hostname without port)
+		clientOpt.TlsConfig = &tls.Config{
+			ServerName: parsedURL.Hostname(),
+		}
 	}
 
 	if c.options.SocksProxy != "" {

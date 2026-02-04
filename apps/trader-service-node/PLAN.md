@@ -53,8 +53,8 @@
 | gRPC 客户端 | grpcio | **@midwayjs/grpc** / **@grpc/grpc-js** | Midway gRPC 组件 |
 | 消息队列 | nats-py | **nats.js** | NATS 官方 JS 客户端 |
 | Redis 客户端 | redis-py | **@midwayjs/redis** (ioredis) | Midway Redis 组件 |
-| 认证 | packages/casdoor | **@midwayjs/jwt** + **packages/casdoor** | JWT 中间件 |
-| 量化计算 | hquant-py (Rust) | **technicalindicators** / **tulind** | 技术指标库 |
+| 认证 | packages/casdoor-py | **@midwayjs/jwt** + **@hquant/casdoor** | JWT 中间件 |
+| 量化计算 | hquant-py (Rust) | **@hquant/js** (packages/hquant-js) | Rust/napi-rs，指标/聚合/回测/DSL |
 | 任务调度 | - | **@midwayjs/bull-board** (基于 Redis) | 后台任务、回测队列 |
 | 日志 | logging | **@midwayjs/logger** (winston) | Midway 内置日志系统 |
 | 监控 | prometheus-client | **@midwayjs/prometheus** | Midway Prometheus 组件 |
@@ -231,6 +231,8 @@ apps/trader-service-node/
 
 ### Phase 1: 基础设施搭建 (Week 1-2)
 
+> 本仓库为 pnpm workspace（turbo）：文中 `npm install` 可替换为 `pnpm -C apps/trader-service-node add ...`，`npm run` 可替换为 `pnpm -C apps/trader-service-node run ...`。
+
 #### 1.1 项目初始化 ✅
 - [x] 创建 Midway.js 项目（已完成，使用 CLI 创建）
 - [ ] 验证 TypeScript 配置（确保 strict mode 已启用）
@@ -372,14 +374,10 @@ apps/trader-service-node/
 ### Phase 4: 策略执行引擎 (Week 6-7)
 
 #### 4.1 技术指标计算
-- [ ] 集成技术指标库：`technicalindicators`
-- [ ] 实现指标计算器：
-  - [ ] SMA/EMA
-  - [ ] RSI
-  - [ ] MACD
-  - [ ] Bollinger Bands
-  - [ ] KDJ
-- [ ] 实现 K 线聚合逻辑（15m → 4h/1d）
+- [ ] 优先集成 `@hquant/js`（workspace：`packages/hquant-js`，Rust/napi-rs）
+- [ ] （备选）集成技术指标库：`technicalindicators`（纯 JS fallback）
+- [ ] 指标覆盖（对齐 Python 版 README-unified）：SMA/EMA、RSI、MACD、Bollinger Bands、KDJ、CCI、Williams %R、OBV、CMF、VWAP
+- [ ] 多周期聚合：使用 `KlineAggregator`（15m → 4h/1d）
 
 #### 4.2 策略执行器
 - [ ] 实现 StrategyManager（策略实例管理）
@@ -405,21 +403,24 @@ apps/trader-service-node/
 #### 5.1 信号发布模块
 - [ ] 实现信号发布器（NATS Publisher）
 - [ ] 信号持久化（存储到 PostgreSQL）
-- [ ] 信号查询接口
-- [ ] WebSocket 推送（可选，使用 `@nestjs/websockets`）
+- [ ] 创建 SignalController
+  - [ ] GET /api/v1/signals - 查询信号列表（对齐 Python `/api/v1/signals`）
+- [ ] WebSocket 推送（可选，使用 `@midwayjs/ws` / `@midwayjs/socketio`）
 
 #### 5.2 订单执行模块
-- [ ] 实现订单服务（HTTP → gRPC 转发）
-  - [ ] PlaceOrder
-  - [ ] CancelOrder
-  - [ ] GetOrders
-  - [ ] GetOrder
-- [ ] 持仓服务
-  - [ ] GetPositions
-  - [ ] SyncPositions
-  - [ ] ClosePosition
-- [ ] 余额查询
-- [ ] 杠杆设置
+- [ ] 创建 OrderController（HTTP → gRPC 转发；查询参数对齐 Python：`exchange_id`、可选 `symbol/status/limit/offset`）
+  - [ ] GET /api/v1/orders - 获取订单列表
+  - [ ] POST /api/v1/orders - 手动下单
+  - [ ] GET /api/v1/orders/:orderId - 获取订单详情
+  - [ ] POST /api/v1/orders/:orderId/cancel - 取消订单
+- [ ] 创建 PositionController（HTTP → gRPC 转发；查询参数对齐 Python：`exchange_id`、可选 `symbol`）
+  - [ ] GET /api/v1/positions - 获取持仓列表
+  - [ ] POST /api/v1/positions/sync - 同步持仓
+  - [ ] POST /api/v1/positions/:positionId/close - 平仓
+- [ ] 创建 AccountController（对齐 Python：无前缀路由）
+  - [ ] GET /api/v1/balance - 获取账户余额
+  - [ ] POST /api/v1/leverage - 设置杠杆
+- [ ] 统一 gRPC 错误映射（503: 依赖缺失/未生成 proto，502: gRPC 请求失败）
 
 #### 5.3 风控模块
 - [ ] 创建 RiskService
@@ -458,6 +459,8 @@ apps/trader-service-node/
   - [ ] GET /api/v1/backtests - 获取回测列表
   - [ ] GET /api/v1/backtests/:id - 获取回测结果
   - [ ] GET /api/v1/backtests/:id/progress - 获取回测进度
+  - [ ] POST /api/v1/ml/train - 提交 ML 模型训练任务（对齐 Python，vNext 可先返回 501）
+  - [ ] GET /api/v1/ml/models - 获取已训练模型列表（对齐 Python，vNext 可先返回 []）
 
 #### 6.2 参数优化（可选）
 - [ ] 网格搜索算法
@@ -469,9 +472,10 @@ apps/trader-service-node/
   - [ ] 交易记录查询
   - [ ] 策略绩效分析
 - [ ] 创建 StatsController
-  - [ ] GET /api/v1/stats/revenue - 收益统计
-  - [ ] GET /api/v1/stats/trades - 交易记录
-  - [ ] GET /api/v1/stats/performance - 策略绩效
+  - [ ] GET /api/v1/stats - 系统统计（对齐 Python，MVP 可先返回 `{}`）
+  - [ ] （扩展）GET /api/v1/stats/revenue - 收益统计
+  - [ ] （扩展）GET /api/v1/stats/trades - 交易记录
+  - [ ] （扩展）GET /api/v1/stats/performance - 策略绩效
 
 ---
 
@@ -563,7 +567,7 @@ apps/trader-service-node/
   COPY --from=builder /app/node_modules ./node_modules
   COPY --from=builder /app/package.json ./
   COPY --from=builder /app/bootstrap.js ./
-  EXPOSE 9001
+  EXPOSE 9003
   CMD ["npm", "start"]
   ```
 - [ ] 编写 docker-compose.yml
@@ -594,18 +598,23 @@ apps/trader-service-node/
 | 事务管理 | Session | Connection / EntityManager |
 
 ### 2. 技术指标计算库
-**推荐：technicalindicators**
+**推荐：`@hquant/js`（workspace：`packages/hquant-js`）**
+- ✅ Rust/napi-rs 原生性能（定位对齐 hquant-py）
+- ✅ 内置指标 + 多周期聚合 + DSL + 回测引擎（减少重复实现）
+- ✅ 与 monorepo 其他服务共享同一指标/DSL 语义，减少跨语言漂移
+
+**备选：technicalindicators**
 - ✅ 纯 JavaScript 实现，易于集成
-- ✅ 支持常用指标（RSI/EMA/MACD/BB）
-- ❌ 性能不如 Rust 版 hquant-py
+- ✅ 常用指标覆盖较全
+- ❌ 性能与多周期/回测能力弱于 `@hquant/js`
 
 **备选：tulind**
 - ✅ C 语言实现，性能高
-- ❌ 需要编译，部署复杂
+- ❌ 需要编译，部署与跨平台兼容成本更高
 
-**长期方案：保留 hquant-py**
+**兜底：保留 hquant-py（子进程调用）**
 - 使用 Node.js 子进程调用 Python 版 hquant-py
-- 适合高性能场景
+- 适合极端性能/指标缺失的场景（建议仅做 fallback）
 
 ### 3. Python 策略支持
 **方案 A：完全移除 Python 策略**
@@ -960,7 +969,7 @@ export class Backtest {
 
 # Application
 NODE_ENV=development
-APP_PORT=9001
+APP_PORT=9003
 
 # Database (TypeORM)
 DB_HOST=localhost
@@ -986,7 +995,7 @@ EXCHANGE_GRPC_URL=localhost:50051
 CASDOOR_ENDPOINT=http://auth.8and1.cn
 CASDOOR_CLIENT_ID=a1aa7c75ba336df51788
 CASDOOR_CLIENT_SECRET=your_secret
-CASDOOR_CALLBACK_URL=http://localhost:9001/api/v1/auth/callback
+CASDOOR_CALLBACK_URL=http://localhost:9003/api/v1/auth/callback
 
 # JWT
 JWT_SECRET=your_jwt_secret
@@ -1056,11 +1065,12 @@ export default {
     "pg": "^8.11.3",
     "@grpc/grpc-js": "^1.9.14",
     "@grpc/proto-loader": "^0.7.10",
+    "@hquant/casdoor": "workspace:*",
+    "@hquant/js": "workspace:*",
     "joi": "^17.13.3",
     "nats": "^2.19.0",
     "bullmq": "^5.1.0",
     "technicalindicators": "^3.1.0",
-    "casdoor-nodejs-sdk": "^1.18.0",
     "crypto-js": "^4.2.0"
   },
   "devDependencies": {
@@ -1104,9 +1114,10 @@ export default {
 - `pg` - PostgreSQL 驱动
 - `joi` - 数据验证库（Midway 验证组件依赖）
 - `bullmq` - 任务队列（Bull 的升级版）
-- `packages/casdoor` - Casdoor OAuth 认证 SDK /Users/hubo/Work/Coding/MyProject/auto-trader/packages/casdoor
+- `@hquant/casdoor` - Casdoor OAuth 认证封装（workspace：`packages/casdoor`）
 - `crypto-js` - 加密工具（API Key 加密）
-- `technicalindicators` - 技术指标计算库
+- `@hquant/js` - 量化指标/聚合/回测/DSL（workspace：`packages/hquant-js`）
+- `technicalindicators` - 技术指标计算库（纯 JS fallback，可选）
 - `mwts` / `mwtsc` - Midway TypeScript 工具链
 
 ---
@@ -1132,7 +1143,8 @@ export default {
 1. **技术指标性能**
    - 风险：JavaScript 实现性能不如 Rust 版 hquant-py
    - 缓解：
-     - 使用 technicalindicators 库（已优化）
+     - 优先使用 `@hquant/js`（Rust/napi-rs）
+     - `technicalindicators` 作为纯 JS fallback
      - 实现增量计算
      - 必要时保留 Python 子进程调用
 
@@ -1288,6 +1300,7 @@ export class InitDatabase1707000000000 implements MigrationInterface {
 - [gRPC Node.js 文档](https://grpc.io/docs/languages/node/)
 - [NATS.js 文档](https://github.com/nats-io/nats.js)
 - [BullMQ 文档](https://docs.bullmq.io/)
+- [@hquant/js](../../packages/hquant-js/README.md)
 - [technicalindicators 文档](https://github.com/anandanand84/technicalindicators)
 - [Casdoor SDK 文档](https://casdoor.org/docs/category/client-sdks)
 
@@ -1469,7 +1482,7 @@ import { MidwayConfig } from '@midwayjs/core';
 export default {
   keys: 'your_cookie_keys',
   koa: {
-    port: 9001,
+    port: 9003,
   },
   typeorm: {
     dataSource: {

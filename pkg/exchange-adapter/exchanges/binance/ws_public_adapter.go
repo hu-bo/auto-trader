@@ -129,15 +129,34 @@ func (a *WsPublicAdapter) subscribeSymbols(tradeType marketdata.TradeType, rawSy
 		return err
 	}
 
-	for _, raw := range rawSymbols {
-		if err := conn.ws.SubscribeKlines(conn.wsKey, raw, "15m"); err != nil {
-			return err
+	// Binance rate limit: max 10 messages per second per connection
+	// Batch subscriptions to avoid hitting rate limits
+	const batchSize = 5
+	const batchDelay = 600 * time.Millisecond // ~8 messages per second to be safe
+
+	for i := 0; i < len(rawSymbols); i += batchSize {
+		end := i + batchSize
+		if end > len(rawSymbols) {
+			end = len(rawSymbols)
 		}
-		if err := conn.ws.SubscribeDiffDepth(conn.wsKey, raw, ""); err != nil {
-			return err
+		batch := rawSymbols[i:end]
+
+		// Subscribe to each symbol in the batch
+		for _, raw := range batch {
+			if err := conn.ws.SubscribeKlines(conn.wsKey, raw, "15m"); err != nil {
+				return err
+			}
+			if err := conn.ws.SubscribeDiffDepth(conn.wsKey, raw, ""); err != nil {
+				return err
+			}
+			if a.subAggTrades {
+				_ = conn.ws.SubscribeAggregateTrades(conn.wsKey, raw)
+			}
 		}
-		if a.subAggTrades {
-			_ = conn.ws.SubscribeAggregateTrades(conn.wsKey, raw)
+
+		// Add delay between batches to respect rate limits
+		if end < len(rawSymbols) {
+			time.Sleep(batchDelay)
 		}
 	}
 
@@ -302,11 +321,27 @@ func (a *WsPublicAdapter) resubscribeLocked(tradeType marketdata.TradeType) erro
 		rawSymbols = append(rawSymbols, strings.ToUpper(raw))
 	}
 
-	for _, raw := range rawSymbols {
-		_ = conn.ws.SubscribeKlines(conn.wsKey, raw, "15m")
-		_ = conn.ws.SubscribeDiffDepth(conn.wsKey, raw, "")
-		if a.subAggTrades {
-			_ = conn.ws.SubscribeAggregateTrades(conn.wsKey, raw)
+	// Batch resubscriptions to avoid rate limits
+	const batchSize = 5
+	const batchDelay = 600 * time.Millisecond
+
+	for i := 0; i < len(rawSymbols); i += batchSize {
+		end := i + batchSize
+		if end > len(rawSymbols) {
+			end = len(rawSymbols)
+		}
+		batch := rawSymbols[i:end]
+
+		for _, raw := range batch {
+			_ = conn.ws.SubscribeKlines(conn.wsKey, raw, "15m")
+			_ = conn.ws.SubscribeDiffDepth(conn.wsKey, raw, "")
+			if a.subAggTrades {
+				_ = conn.ws.SubscribeAggregateTrades(conn.wsKey, raw)
+			}
+		}
+
+		if end < len(rawSymbols) {
+			time.Sleep(batchDelay)
 		}
 	}
 

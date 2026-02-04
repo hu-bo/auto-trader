@@ -8,8 +8,9 @@ import {
 import * as koa from '@midwayjs/koa';
 import * as validation from '@midwayjs/validation';
 import * as info from '@midwayjs/info';
-// import { DefaultErrorFilter } from './filter/default.filter.js';
-// import { NotFoundFilter } from './filter/notfound.filter.js';
+import * as typeorm from '@midwayjs/typeorm';
+import { DefaultErrorFilter } from './filter/default.filter.js';
+import { NotFoundFilter } from './filter/notfound.filter.js';
 import { ReportMiddleware } from './middleware/report.middleware.js';
 import DefaultConfig from './config/config.default.js';
 import UnittestConfig from './config/config.unittest.js';
@@ -18,6 +19,10 @@ import UnittestConfig from './config/config.unittest.js';
   imports: [
     koa,
     validation,
+    {
+      component: typeorm,
+      enabledEnvironment: ['local', 'production'],
+    },
     {
       component: info,
       enabledEnvironment: ['local'],
@@ -33,12 +38,12 @@ import UnittestConfig from './config/config.unittest.js';
 })
 export class MainConfiguration implements ILifeCycle {
   @App('koa')
-  app: koa.Application;
+  app!: koa.Application;
 
   async onReady(container: IMidwayContainer) {
     // add middleware
     this.app.useMiddleware([ReportMiddleware]);
     // add filter
-    // this.app.useFilter([NotFoundFilter, DefaultErrorFilter]);
+    this.app.useFilter([NotFoundFilter, DefaultErrorFilter]);
   }
 }
