@@ -47,15 +47,7 @@ api.interceptors.response.use(
     const message = error.response?.data?.message || error.message
 
     if (status === 401) {
-      // Token 过期或无效，清除认证信息并跳转到登录页
-      // removeStorage(STORAGE_KEYS.TOKEN)
-      // removeStorage(STORAGE_KEYS.REFRESH_TOKEN)
-      // removeStorage(STORAGE_KEYS.USER)
-
-      // // 跳转到登录页
-      // if (window.location.pathname !== '/login') {
-      //   window.location.href = '/login'
-      // }
+      // Token 过期或无效 — casdoor 层会处理 token 刷新/清除
     } else if (status === 403) {
       Notification.error({content: '没有权限执行此操作'})
     } else if (status === 404) {

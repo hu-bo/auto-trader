@@ -52,9 +52,6 @@ export function clearStorage(): void {
 
 // 存储的 key 常量
 export const STORAGE_KEYS = {
-  TOKEN: 'token',
-  REFRESH_TOKEN: 'refresh_token',
-  USER: 'user',
   THEME: 'theme',
   LOCALE: 'locale',
   SIDEBAR_COLLAPSED: 'sidebar_collapsed',
