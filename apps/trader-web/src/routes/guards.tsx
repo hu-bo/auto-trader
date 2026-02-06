@@ -1,5 +1,6 @@
 import React from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { useCasdoor } from '@hquant/casdoor/client/react'
 import { useAuthStore } from '@/stores/authStore'
 import { Loading } from '@/components/common'
 
@@ -8,7 +9,7 @@ interface AuthGuardProps {
 }
 
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuthStore()
+  const { isAuthenticated, isLoading } = useCasdoor()
   const location = useLocation()
 
   if (isLoading) {
@@ -23,7 +24,8 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
 }
 
 export const AdminGuard: React.FC = () => {
-  const { user, isLoading } = useAuthStore()
+  const { isLoading } = useCasdoor()
+  const { user } = useAuthStore()
 
   if (isLoading) {
     return <Loading fullscreen tip="正在验证权限..." />
@@ -37,7 +39,7 @@ export const AdminGuard: React.FC = () => {
 }
 
 export const GuestGuard: React.FC<AuthGuardProps> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuthStore()
+  const { isAuthenticated, isLoading } = useCasdoor()
   const location = useLocation()
 
   if (isLoading) {

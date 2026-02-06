@@ -1,9 +1,9 @@
-import { Body, Controller, Del, Get, Inject, Param, Post, Put, httpError } from '@midwayjs/core';
+import { Body, Controller, Del, Get, Inject, Param, Post, Put } from '@midwayjs/core';
 import type { Context } from '@midwayjs/koa';
 import { StrategyService } from '../service/strategy.service.js';
 import { UserService } from '../service/user.service.js';
 import { apiOk } from '../util/api-response.js';
-import { getCurrentUser } from '../util/current-user.js';
+import { CreateStrategyBodyDTO, StrategyIdParamDTO, UpdateStrategyBodyDTO } from '../dto/strategy.dto.js';
 
 @Controller('/api/v1/strategies')
 export class StrategyController {
@@ -11,21 +11,20 @@ export class StrategyController {
   ctx!: Context;
 
   @Inject()
-  userService!: UserService;
-
-  @Inject()
   strategyService!: StrategyService;
 
-  private async ensureUser() {
-    const currentUser = getCurrentUser(this.ctx);
-    await this.userService.getOrCreate({ userId: currentUser.userId, username: currentUser.username });
-    return currentUser;
+  @Inject()
+  userService!: UserService;
+
+  private async getUserid(): Promise<number> {
+    const user = await this.userService.getOrCreateCurrentUser(this.ctx);
+    return user.id;
   }
 
   private toStrategyRead(strategy: any) {
     return {
       id: strategy.id,
-      user_id: strategy.userId,
+      userId: strategy.userid,
       name: strategy.name,
       description: strategy.description,
       tag: strategy.tag,
@@ -33,44 +32,33 @@ export class StrategyController {
       params: strategy.params ?? {},
       version: strategy.version,
       status: strategy.status,
-      is_public: strategy.isPublic,
-      created_at: strategy.createdAt,
-      updated_at: strategy.updatedAt,
+      isPublic: strategy.isPublic,
+      createdAt: strategy.createdAt,
+      updatedAt: strategy.updatedAt,
     };
   }
 
   @Get('/')
   async list() {
-    const currentUser = await this.ensureUser();
-    const strategies = await this.strategyService.listForUser(currentUser.userId);
+    const userid = await this.getUserid();
+    const strategies = await this.strategyService.listForUser(userid);
     return apiOk(strategies.map(s => this.toStrategyRead(s)));
   }
 
   @Get('/available')
   async available() {
-    const currentUser = await this.ensureUser();
-    const strategies = await this.strategyService.listAvailable(currentUser.userId);
+    const userid = await this.getUserid();
+    const strategies = await this.strategyService.listAvailable(userid);
     return apiOk(strategies.map(s => this.toStrategyRead(s)));
   }
 
   @Post('/')
   async create(
-    @Body()
-    body: {
-      name: string;
-      description?: string;
-      tag?: string;
-      code?: string;
-      params?: Record<string, unknown>;
-      version?: string;
-      status?: string;
-    }
+    @Body() body: CreateStrategyBodyDTO
   ) {
-    if (!body?.name) throw new httpError.BadRequestError('name is required');
-
-    const currentUser = await this.ensureUser();
+    const userid = await this.getUserid();
     const strategy = await this.strategyService.create({
-      userId: currentUser.userId,
+      userid,
       name: body.name,
       description: body.description ?? '',
       tag: body.tag ?? 'neutral',
@@ -78,35 +66,25 @@ export class StrategyController {
       params: body.params ?? {},
       version: body.version ?? 'v1',
       status: body.status ?? 'inactive',
-      isPublic: true,
+      isPublic: body.isPublic ?? true,
     });
     return apiOk(this.toStrategyRead(strategy));
   }
 
   @Get('/:id')
-  async get(@Param('id') id: string) {
-    const currentUser = await this.ensureUser();
-    const strategy = await this.strategyService.get(currentUser.userId, id);
+  async get(@Param() params: StrategyIdParamDTO) {
+    const userid = await this.getUserid();
+    const strategy = await this.strategyService.get(userid, params.id);
     return apiOk(this.toStrategyRead(strategy));
   }
 
   @Put('/:id')
   async update(
-    @Param('id') id: string,
-    @Body()
-    body: {
-      name?: string | null;
-      description?: string | null;
-      tag?: string | null;
-      code?: string | null;
-      params?: Record<string, unknown> | null;
-      version?: string | null;
-      status?: string | null;
-      is_public?: boolean | null;
-    }
+    @Param() params: StrategyIdParamDTO,
+    @Body() body: UpdateStrategyBodyDTO
   ) {
-    const currentUser = await this.ensureUser();
-    const strategy = await this.strategyService.update(currentUser.userId, id, {
+    const userid = await this.getUserid();
+    const strategy = await this.strategyService.update(userid, params.id, {
       name: body?.name ?? undefined,
       description: body?.description ?? undefined,
       tag: body?.tag ?? undefined,
@@ -114,15 +92,15 @@ export class StrategyController {
       params: body?.params ?? undefined,
       version: body?.version ?? undefined,
       status: body?.status ?? undefined,
-      isPublic: body?.is_public ?? undefined,
+      isPublic: body?.isPublic ?? undefined,
     });
     return apiOk(this.toStrategyRead(strategy));
   }
 
   @Del('/:id')
-  async remove(@Param('id') id: string) {
-    const currentUser = await this.ensureUser();
-    await this.strategyService.delete(currentUser.userId, id);
+  async remove(@Param() params: StrategyIdParamDTO) {
+    const userid = await this.getUserid();
+    await this.strategyService.delete(userid, params.id);
     return apiOk(null);
   }
 }

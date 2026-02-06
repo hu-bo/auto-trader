@@ -1,17 +1,17 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import {
   Card,
   Table,
   Button,
   Modal,
   Form,
-  Select,
   Toast,
   Tag,
   Empty,
   Popconfirm,
   Typography,
 } from '@douyinfe/semi-ui-19'
+import type { FormApi } from '@douyinfe/semi-ui-19/lib/es/form'
 import { IconPlus, IconLink, IconDelete } from '@douyinfe/semi-icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { exchangeApi } from '@/api'
@@ -23,16 +23,14 @@ const { Title } = Typography
 const EXCHANGE_TYPES: { value: ExchangeType; label: string }[] = [
   { value: 'BINANCE', label: 'Binance' },
   { value: 'OKX', label: 'OKX' },
-  { value: 'BYBIT', label: 'Bybit' },
-  { value: 'BITGET', label: 'Bitget' },
-  { value: 'GATE', label: 'Gate.io' },
+  { value: 'BYBIT', label: 'Bybit' }
 ]
 
 const ExchangeConfig: React.FC = () => {
   const queryClient = useQueryClient()
   const [modalVisible, setModalVisible] = useState(false)
   const [editingExchange, setEditingExchange] = useState<Exchange | null>(null)
-  const [formApi, setFormApi] = useState<ReturnType<typeof Form.useFormApi> | null>(null)
+  const formApiRef = useRef<FormApi<any>>(null)
 
   const { data: exchanges, isLoading } = useQuery({
     queryKey: ['exchanges'],
@@ -45,7 +43,7 @@ const ExchangeConfig: React.FC = () => {
       Toast.success('交易所添加成功')
       queryClient.invalidateQueries({ queryKey: ['exchanges'] })
       setModalVisible(false)
-      formApi?.reset()
+      formApiRef.current?.reset()
     },
     onError: (error: Error) => {
       Toast.error(error.message || '添加失败')
@@ -236,13 +234,13 @@ const ExchangeConfig: React.FC = () => {
         onCancel={() => {
           setModalVisible(false)
           setEditingExchange(null)
-          formApi?.reset()
+          formApiRef.current?.reset()
         }}
         footer={null}
         width={500}
       >
         <Form
-          getFormApi={(api) => setFormApi(api as ReturnType<typeof Form.useFormApi>)}
+          getFormApi={(api) => (formApiRef.current = api)}
           onSubmit={handleSubmit}
           labelPosition="left"
           labelWidth={100}

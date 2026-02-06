@@ -1,24 +1,26 @@
 import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
   Index,
-  PrimaryColumn,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { newId } from '../util/id.js';
+import { User as UserEntity } from './user.entity.js';
+import type { User } from './user.entity.js';
 
 @Entity('backtests')
-@Index(['userId'])
+@Index(['userid'])
 @Index(['strategyId'])
 @Index(['symbol'])
 export class Backtest {
-  @PrimaryColumn({ type: 'varchar', length: 64 })
-  id!: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id!: number;
 
-  @Column({ name: 'user_id', type: 'varchar', length: 64 })
-  userId!: string;
+  @Column({ name: 'userid', type: 'int' })
+  userid!: number;
 
   @Column({ name: 'strategy_id', type: 'varchar', length: 64 })
   strategyId!: string;
@@ -56,9 +58,7 @@ export class Backtest {
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 
-  @BeforeInsert()
-  beforeInsert() {
-    if (!this.id) this.id = newId();
-  }
+  @ManyToOne(() => UserEntity, { createForeignKeyConstraints: false })
+  @JoinColumn({ name: 'userid' })
+  user!: User;
 }
-

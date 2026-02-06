@@ -17,7 +17,7 @@ const UserManage: React.FC = () => {
   })
 
   const toggleStatusMutation = useMutation({
-    mutationFn: ({ userId, isActive }: { userId: string; isActive: boolean }) =>
+    mutationFn: ({ userId, isActive }: { userId: number; isActive: boolean }) =>
       adminApi.updateUserStatus(userId, { isActive }),
     onSuccess: () => {
       Toast.success('状态更新成功')
@@ -35,13 +35,8 @@ const UserManage: React.FC = () => {
     },
     {
       title: '显示名',
-      dataIndex: 'displayName',
+      dataIndex: 'displayname',
       render: (name: string | undefined) => name || '-',
-    },
-    {
-      title: '邮箱',
-      dataIndex: 'email',
-      render: (email: string | undefined) => email || '-',
     },
     {
       title: '角色',
@@ -54,16 +49,16 @@ const UserManage: React.FC = () => {
     },
     {
       title: '状态',
-      dataIndex: 'isActive',
-      render: (isActive: boolean) => (
-        <Tag color={isActive ? 'green' : 'grey'}>
-          {isActive ? '活跃' : '禁用'}
+      dataIndex: 'isactive',
+      render: (isactive: boolean) => (
+        <Tag color={isactive ? 'green' : 'grey'}>
+          {isactive ? '活跃' : '禁用'}
         </Tag>
       ),
     },
     {
       title: '注册时间',
-      dataIndex: 'createdAt',
+      dataIndex: 'created_at',
       render: (date: string) => formatDateTime(date),
     },
     {
@@ -75,16 +70,16 @@ const UserManage: React.FC = () => {
           onClick={() => {
             Modal.confirm({
               title: '确认操作',
-              content: `确定要${record.isActive ? '禁用' : '启用'}该用户吗？`,
+              content: `确定要${record.isactive ? '禁用' : '启用'}该用户吗？`,
               onOk: () =>
                 toggleStatusMutation.mutate({
                   userId: record.id,
-                  isActive: !record.isActive,
+                  isActive: !record.isactive,
                 }),
             })
           }}
         >
-          {record.isActive ? '禁用' : '启用'}
+          {record.isactive ? '禁用' : '启用'}
         </Button>
       ),
     },

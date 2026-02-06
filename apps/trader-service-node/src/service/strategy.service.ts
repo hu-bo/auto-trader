@@ -4,7 +4,7 @@ import type { Repository } from 'typeorm';
 import { Strategy } from '../entity/strategy.entity.js';
 
 type StrategyCreateParams = {
-  userId: string;
+  userid: number;
   name: string;
   description?: string;
   tag?: string;
@@ -38,17 +38,17 @@ export class StrategyService {
     return this.strategyRepo;
   }
 
-  async listForUser(userId: string): Promise<Strategy[]> {
+  async listForUser(userid: number): Promise<Strategy[]> {
     const repo = this.requireRepo();
-    return repo.find({ where: { userId }, order: { createdAt: 'DESC' } });
+    return repo.find({ where: { userid }, order: { createdAt: 'DESC' } });
   }
 
-  async listAvailable(userId: string): Promise<Strategy[]> {
+  async listAvailable(userid: number): Promise<Strategy[]> {
     const repo = this.requireRepo();
     return repo
       .createQueryBuilder('strategy')
       .where('strategy.isPublic = :isPublic', { isPublic: true })
-      .orWhere('strategy.userId = :userId', { userId })
+      .orWhere('strategy.userid = :userid', { userid })
       .orderBy('strategy.createdAt', 'DESC')
       .getMany();
   }
@@ -56,7 +56,7 @@ export class StrategyService {
   async create(params: StrategyCreateParams): Promise<Strategy> {
     const repo = this.requireRepo();
     const strategy = repo.create({
-      userId: params.userId,
+      userid: params.userid,
       name: params.name,
       description: params.description ?? '',
       tag: params.tag ?? 'neutral',
@@ -69,22 +69,22 @@ export class StrategyService {
     return await repo.save(strategy);
   }
 
-  async get(userId: string, strategyId: string): Promise<Strategy> {
+  async get(userid: number, strategyId: number): Promise<Strategy> {
     const repo = this.requireRepo();
     const strategy = await repo.findOne({ where: { id: strategyId } });
     if (!strategy) {
       throw new httpError.NotFoundError('Strategy not found');
     }
-    if (strategy.userId !== userId && !strategy.isPublic) {
+    if (strategy.userid !== userid && !strategy.isPublic) {
       throw new httpError.NotFoundError('Strategy not found');
     }
     return strategy;
   }
 
-  async update(userId: string, strategyId: string, patch: StrategyUpdateParams): Promise<Strategy> {
+  async update(userid: number, strategyId: number, patch: StrategyUpdateParams): Promise<Strategy> {
     const repo = this.requireRepo();
     const strategy = await repo.findOne({ where: { id: strategyId } });
-    if (!strategy || strategy.userId !== userId) {
+    if (!strategy || strategy.userid !== userid) {
       throw new httpError.NotFoundError('Strategy not found');
     }
 
@@ -100,13 +100,12 @@ export class StrategyService {
     return await repo.save(strategy);
   }
 
-  async delete(userId: string, strategyId: string): Promise<void> {
+  async delete(userid: number, strategyId: number): Promise<void> {
     const repo = this.requireRepo();
     const strategy = await repo.findOne({ where: { id: strategyId } });
-    if (!strategy || strategy.userId !== userId) {
+    if (!strategy || strategy.userid !== userid) {
       throw new httpError.NotFoundError('Strategy not found');
     }
     await repo.remove(strategy);
   }
 }
-

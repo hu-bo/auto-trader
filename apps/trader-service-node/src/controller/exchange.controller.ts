@@ -4,7 +4,7 @@ import { ExchangeGrpcClient } from '../grpc/exchange-grpc.client.js';
 import { ExchangeService } from '../service/exchange.service.js';
 import { UserService } from '../service/user.service.js';
 import { apiOk } from '../util/api-response.js';
-import { getCurrentUser } from '../util/current-user.js';
+import { CreateExchangeBodyDTO, ExchangeIdParamDTO, UpdateExchangeBodyDTO } from '../dto/exchange.dto.js';
 
 @Controller('/api/v1/exchanges')
 export class ExchangeController {
@@ -12,82 +12,67 @@ export class ExchangeController {
   ctx!: Context;
 
   @Inject()
-  userService!: UserService;
-
-  @Inject()
   exchangeService!: ExchangeService;
 
   @Inject()
   exchangeGrpc!: ExchangeGrpcClient;
 
-  private async ensureUser() {
-    const currentUser = getCurrentUser(this.ctx);
-    await this.userService.getOrCreate({ userId: currentUser.userId, username: currentUser.username });
-    return currentUser;
+  @Inject()
+  userService!: UserService;
+
+  private async getUserid(): Promise<number> {
+    const user = await this.userService.getOrCreateCurrentUser(this.ctx);
+    return user.id;
   }
 
   private toExchangeRead(exchange: any) {
     return {
       id: exchange.id,
-      user_id: exchange.userId,
-      exchange_type: exchange.exchangeType,
+      userId: exchange.userid,
+      exchangeType: exchange.exchangeType,
       name: exchange.name,
-      has_grpc_token: Boolean(exchange.grpcTokenEncrypted),
-      is_testnet: exchange.isTestnet,
-      is_active: exchange.isActive,
-      created_at: exchange.createdAt,
-      updated_at: exchange.updatedAt,
+      hasGrpcToken: Boolean(exchange.grpcTokenEncrypted),
+      isTestnet: exchange.isTestnet,
+      isActive: exchange.isActive,
+      createdAt: exchange.createdAt,
+      updatedAt: exchange.updatedAt,
     };
   }
 
   @Get('/')
   async list() {
-    const currentUser = await this.ensureUser();
-    const exchanges = await this.exchangeService.listForUser(currentUser.userId);
+    const userid = await this.getUserid();
+    const exchanges = await this.exchangeService.listForUser(userid);
     return apiOk(exchanges.map(x => this.toExchangeRead(x)));
   }
 
   @Post('/')
   async create(
-    @Body()
-    body: {
-      exchange_type: string;
-      name: string;
-      api_key: string;
-      api_secret: string;
-      passphrase?: string | null;
-      is_testnet?: boolean;
-      is_active?: boolean;
-    }
+    @Body() body: CreateExchangeBodyDTO
   ) {
-    if (!body?.exchange_type) throw new httpError.BadRequestError('exchange_type is required');
-    if (!body?.name) throw new httpError.BadRequestError('name is required');
-    if (!body?.api_key) throw new httpError.BadRequestError('api_key is required');
-    if (!body?.api_secret) throw new httpError.BadRequestError('api_secret is required');
-
-    const currentUser = await this.ensureUser();
+    const userid = await this.getUserid();
     let exchange = await this.exchangeService.create({
-      userId: currentUser.userId,
-      exchangeType: body.exchange_type,
+      userid,
+      exchangeType: body.exchangeType,
       name: body.name,
-      apiKey: body.api_key,
-      apiSecret: body.api_secret,
+      apiKey: body.apiKey,
+      apiSecret: body.apiSecret,
       passphrase: body.passphrase ?? null,
-      isTestnet: body.is_testnet ?? false,
-      isActive: body.is_active ?? true,
+      isTestnet: body.isTestnet ?? false,
+      isActive: body.isActive ?? true,
     });
 
     try {
       const initResp = await this.exchangeGrpc.initAccount({
         exchangeType: exchange.exchangeType,
-        apiKey: body.api_key,
-        apiSecret: body.api_secret,
+        apiKey: body.apiKey,
+        apiSecret: body.apiSecret,
         passphrase: body.passphrase ?? null,
         demonet: exchange.isTestnet,
         name: exchange.name,
       });
       if (initResp?.success && typeof initResp?.token === 'string' && initResp.token) {
-        exchange = await this.exchangeService.setGrpcToken(currentUser.userId, exchange.id, initResp.token);
+        exchange = await this.exchangeService.setGrpcToken(userid, exchange.id, initResp.token);
       }
     } catch (err) {
       void err;
@@ -98,53 +83,45 @@ export class ExchangeController {
 
   @Put('/:id')
   async update(
-    @Param('id') id: string,
-    @Body()
-    body: {
-      name?: string | null;
-      api_key?: string | null;
-      api_secret?: string | null;
-      passphrase?: string | null;
-      is_testnet?: boolean | null;
-      is_active?: boolean | null;
-    }
+    @Param() params: ExchangeIdParamDTO,
+    @Body() body: UpdateExchangeBodyDTO
   ) {
-    const currentUser = await this.ensureUser();
-    const exchange = await this.exchangeService.update(currentUser.userId, id, {
+    const userid = await this.getUserid();
+    const exchange = await this.exchangeService.update(userid, params.id, {
       name: body?.name ?? undefined,
-      apiKey: body?.api_key ?? undefined,
-      apiSecret: body?.api_secret ?? undefined,
+      apiKey: body?.apiKey ?? undefined,
+      apiSecret: body?.apiSecret ?? undefined,
       passphrase: body?.passphrase ?? undefined,
-      isTestnet: body?.is_testnet ?? undefined,
-      isActive: body?.is_active ?? undefined,
+      isTestnet: body?.isTestnet ?? undefined,
+      isActive: body?.isActive ?? undefined,
     });
     return apiOk(this.toExchangeRead(exchange));
   }
 
   @Del('/:id')
-  async remove(@Param('id') id: string) {
-    const currentUser = await this.ensureUser();
+  async remove(@Param() params: ExchangeIdParamDTO) {
+    const userid = await this.getUserid();
 
     try {
-      const token = await this.exchangeService.getGrpcToken(currentUser.userId, id);
+      const token = await this.exchangeService.getGrpcToken(userid, params.id);
       await this.exchangeGrpc.invalidateToken({ token });
     } catch (err) {
       void err;
     }
 
-    await this.exchangeService.delete(currentUser.userId, id);
+    await this.exchangeService.delete(userid, params.id);
     return apiOk(null);
   }
 
   @Post('/:id/test')
-  async test(@Param('id') id: string) {
-    const currentUser = await this.ensureUser();
+  async test(@Param() params: ExchangeIdParamDTO) {
+    const userid = await this.getUserid();
 
-    const exchange = await this.exchangeService.get(currentUser.userId, id);
+    const exchange = await this.exchangeService.get(userid, params.id);
     let token: string | null = null;
 
     try {
-      token = await this.exchangeService.getGrpcToken(currentUser.userId, id);
+      token = await this.exchangeService.getGrpcToken(userid, params.id);
       const validateResp = await this.exchangeGrpc.validateToken({ token });
       if (validateResp?.valid) {
         return apiOk({ ...validateResp, initialized: false });
@@ -154,7 +131,7 @@ export class ExchangeController {
       token = null;
     }
 
-    const creds = await this.exchangeService.getApiCredentials(currentUser.userId, id);
+    const creds = await this.exchangeService.getApiCredentials(userid, params.id);
     const initResp = await this.exchangeGrpc.initAccount({
       exchangeType: exchange.exchangeType,
       apiKey: creds.apiKey,
@@ -168,7 +145,7 @@ export class ExchangeController {
       throw new httpError.BadGatewayError(msg);
     }
 
-    await this.exchangeService.setGrpcToken(currentUser.userId, id, initResp.token);
+    await this.exchangeService.setGrpcToken(userid, params.id, initResp.token);
     const validateResp = await this.exchangeGrpc.validateToken({ token: initResp.token });
     return apiOk({ ...validateResp, initialized: true });
   }

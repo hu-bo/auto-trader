@@ -3,8 +3,8 @@ import type { Context } from '@midwayjs/koa';
 import { BacktestService } from '../service/backtest.service.js';
 import { UserService } from '../service/user.service.js';
 import { apiOk } from '../util/api-response.js';
-import { getCurrentUser } from '../util/current-user.js';
 import { newId } from '../util/id.js';
+import { BacktestIdParamDTO, RunBacktestBodyDTO } from '../dto/backtest.dto.js';
 
 @Controller('/api/v1')
 export class BacktestController {
@@ -12,46 +12,23 @@ export class BacktestController {
   ctx!: Context;
 
   @Inject()
-  userService!: UserService;
-
-  @Inject()
   backtestService!: BacktestService;
 
-  private async ensureUser() {
-    const currentUser = getCurrentUser(this.ctx);
-    try {
-      await this.userService.getOrCreate({ userId: currentUser.userId, username: currentUser.username });
-    } catch (err) {
-      if (!(err instanceof httpError.ServiceUnavailableError)) throw err;
-    }
-    return currentUser;
+  @Inject()
+  userService!: UserService;
+
+  private async getUserid(): Promise<number> {
+    const user = await this.userService.getOrCreateCurrentUser(this.ctx);
+    return user.id;
   }
 
   @Post('/backtests')
-  async runBacktest(
-    @Body()
-    body: {
-      strategy_id: string;
-      symbol: string;
-      start_date: string;
-      end_date: string;
-      initial_capital: number;
-      parameters?: Record<string, unknown> | null;
-    }
-  ) {
-    if (!body?.strategy_id) throw new httpError.BadRequestError('strategy_id is required');
-    if (!body?.symbol) throw new httpError.BadRequestError('symbol is required');
-    if (!body?.start_date) throw new httpError.BadRequestError('start_date is required');
-    if (!body?.end_date) throw new httpError.BadRequestError('end_date is required');
-    if (typeof body?.initial_capital !== 'number') {
-      throw new httpError.BadRequestError('initial_capital is required');
-    }
-
-    const currentUser = await this.ensureUser();
+  async runBacktest(@Body() body: RunBacktestBodyDTO) {
+    const userid = await this.getUserid();
 
     try {
       const backtest = await this.backtestService.create({
-        userId: currentUser.userId,
+        userid,
         strategyId: body.strategy_id,
         symbol: body.symbol,
         startDate: new Date(body.start_date),
@@ -64,7 +41,7 @@ export class BacktestController {
       if (err instanceof httpError.ServiceUnavailableError) {
         return apiOk({
           id: newId(),
-          user_id: currentUser.userId,
+          userid,
           strategy_id: body.strategy_id,
           symbol: body.symbol,
           status: 'pending',
@@ -76,9 +53,9 @@ export class BacktestController {
 
   @Get('/backtests')
   async listBacktests() {
-    const currentUser = await this.ensureUser();
+    const userid = await this.getUserid();
     try {
-      const backtests = await this.backtestService.listForUser(currentUser.userId);
+      const backtests = await this.backtestService.listForUser(userid);
       return apiOk(backtests);
     } catch (err) {
       if (err instanceof httpError.ServiceUnavailableError) {
@@ -89,15 +66,15 @@ export class BacktestController {
   }
 
   @Get('/backtests/:id')
-  async getBacktest(@Param('id') id: string) {
-    const currentUser = await this.ensureUser();
-    const backtest = await this.backtestService.get(currentUser.userId, id);
+  async getBacktest(@Param() params: BacktestIdParamDTO) {
+    const userid = await this.getUserid();
+    const backtest = await this.backtestService.get(userid, params.id);
     return apiOk(backtest);
   }
 
   @Get('/backtests/:id/progress')
-  async backtestProgress(@Param('id') id: string) {
-    return apiOk({ id, progress: 0 });
+  async backtestProgress(@Param() params: BacktestIdParamDTO) {
+    return apiOk({ id: params.id, progress: 0 });
   }
 
   @Post('/ml/train')

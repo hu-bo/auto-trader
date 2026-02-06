@@ -5,7 +5,6 @@ export interface Exchange {
   userId: string
   exchangeType: ExchangeType
   name: string
-  hasGrpcToken: boolean
   isTestnet: boolean
   isActive: boolean
   createdAt: string

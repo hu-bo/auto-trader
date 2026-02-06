@@ -4,9 +4,9 @@ import type { Repository } from 'typeorm';
 import { StrategyOrder } from '../entity/strategy-order.entity.js';
 
 type StrategyOrderCreateParams = {
-  userId: string;
-  strategyId: string;
-  exchangeId: string;
+  userid: number;
+  strategyId: number;
+  exchangeId: number;
   symbols: string[];
   parameters?: Record<string, unknown>;
   riskConfig?: Record<string, unknown>;
@@ -32,15 +32,15 @@ export class StrategyOrderService {
     return this.orderRepo;
   }
 
-  async listForUser(userId: string): Promise<StrategyOrder[]> {
+  async listForUser(userid: number): Promise<StrategyOrder[]> {
     const repo = this.requireRepo();
-    return repo.find({ where: { userId }, order: { createdAt: 'DESC' } });
+    return repo.find({ where: { userid }, order: { createdAt: 'DESC' } });
   }
 
   async create(params: StrategyOrderCreateParams): Promise<StrategyOrder> {
     const repo = this.requireRepo();
     const order = repo.create({
-      userId: params.userId,
+      userid: params.userid,
       strategyId: params.strategyId,
       exchangeId: params.exchangeId,
       symbols: params.symbols,
@@ -54,18 +54,18 @@ export class StrategyOrderService {
     return await repo.save(order);
   }
 
-  async get(userId: string, orderId: string): Promise<StrategyOrder> {
+  async get(userid: number, orderId: number): Promise<StrategyOrder> {
     const repo = this.requireRepo();
     const order = await repo.findOne({ where: { id: orderId } });
-    if (!order || order.userId !== userId) {
+    if (!order || order.userid !== userid) {
       throw new httpError.NotFoundError('Strategy order not found');
     }
     return order;
   }
 
-  async update(userId: string, orderId: string, patch: StrategyOrderUpdateParams): Promise<StrategyOrder> {
+  async update(userid: number, orderId: number, patch: StrategyOrderUpdateParams): Promise<StrategyOrder> {
     const repo = this.requireRepo();
-    const order = await this.get(userId, orderId);
+    const order = await this.get(userid, orderId);
 
     if (patch.symbols !== undefined && patch.symbols !== null) order.symbols = patch.symbols;
     if (patch.parameters !== undefined && patch.parameters !== null) order.parameters = patch.parameters;
@@ -75,27 +75,26 @@ export class StrategyOrderService {
     return await repo.save(order);
   }
 
-  async delete(userId: string, orderId: string): Promise<void> {
+  async delete(userid: number, orderId: number): Promise<void> {
     const repo = this.requireRepo();
-    const order = await this.get(userId, orderId);
+    const order = await this.get(userid, orderId);
     await repo.remove(order);
   }
 
-  async start(userId: string, orderId: string): Promise<StrategyOrder> {
+  async start(userid: number, orderId: number): Promise<StrategyOrder> {
     const repo = this.requireRepo();
-    const order = await this.get(userId, orderId);
+    const order = await this.get(userid, orderId);
     order.isRunning = true;
     order.startedAt = new Date();
     order.stoppedAt = null;
     return await repo.save(order);
   }
 
-  async stop(userId: string, orderId: string): Promise<StrategyOrder> {
+  async stop(userid: number, orderId: number): Promise<StrategyOrder> {
     const repo = this.requireRepo();
-    const order = await this.get(userId, orderId);
+    const order = await this.get(userid, orderId);
     order.isRunning = false;
     order.stoppedAt = new Date();
     return await repo.save(order);
   }
 }
-

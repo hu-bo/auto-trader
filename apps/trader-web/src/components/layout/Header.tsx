@@ -1,4 +1,5 @@
 import React from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Layout, Avatar, Dropdown, Button, Select, Tag } from '@douyinfe/semi-ui-19'
 import {
   IconMenu,
@@ -22,6 +23,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
+  const navigate = useNavigate()
   const { user, logout } = useAuth()
   const { theme, toggleTheme, selectedExchange, setSelectedExchange } = useAppStore()
 
@@ -39,8 +41,8 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
   const userMenu = (
     <Dropdown.Menu>
-      <Dropdown.Item icon={<IconUser />}>个人信息</Dropdown.Item>
-      <Dropdown.Item icon={<IconSetting />}>设置</Dropdown.Item>
+      <Dropdown.Item icon={<IconUser />} onClick={() => navigate('/settings')}>个人信息</Dropdown.Item>
+      <Dropdown.Item icon={<IconSetting />} onClick={() => navigate('/settings')}>设置</Dropdown.Item>
       <Dropdown.Divider />
       <Dropdown.Item icon={<IconExit />} onClick={logout}>
         退出登录
@@ -113,9 +115,9 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             }}
           >
             <Avatar size="small" style={{ background: 'var(--semi-color-primary)' }}>
-              {user?.displayName?.[0] || user?.username?.[0] || 'U'}
+              {user?.displayname?.[0] || user?.username?.[0] || 'U'}
             </Avatar>
-            <span style={{ fontSize: 14 }}>{user?.displayName || user?.username}</span>
+            <span style={{ fontSize: 14 }}>{user?.displayname || user?.username}</span>
           </div>
         </Dropdown>
       </div>

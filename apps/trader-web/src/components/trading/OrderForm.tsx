@@ -151,19 +151,20 @@ export const OrderForm: React.FC<OrderFormProps> = ({ symbol }) => {
         {/* 杠杆 */}
         {tradeType === 'futures' && (
           <Form.Slot label="杠杆">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <Slider
+            <div >
+              {/* <Slider
                 style={{ flex: 1 }}
                 min={1}
                 max={125}
                 defaultValue={10}
                 marks={{ 1: '1x', 25: '25x', 50: '50x', 75: '75x', 100: '100x', 125: '125x' }}
-              />
+              /> */}
               <InputNumber
-                style={{ width: 80 }}
+                style={{ width: 90 }}
                 min={1}
                 max={125}
                 defaultValue={10}
+                step={5}
                 suffix="x"
               />
             </div>

@@ -11,8 +11,10 @@ import * as info from '@midwayjs/info';
 import * as typeorm from '@midwayjs/typeorm';
 import { DefaultErrorFilter } from './filter/default.filter.js';
 import { NotFoundFilter } from './filter/notfound.filter.js';
+import { AuthMiddleware } from './middleware/auth.middleware.js';
 import { ReportMiddleware } from './middleware/report.middleware.js';
 import DefaultConfig from './config/config.default.js';
+import LocalConfig from './config/config.local.js';
 import UnittestConfig from './config/config.unittest.js';
 
 @Configuration({
@@ -31,6 +33,7 @@ import UnittestConfig from './config/config.unittest.js';
   importConfigs: [
     {
       default: DefaultConfig,
+      local: LocalConfig,
       unittest: UnittestConfig,
     },
   ],
@@ -42,7 +45,7 @@ export class MainConfiguration implements ILifeCycle {
 
   async onReady(container: IMidwayContainer) {
     // add middleware
-    this.app.useMiddleware([ReportMiddleware]);
+    this.app.useMiddleware([AuthMiddleware, ReportMiddleware]);
     // add filter
     this.app.useFilter([NotFoundFilter, DefaultErrorFilter]);
   }

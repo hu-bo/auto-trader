@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { Typography } from '@douyinfe/semi-ui-19'
 import { IconCheckboxTick, IconClose } from '@douyinfe/semi-icons'
 import { Loading } from '@/components/common'
@@ -8,7 +8,6 @@ import { useAuth } from '@/hooks'
 const { Title, Text } = Typography
 
 const Callback: React.FC = () => {
-  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { handleCallback } = useAuth()
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
@@ -16,33 +15,10 @@ const Callback: React.FC = () => {
   const hasHandledCallback = useRef(false)
 
   useEffect(() => {
-    // 防止重复执行（React StrictMode 和依赖变化都可能导致重复执行）
-    if (hasHandledCallback.current) {
-      return
-    }
-
-    const code = searchParams.get('code')
-    const error = searchParams.get('error')
-    const errorDescription = searchParams.get('error_description')
-
-    if (error) {
-      setStatus('error')
-      setErrorMessage(errorDescription || error || '登录失败')
-      setTimeout(() => navigate('/login'), 3000)
-      return
-    }
-
-    if (!code) {
-      setStatus('error')
-      setErrorMessage('缺少授权码')
-      setTimeout(() => navigate('/login'), 3000)
-      return
-    }
-
-    // 标记为已处理，防止重复执行
+    if (hasHandledCallback.current) return
     hasHandledCallback.current = true
 
-    handleCallback(code).then((success) => {
+    handleCallback().then((success) => {
       if (success) {
         setStatus('success')
       } else {
@@ -51,7 +27,7 @@ const Callback: React.FC = () => {
         setTimeout(() => navigate('/login'), 3000)
       }
     })
-  }, [searchParams, handleCallback, navigate])
+  }, [handleCallback, navigate])
 
   return (
     <div

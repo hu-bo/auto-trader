@@ -3,14 +3,12 @@ import type { Context } from '@midwayjs/koa';
 import { ExchangeGrpcClient } from '../grpc/exchange-grpc.client.js';
 import { ExchangeTokenService } from '../service/exchange-token.service.js';
 import { apiOk } from '../util/api-response.js';
-
-type ClosePositionBody = {
-  exchange_id: string;
-  order_type?: string;
-  price?: number | null;
-  client_order_id?: string | null;
-  token?: string;
-};
+import {
+  ClosePositionBodyDTO,
+  PositionIdParamDTO,
+  PositionTokenQueryDTO,
+  SyncPositionsQueryDTO,
+} from '../dto/position.dto.js';
 
 const normalizeGrpcEnumName = (value: unknown, prefix: string): string | null => {
   if (typeof value !== 'string') return null;
@@ -31,43 +29,39 @@ export class PositionController {
   exchangeToken!: ExchangeTokenService;
 
   @Get('/')
-  async list(
-    @Query('exchange_id') exchangeId?: string,
-    @Query('symbol') symbol?: string,
-    @Query('token') token?: string
-  ) {
+  async list(@Query() query: PositionTokenQueryDTO) {
     const grpcToken = await this.exchangeToken.resolveToken({
       ctx: this.ctx,
-      exchangeId,
-      token,
+      exchangeId: query.exchangeId,
+      token: query.token,
     });
-    const resp = await this.exchangeGrpc.getPositions({ token: grpcToken, symbol });
+    const resp = await this.exchangeGrpc.getPositions({ token: grpcToken, symbol: query.symbol });
     return apiOk(resp);
   }
 
   @Post('/sync')
-  async sync(@Query('exchange_id') exchangeId?: string, @Query('token') token?: string) {
+  async sync(@Query() query: SyncPositionsQueryDTO) {
     const grpcToken = await this.exchangeToken.resolveToken({
       ctx: this.ctx,
-      exchangeId,
-      token,
+      exchangeId: query.exchangeId,
+      token: query.token,
     });
     const resp = await this.exchangeGrpc.syncPositions({ token: grpcToken });
     return apiOk(resp);
   }
 
   @Post('/:positionId/close')
-  async close(@Param('positionId') positionId: string, @Body() body: ClosePositionBody) {
+  async close(@Param() params: PositionIdParamDTO, @Body() body: ClosePositionBodyDTO) {
     const grpcToken = await this.exchangeToken.resolveToken({
       ctx: this.ctx,
-      exchangeId: body.exchange_id,
+      exchangeId: body.exchangeId,
       token: body.token,
     });
 
     const positionsResp = await this.exchangeGrpc.getPositions({ token: grpcToken });
     const positions: any[] = Array.isArray(positionsResp?.positions) ? positionsResp.positions : [];
 
-    const position = positions.find(p => p?.id === positionId);
+    const position = positions.find(p => p?.id === params.positionId);
     if (!position) {
       throw new httpError.NotFoundError('Position not found');
     }
@@ -84,7 +78,7 @@ export class PositionController {
     }
 
     const side = positionSide === 'LONG' ? 'SELL' : 'BUY';
-    const orderType = body.order_type ?? 'market';
+    const orderType = body.orderType ?? 'market';
 
     const resp = await this.exchangeGrpc.placeOrder({
       token: grpcToken,
@@ -95,7 +89,7 @@ export class PositionController {
       quantity,
       price: body.price ?? null,
       positionSide: tradeType === 'SPOT' ? null : positionSide,
-      clientOrderId: body.client_order_id ?? null,
+      clientOrderId: body.clientOrderId ?? null,
       reduceOnly: true,
     });
     return apiOk(resp);

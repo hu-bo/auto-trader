@@ -1,19 +1,31 @@
-import { BeforeInsert, Column, CreateDateColumn, Entity, Index, PrimaryColumn } from 'typeorm';
-import { newId } from '../util/id.js';
+import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('signals')
-@Index(['subscriptionId'])
+@Index(['strategyId'])
 @Index(['symbol'])
+@Index(['exchange'])
 @Index(['timestamp'])
 export class Signal {
-  @PrimaryColumn({ type: 'varchar', length: 64 })
-  id!: string;
+  @PrimaryGeneratedColumn('uuid', { name: 'signal_id' })
+  signalId!: string;
 
-  @Column({ name: 'subscription_id', type: 'varchar', length: 64 })
-  subscriptionId!: string;
+  @Column({ name: 'strategy_id', type: 'varchar', length: 64 })
+  strategyId!: string;
+
+  @Column({ name: 'strategy_name', type: 'varchar', length: 64 })
+  strategyName!: string;
+
+  @Column({ type: 'varchar', length: 32 })
+  exchange!: string;
+
+  @Column({ name: 'trade_type', type: 'varchar', length: 16 })
+  tradeType!: string;
 
   @Column({ type: 'varchar', length: 64 })
   symbol!: string;
+
+  @Column({ type: 'varchar', length: 16 })
+  period!: string;
 
   @Column({ type: 'varchar', length: 16 })
   action!: string;
@@ -24,18 +36,10 @@ export class Signal {
   @Column({ type: 'numeric', precision: 5, scale: 4 })
   confidence!: string;
 
-  @Column({ type: 'jsonb', default: {} })
-  indicators!: Record<string, unknown>;
-
-  @Column({ type: 'timestamptz' })
+  @Column({ type: 'timestamp' })
   timestamp!: Date;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt!: Date;
-
-  @BeforeInsert()
-  beforeInsert() {
-    if (!this.id) this.id = newId();
-  }
 }
 

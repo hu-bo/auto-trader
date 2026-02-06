@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { RouterProvider } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CasdoorProvider } from '@hquant/casdoor/client/react'
+import { useCasdoor } from '@hquant/casdoor/client/react'
 import { router } from '@/routes'
 import { useAuthStore } from '@/stores/authStore'
 import { useAppStore } from '@/stores/appStore'
@@ -12,7 +13,7 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       refetchOnWindowFocus: false,
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 5 * 60 * 1000,
     },
   },
 })
@@ -32,14 +33,27 @@ const casdoorConfig = {
   refreshBeforeExpiry: 60,
 }
 
+/**
+ * 应用初始化：
+ * - casdoor 自动从 storage 恢复 SSO 状态
+ * - 如果已认证，拉取业务用户 /user/current
+ * - 初始化 app store（主题等）
+ */
 function AppInitializer({ children }: { children: React.ReactNode }) {
-  const initAuth = useAuthStore((state) => state.initialize)
-  const initApp = useAppStore((state) => state.initialize)
+  const { isAuthenticated, isLoading } = useCasdoor()
+  const fetchCurrentUser = useAuthStore((s) => s.fetchCurrentUser)
+  const initApp = useAppStore((s) => s.initialize)
 
   useEffect(() => {
-    initAuth()
     initApp()
-  }, [initAuth, initApp])
+  }, [initApp])
+
+  // SSO 认证恢复后，自动拉取业务用户
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      fetchCurrentUser()
+    }
+  }, [isLoading, isAuthenticated, fetchCurrentUser])
 
   return <>{children}</>
 }

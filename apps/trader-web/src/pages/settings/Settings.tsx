@@ -25,16 +25,15 @@ const Settings: React.FC = () => {
       <Card title="个人信息" style={{ marginBottom: 16 }}>
         <Descriptions row>
           <Descriptions.Item itemKey="用户名">{user?.username}</Descriptions.Item>
-          <Descriptions.Item itemKey="显示名">{user?.displayName || '-'}</Descriptions.Item>
-          <Descriptions.Item itemKey="邮箱">{user?.email || '-'}</Descriptions.Item>
+          <Descriptions.Item itemKey="显示名">{user?.displayname || '-'}</Descriptions.Item>
           <Descriptions.Item itemKey="角色">
             {user?.role === 'admin' ? '管理员' : '普通用户'}
           </Descriptions.Item>
           <Descriptions.Item itemKey="注册时间">
-            {formatDateTime(user?.createdAt)}
+            {formatDateTime(user?.created_at)}
           </Descriptions.Item>
           <Descriptions.Item itemKey="更新时间">
-            {formatDateTime(user?.updatedAt)}
+            {formatDateTime(user?.updated_at)}
           </Descriptions.Item>
         </Descriptions>
       </Card>

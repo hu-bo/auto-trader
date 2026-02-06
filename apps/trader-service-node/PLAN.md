@@ -246,7 +246,7 @@ apps/trader-service-node/
 - [ ] 在 configuration.ts 中导入 TypeORM 组件
 - [ ] 在 config.default.ts 中配置 TypeORM 连接信息
 - [ ] 创建 Entity 实体类（参考 Python 版 SQLAlchemy 模型）
-  - [ ] User 实体（src/entity/user.entity.ts）
+  - [ ] （不需要 User 表）用户信息来自 Casdoor；业务表仅保存 `user_id`（Casdoor user.id）作为外键字段（不在本服务维护用户表）
   - [ ] UserExchange 实体（src/entity/user-exchange.entity.ts）
   - [ ] Strategy 实体（src/entity/strategy.entity.ts）
   - [ ] StrategyOrder 实体（src/entity/strategy-order.entity.ts）
@@ -288,30 +288,19 @@ apps/trader-service-node/
 ### Phase 2: 认证与用户管理 (Week 3)
 
 #### 2.1 认证模块
-- [ ] 安装 JWT 组件：`npm install @midwayjs/jwt`
-- [ ] 安装 Casdoor SDK：`npm install casdoor-nodejs-sdk`
-- [ ] 在 configuration.ts 中配置 JWT 组件
-- [ ] 创建 AuthService（使用 `@Provide()` 装饰器）
-  - [ ] 实现 Casdoor OAuth 2.0 集成
-  - [ ] 实现 OAuth 回调处理
-  - [ ] 实现 JWT Token 生成与验证
+- [ ] 安装 Casdoor SDK 封装：`pnpm -C apps/trader-service-node add @hquant/casdoor`
+- [ ] 创建 CasdoorService（读取 `CASDOOR_*` 配置，提供 getSigninUrl / exchangeToken / verifyToken 等）
+- [ ] 创建 Koa AuthMiddleware（`AUTH_MODE=mock|casdoor`）
 - [ ] 创建 AuthController
-  - [ ] GET /api/v1/auth/login - 跳转到 Casdoor 登录
-  - [ ] GET /api/v1/auth/callback - OAuth 回调处理
+  - [ ] GET /api/v1/auth/login - 返回 Casdoor 登录 URL（前端自行跳转）
+  - [ ] GET /api/v1/auth/callback - OAuth code 换 token + 返回用户信息
   - [ ] POST /api/v1/auth/logout - 登出
-- [ ] 创建 JWT 中间件（JwtMiddleware）验证 Token
 - [ ] 创建 @CurrentUser() 装饰器（提取当前用户）
 
 #### 2.2 用户模块
-- [ ] 创建 UserService
-  - [ ] 使用 `@InjectEntityModel()` 注入 User Repository
-  - [ ] 实现用户信息查询（通过 TypeORM Repository）
-  - [ ] 实现用户创建/更新
-  - [ ] 实现角色权限管理（RBAC）
-  - [ ] 实现用户状态管理（激活/禁用）
 - [ ] 创建 UserController
-  - [ ] GET /api/v1/user/me - 获取当前用户信息
-  - [ ] PUT /api/v1/user/me - 更新用户信息
+  - [ ] GET /api/v1/user/me - 直接返回 Casdoor user（或映射为 UserRead 结构）
+  - [ ] PUT /api/v1/user/me - 更新 Casdoor 用户信息（可选）
 - [ ] 创建角色守卫（RoleGuard）用于权限控制
 
 #### 2.3 交易所配置模块

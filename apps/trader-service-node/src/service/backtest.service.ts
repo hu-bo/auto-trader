@@ -4,7 +4,7 @@ import type { Repository } from 'typeorm';
 import { Backtest } from '../entity/backtest.entity.js';
 
 type BacktestCreateParams = {
-  userId: string;
+  userid: number;
   strategyId: string;
   symbol: string;
   startDate: Date;
@@ -28,7 +28,7 @@ export class BacktestService {
   async create(params: BacktestCreateParams): Promise<Backtest> {
     const repo = this.requireRepo();
     const backtest = repo.create({
-      userId: params.userId,
+      userid: params.userid,
       strategyId: params.strategyId,
       symbol: params.symbol,
       startDate: params.startDate,
@@ -43,18 +43,17 @@ export class BacktestService {
     return await repo.save(backtest);
   }
 
-  async listForUser(userId: string): Promise<Backtest[]> {
+  async listForUser(userid: number): Promise<Backtest[]> {
     const repo = this.requireRepo();
-    return repo.find({ where: { userId }, order: { createdAt: 'DESC' } });
+    return repo.find({ where: { userid }, order: { createdAt: 'DESC' } });
   }
 
-  async get(userId: string, backtestId: string): Promise<Backtest> {
+  async get(userid: number, backtestId: number): Promise<Backtest> {
     const repo = this.requireRepo();
     const backtest = await repo.findOne({ where: { id: backtestId } });
-    if (!backtest || backtest.userId !== userId) {
+    if (!backtest || backtest.userid !== userid) {
       throw new httpError.NotFoundError('Backtest not found');
     }
     return backtest;
   }
 }
-

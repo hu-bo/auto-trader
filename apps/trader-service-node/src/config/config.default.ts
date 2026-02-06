@@ -12,6 +12,17 @@ export default {
   koa: {
     port: parseIntOr(process.env.APP_PORT, 9003),
   },
+  auth: {
+    mode: process.env.AUTH_MODE ?? 'mock',
+  },
+  casdoor: {
+    endpoint: 'http://sso.8and1.cn',
+    clientId: '7b474919541526399765' ,
+    clientSecret: process.env.CASDOOR_CLIENT_SECRET ?? '',
+    orgName: '8PLUS1',
+    appName: 'trader',
+    certificatePath: process.env.CASDOOR_CERTIFICATE_PATH ?? '',
+  },
   encryption: {
     key: process.env.ENCRYPTION_KEY ?? '',
   },
@@ -24,12 +35,12 @@ export default {
     dataSource: {
       default: {
         type: 'postgres',
-        host: process.env.DB_HOST ?? 'localhost',
-        port: parseIntOr(process.env.DB_PORT, 15000),
-        username: process.env.DB_USER ?? 'postgres',
-        password: process.env.DB_PASSWORD ?? 'password',
-        database: process.env.DB_NAME ?? 'trader_db',
-        synchronize: false,
+        host: 'localhost',
+        port: 15000,
+        username: 'trader_user',
+        password: '123456',
+        database: 'trader',
+        synchronize: true,
         logging: false,
         entities: ['**/entity/*.entity{.ts,.js}'],
       },

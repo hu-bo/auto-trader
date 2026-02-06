@@ -1,19 +1,20 @@
-import { Body, Controller, Del, Get, Inject, Param, Post, Put, httpError } from '@midwayjs/core';
+import { Body, Controller, Del, Get, Inject, Param, Post, Put } from '@midwayjs/core';
 import type { Context } from '@midwayjs/koa';
 import { ExchangeService } from '../service/exchange.service.js';
 import { StrategyOrderService } from '../service/strategy-order.service.js';
 import { StrategyService } from '../service/strategy.service.js';
 import { UserService } from '../service/user.service.js';
 import { apiOk } from '../util/api-response.js';
-import { getCurrentUser } from '../util/current-user.js';
+import {
+  CreateStrategyOrderBodyDTO,
+  StrategyOrderIdParamDTO,
+  UpdateStrategyOrderBodyDTO,
+} from '../dto/strategy-order.dto.js';
 
 @Controller('/api/v1/strategy-order')
 export class StrategyOrderController {
   @Inject()
   ctx!: Context;
-
-  @Inject()
-  userService!: UserService;
 
   @Inject()
   strategyService!: StrategyService;
@@ -24,16 +25,18 @@ export class StrategyOrderController {
   @Inject()
   strategyOrderService!: StrategyOrderService;
 
-  private async ensureUser() {
-    const currentUser = getCurrentUser(this.ctx);
-    await this.userService.getOrCreate({ userId: currentUser.userId, username: currentUser.username });
-    return currentUser;
+  @Inject()
+  userService!: UserService;
+
+  private async getUserid(): Promise<number> {
+    const user = await this.userService.getOrCreateCurrentUser(this.ctx);
+    return user.id;
   }
 
   private toStrategyOrderRead(order: any) {
     return {
       id: order.id,
-      user_id: order.userId,
+      user_id: order.userid,
       strategy_id: order.strategyId,
       exchange_id: order.exchangeId,
       symbols: order.symbols ?? [],
@@ -50,33 +53,21 @@ export class StrategyOrderController {
 
   @Get('/')
   async list() {
-    const currentUser = await this.ensureUser();
-    const orders = await this.strategyOrderService.listForUser(currentUser.userId);
+    const userid = await this.getUserid();
+    const orders = await this.strategyOrderService.listForUser(userid);
     return apiOk(orders.map(o => this.toStrategyOrderRead(o)));
   }
 
   @Post('/')
   async create(
-    @Body()
-    body: {
-      strategy_id: string;
-      exchange_id: string;
-      symbols: string[];
-      parameters?: Record<string, unknown>;
-      risk_config?: Record<string, unknown>;
-      live?: boolean;
-    }
+    @Body() body: CreateStrategyOrderBodyDTO
   ) {
-    if (!body?.strategy_id) throw new httpError.BadRequestError('strategy_id is required');
-    if (!body?.exchange_id) throw new httpError.BadRequestError('exchange_id is required');
-    if (!Array.isArray(body?.symbols)) throw new httpError.BadRequestError('symbols is required');
-
-    const currentUser = await this.ensureUser();
-    await this.strategyService.get(currentUser.userId, body.strategy_id);
-    await this.exchangeService.get(currentUser.userId, body.exchange_id);
+    const userid = await this.getUserid();
+    await this.strategyService.get(userid, body.strategy_id);
+    await this.exchangeService.get(userid, body.exchange_id);
 
     const order = await this.strategyOrderService.create({
-      userId: currentUser.userId,
+      userid,
       strategyId: body.strategy_id,
       exchangeId: body.exchange_id,
       symbols: body.symbols,
@@ -88,25 +79,19 @@ export class StrategyOrderController {
   }
 
   @Get('/:id')
-  async get(@Param('id') id: string) {
-    const currentUser = await this.ensureUser();
-    const order = await this.strategyOrderService.get(currentUser.userId, id);
+  async get(@Param() params: StrategyOrderIdParamDTO) {
+    const userid = await this.getUserid();
+    const order = await this.strategyOrderService.get(userid, params.id);
     return apiOk(this.toStrategyOrderRead(order));
   }
 
   @Put('/:id')
   async update(
-    @Param('id') id: string,
-    @Body()
-    body: {
-      symbols?: string[] | null;
-      parameters?: Record<string, unknown> | null;
-      risk_config?: Record<string, unknown> | null;
-      live?: boolean | null;
-    }
+    @Param() params: StrategyOrderIdParamDTO,
+    @Body() body: UpdateStrategyOrderBodyDTO
   ) {
-    const currentUser = await this.ensureUser();
-    const order = await this.strategyOrderService.update(currentUser.userId, id, {
+    const userid = await this.getUserid();
+    const order = await this.strategyOrderService.update(userid, params.id, {
       symbols: body?.symbols ?? undefined,
       parameters: body?.parameters ?? undefined,
       riskConfig: body?.risk_config ?? undefined,
@@ -116,28 +101,28 @@ export class StrategyOrderController {
   }
 
   @Del('/:id')
-  async remove(@Param('id') id: string) {
-    const currentUser = await this.ensureUser();
-    await this.strategyOrderService.delete(currentUser.userId, id);
+  async remove(@Param() params: StrategyOrderIdParamDTO) {
+    const userid = await this.getUserid();
+    await this.strategyOrderService.delete(userid, params.id);
     return apiOk(null);
   }
 
   @Post('/:id/start')
-  async start(@Param('id') id: string) {
-    const currentUser = await this.ensureUser();
-    const order = await this.strategyOrderService.start(currentUser.userId, id);
+  async start(@Param() params: StrategyOrderIdParamDTO) {
+    const userid = await this.getUserid();
+    const order = await this.strategyOrderService.start(userid, params.id);
     return apiOk(this.toStrategyOrderRead(order));
   }
 
   @Post('/:id/stop')
-  async stop(@Param('id') id: string) {
-    const currentUser = await this.ensureUser();
-    const order = await this.strategyOrderService.stop(currentUser.userId, id);
+  async stop(@Param() params: StrategyOrderIdParamDTO) {
+    const userid = await this.getUserid();
+    const order = await this.strategyOrderService.stop(userid, params.id);
     return apiOk(this.toStrategyOrderRead(order));
   }
 
   @Get('/:id/stats')
-  async stats(@Param('id') id: string) {
-    return apiOk({ id, stats: {} });
+  async stats(@Param() params: StrategyOrderIdParamDTO) {
+    return apiOk({ id: params.id, stats: {} });
   }
 }

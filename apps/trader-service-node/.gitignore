@@ -11,3 +11,5 @@ run/
 *.un~
 .tsbuildinfo
 .tsbuildinfo.*
+config.local.ts
+config.prod.ts

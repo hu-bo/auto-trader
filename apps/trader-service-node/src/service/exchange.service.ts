@@ -3,9 +3,10 @@ import { InjectEntityModel } from '@midwayjs/typeorm';
 import type { Repository } from 'typeorm';
 import { UserExchange } from '../entity/user-exchange.entity.js';
 import { AesGcmEncryptor } from '../util/encryption.js';
+import type { EncryptionConfig } from '../types/index.js';
 
 type ExchangeCreateParams = {
-  userId: string;
+  userid: number;
   exchangeType: string;
   name: string;
   apiKey: string;
@@ -29,8 +30,8 @@ export class ExchangeService {
   @InjectEntityModel(UserExchange)
   exchangeRepo?: Repository<UserExchange>;
 
-  @Config('encryption.key')
-  encryptionKey?: string;
+  @Config('encryption')
+  encryptionConfig!: EncryptionConfig;
 
   private requireRepo(): Repository<UserExchange> {
     if (!this.exchangeRepo) {
@@ -40,7 +41,7 @@ export class ExchangeService {
   }
 
   private requireEncryptor(): AesGcmEncryptor {
-    const key = (this.encryptionKey ?? '').trim();
+    const key = (this.encryptionConfig?.key ?? '').trim();
     if (!key) {
       throw new httpError.InternalServerErrorError('ENCRYPTION_KEY is required for this operation');
     }
@@ -52,15 +53,15 @@ export class ExchangeService {
     }
   }
 
-  async listForUser(userId: string): Promise<UserExchange[]> {
+  async listForUser(userid: number): Promise<UserExchange[]> {
     const repo = this.requireRepo();
-    return repo.find({ where: { userId }, order: { createdAt: 'DESC' } });
+    return repo.find({ where: { userid }, order: { createdAt: 'DESC' } });
   }
 
-  async get(userId: string, exchangeId: string): Promise<UserExchange> {
+  async get(userid: number, exchangeId: number): Promise<UserExchange> {
     const repo = this.requireRepo();
     const exchange = await repo.findOne({ where: { id: exchangeId } });
-    if (!exchange || exchange.userId !== userId) {
+    if (!exchange || exchange.userid !== userid) {
       throw new httpError.NotFoundError('Exchange not found');
     }
     return exchange;
@@ -71,7 +72,7 @@ export class ExchangeService {
     const encryptor = this.requireEncryptor();
 
     const exchange = repo.create({
-      userId: params.userId,
+      userid: params.userid,
       exchangeType: params.exchangeType,
       name: params.name,
       apiKeyEncrypted: encryptor.encrypt(params.apiKey),
@@ -84,10 +85,10 @@ export class ExchangeService {
     return await repo.save(exchange);
   }
 
-  async update(userId: string, exchangeId: string, patch: ExchangeUpdateParams): Promise<UserExchange> {
+  async update(userid: number, exchangeId: number, patch: ExchangeUpdateParams): Promise<UserExchange> {
     const repo = this.requireRepo();
     const encryptor = this.requireEncryptor();
-    const exchange = await this.get(userId, exchangeId);
+    const exchange = await this.get(userid, exchangeId);
 
     if (patch.name !== undefined && patch.name !== null) exchange.name = patch.name;
     if (patch.apiKey !== undefined && patch.apiKey !== null) {
@@ -106,29 +107,29 @@ export class ExchangeService {
     return await repo.save(exchange);
   }
 
-  async delete(userId: string, exchangeId: string): Promise<void> {
+  async delete(userid: number, exchangeId: number): Promise<void> {
     const repo = this.requireRepo();
-    const exchange = await this.get(userId, exchangeId);
+    const exchange = await this.get(userid, exchangeId);
     await repo.remove(exchange);
   }
 
-  async setGrpcToken(userId: string, exchangeId: string, token: string): Promise<UserExchange> {
+  async setGrpcToken(userid: number, exchangeId: number, token: string): Promise<UserExchange> {
     const repo = this.requireRepo();
     const encryptor = this.requireEncryptor();
-    const exchange = await this.get(userId, exchangeId);
+    const exchange = await this.get(userid, exchangeId);
     exchange.grpcTokenEncrypted = encryptor.encrypt(token);
     return await repo.save(exchange);
   }
 
-  async clearGrpcToken(userId: string, exchangeId: string): Promise<UserExchange> {
+  async clearGrpcToken(userid: number, exchangeId: number): Promise<UserExchange> {
     const repo = this.requireRepo();
-    const exchange = await this.get(userId, exchangeId);
+    const exchange = await this.get(userid, exchangeId);
     exchange.grpcTokenEncrypted = null;
     return await repo.save(exchange);
   }
 
-  async getGrpcToken(userId: string, exchangeId: string): Promise<string> {
-    const exchange = await this.get(userId, exchangeId);
+  async getGrpcToken(userid: number, exchangeId: number): Promise<string> {
+    const exchange = await this.get(userid, exchangeId);
     if (!exchange.grpcTokenEncrypted) {
       throw new httpError.BadRequestError('Exchange is not initialized (missing grpc token)');
     }
@@ -136,12 +137,12 @@ export class ExchangeService {
     return encryptor.decrypt(exchange.grpcTokenEncrypted);
   }
 
-  async getApiCredentials(userId: string, exchangeId: string): Promise<{
+  async getApiCredentials(userid: number, exchangeId: number): Promise<{
     apiKey: string;
     apiSecret: string;
     passphrase: string | null;
   }> {
-    const exchange = await this.get(userId, exchangeId);
+    const exchange = await this.get(userid, exchangeId);
     const encryptor = this.requireEncryptor();
     return {
       apiKey: encryptor.decrypt(exchange.apiKeyEncrypted),

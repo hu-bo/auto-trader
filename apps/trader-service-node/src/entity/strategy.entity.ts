@@ -1,28 +1,24 @@
 import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
   ManyToOne,
-  OneToMany,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { newId } from '../util/id.js';
-import { StrategyOrder } from './strategy-order.entity.js';
 import { User as UserEntity } from './user.entity.js';
 import type { User } from './user.entity.js';
 
 @Entity('strategies')
-@Index(['userId'])
+@Index(['userid'])
 export class Strategy {
-  @PrimaryColumn({ type: 'varchar', length: 64 })
-  id!: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+    id!: number;
 
-  @Column({ name: 'user_id', type: 'varchar', length: 64 })
-  userId!: string;
+  @Column({ name: 'userid', type: 'int' })
+  userid!: number;
 
   @Column({ type: 'varchar', length: 128 })
   name!: string;
@@ -54,15 +50,7 @@ export class Strategy {
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 
-  @ManyToOne(() => UserEntity, user => user.strategies, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'user_id' })
+  @ManyToOne(() => UserEntity, { createForeignKeyConstraints: false })
+  @JoinColumn({ name: 'userid' })
   user!: User;
-
-  @OneToMany(() => StrategyOrder, order => order.strategy)
-  strategyOrders!: StrategyOrder[];
-
-  @BeforeInsert()
-  beforeInsert() {
-    if (!this.id) this.id = newId();
-  }
 }

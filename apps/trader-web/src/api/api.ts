@@ -1,7 +1,10 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { Notification } from '@douyinfe/semi-ui-19'
-import { getStorage, removeStorage, STORAGE_KEYS } from '@/utils/storage'
+import { TokenStorage } from '@hquant/casdoor/client'
 import type { ApiResponse } from '@/types'
+
+// 复用与 CasdoorProvider 相同的 storage 配置读取 token
+const tokenStorage = new TokenStorage({ type: 'localStorage', prefix: 'hquant_casdoor_' })
 
 // 创建 axios 实例
 const api: AxiosInstance = axios.create({
@@ -15,7 +18,7 @@ const api: AxiosInstance = axios.create({
 // 请求拦截器
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = getStorage<string>(STORAGE_KEYS.TOKEN)
+    const token = tokenStorage.getAccessToken()
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }

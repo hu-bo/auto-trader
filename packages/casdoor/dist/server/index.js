@@ -74,7 +74,6 @@ class CasdoorServer {
    * @param token JWT Token
    */
   async verifyToken(token) {
-    console.log(11112)
     try {
       const claims = this.parseJwtToken(token);
       const now = Math.floor(Date.now() / 1e3);
@@ -103,8 +102,7 @@ class CasdoorServer {
    */
   async getUser(name) {
     const response = await this.sdk.getUser(name);
-    console.log("response", response.data);
-    const user = response.data ?? response;
+    const user = response.data?.data ?? response.data;
     return user;
   }
   /**

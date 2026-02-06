@@ -1,6 +1,7 @@
 import { Inject, Controller, Get, Query } from '@midwayjs/core';
 import { UserService } from '../service/user.service.js';
 import { apiOk } from '../util/api-response.js';
+import { GetUserQueryDTO } from '../dto/api.dto.js';
 
 @Controller('/api')
 export class APIController {
@@ -8,8 +9,8 @@ export class APIController {
   userService!: UserService;
 
   @Get('/get_user')
-  async getUser(@Query('uid') uid: string) {
-    const parsedUid = Number(uid);
+  async getUser(@Query() query: GetUserQueryDTO) {
+    const parsedUid = Number(query.uid);
     const user = await this.userService.getUser({
       uid: Number.isFinite(parsedUid) ? parsedUid : 0,
     });

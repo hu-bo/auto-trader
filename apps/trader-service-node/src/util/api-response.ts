@@ -1,11 +1,11 @@
 export type ApiSuccess<T> = {
-  success: true;
   message: string;
   data: T;
+  code: number;
 };
 
 export type ApiFailure = {
-  success: false;
+  code: number;
   message: string;
   data?: unknown;
 };
@@ -13,10 +13,10 @@ export type ApiFailure = {
 export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
 
 export function apiOk<T>(data: T, message = 'OK'): ApiSuccess<T> {
-  return { success: true, message, data };
+  return {  message, data, code: 0 };
 }
 
 export function apiFail(message: string, data?: unknown): ApiFailure {
-  return data === undefined ? { success: false, message } : { success: false, message, data };
+  return data === undefined ? { code: 500, message } : { code: 500, message, data };
 }
 

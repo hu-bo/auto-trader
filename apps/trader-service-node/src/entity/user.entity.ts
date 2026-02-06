@@ -1,52 +1,40 @@
 import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
-  OneToMany,
-  PrimaryColumn,
+  Index,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { newId } from '../util/id.js';
-import { Strategy } from './strategy.entity.js';
-import { StrategyOrder } from './strategy-order.entity.js';
-import { UserExchange } from './user-exchange.entity.js';
 
-@Entity('users') 
+@Entity('users')
+@Index(['casdoorid'], { unique: true })
 export class User {
-  @PrimaryColumn({ type: 'varchar', length: 64 })
-  id!: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id!: number;
 
-  @Column({ name: 'casdoor_id', type: 'varchar', length: 256, nullable: true, unique: true })
-  casdoorId!: string | null;
+  @Column({ type: 'varchar', length: 128, default: '' })
+  casdoorid!: string;
 
-  @Column({ type: 'varchar', length: 128, unique: true })
+  @Column({ type: 'varchar', length: 64, default: '' })
   username!: string;
 
-  @Column({ type: 'varchar', length: 64, default: 'user' })
+  @Column({ type: 'varchar', length: 64, default: '' })
+  displayname!: string;
+
+  @Column({ type: 'varchar', length: 64, default: '' })
   role!: string;
 
-  @Column({ name: 'is_active', type: 'boolean', default: true })
-  isActive!: boolean;
+  @Column({ type: 'boolean', default: false })
+  isadmin!: boolean;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  @Column({ type: 'boolean', default: true })
+  isactive!: boolean;
+
+  @CreateDateColumn({ name: 'created_at', type: 'date' })
   createdAt!: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'date' })
   updatedAt!: Date;
-
-  @OneToMany(() => UserExchange, exchange => exchange.user)
-  exchanges!: UserExchange[];
-
-  @OneToMany(() => Strategy, strategy => strategy.user)
-  strategies!: Strategy[];
-
-  @OneToMany(() => StrategyOrder, order => order.user)
-  strategyOrders!: StrategyOrder[];
-
-  @BeforeInsert()
-  beforeInsert() {
-    if (!this.id) this.id = newId();
-  }
 }
 

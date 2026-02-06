@@ -13,7 +13,7 @@ export const orderApi = {
 
   // 获取订单详情
   get: (orderId: string, exchangeId: string) =>
-    requestData.get<Order>(`/orders/${orderId}`, { exchange_id: exchangeId }),
+    requestData.get<Order>(`/orders/${orderId}`, { exchangeId }),
 
   // 下单
   place: (params: PlaceOrderParams) => requestData.post<Order>('/orders', params),

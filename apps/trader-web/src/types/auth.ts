@@ -1,14 +1,13 @@
 export interface User {
-  id: string
+  id: number
+  casdoorid: string
   username: string
-  displayName?: string
-  avatar?: string
-  email?: string
-  phone?: string
+  displayname: string
   role: UserRole
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
+  isadmin: boolean
+  isactive: boolean
+  created_at: string
+  updated_at: string
 }
 
 export type UserRole = 'admin' | 'user'

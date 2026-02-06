@@ -131,8 +131,7 @@ class CasdoorServer {
    */
   async getUser(name) {
     const response = await this.sdk.getUser(name);
-    console.log("response", response.data);
-    const user = response.data ?? response;
+    const user = response.data?.data ?? response.data;
     return user;
   }
   /**

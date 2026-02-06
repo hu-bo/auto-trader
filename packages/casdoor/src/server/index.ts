@@ -131,8 +131,9 @@ export class CasdoorServer {
   async getUser(name: string): Promise<CasdoorUser> {
     const response = await this.sdk.getUser(name);
     // SDK 返回 AxiosResponse，需要从 data 中获取
-    console.log('response', response.data)
-    const user = (response as { data?: unknown }).data ?? response;
+    const user = (response as any as { data?: {
+      data:  CasdoorUser;
+    } }).data?.data ?? response.data;
     return user as CasdoorUser;
   }
 

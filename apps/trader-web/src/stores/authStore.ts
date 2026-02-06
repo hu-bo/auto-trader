@@ -1,83 +1,49 @@
 import { create } from 'zustand'
-import { getStorage, setStorage, removeStorage, STORAGE_KEYS } from '@/utils/storage'
+import { authApi } from '@/api'
 import type { User } from '@/types'
 
-interface AuthState {
+/**
+ * 业务用户 Store
+ *
+ * 只负责管理从 /user/current 获取的业务用户信息。
+ * SSO 认证状态（token、isAuthenticated、isLoading）由 @hquant/casdoor 的 useCasdoor() 管理。
+ */
+
+interface UserState {
+  /** 业务用户（来自后端 /user/current） */
   user: User | null
-  accessToken: string | null
-  isAuthenticated: boolean
-  isLoading: boolean
+  /** 是否正在加载业务用户 */
+  userLoading: boolean
 }
 
-interface AuthActions {
+interface UserActions {
   setUser: (user: User | null) => void
-  setToken: (token: string | null) => void
-  login: (user: User, token: string) => void
-  logout: () => void
-  setLoading: (loading: boolean) => void
-  initialize: () => void
+  /** 从后端拉取最新业务用户信息 */
+  fetchCurrentUser: () => Promise<User | null>
+  /** 清除业务用户 */
+  clearUser: () => void
 }
 
-type AuthStore = AuthState & AuthActions
+type UserStore = UserState & UserActions
 
-export const useAuthStore = create<AuthStore>((set) => ({
+export const useAuthStore = create<UserStore>((set) => ({
   user: null,
-  accessToken: null,
-  isAuthenticated: false,
-  isLoading: true,
+  userLoading: false,
 
-  setUser: (user) => {
-    if (user) {
-      setStorage(STORAGE_KEYS.USER, user)
-    } else {
-      removeStorage(STORAGE_KEYS.USER)
+  setUser: (user) => set({ user }),
+
+  fetchCurrentUser: async () => {
+    set({ userLoading: true })
+    try {
+      const response = await authApi.getCurrentUser()
+      const user = response.data as User
+      set({ user, userLoading: false })
+      return user
+    } catch {
+      set({ user: null, userLoading: false })
+      return null
     }
-    set({ user, isAuthenticated: !!user })
   },
 
-  setToken: (token) => {
-    if (token) {
-      setStorage(STORAGE_KEYS.TOKEN, token)
-    } else {
-      removeStorage(STORAGE_KEYS.TOKEN)
-    }
-    set({ accessToken: token })
-  },
-
-  login: (user, token) => {
-    setStorage(STORAGE_KEYS.USER, user)
-    setStorage(STORAGE_KEYS.TOKEN, token)
-    set({
-      user,
-      accessToken: token,
-      isAuthenticated: true,
-      isLoading: false,
-    })
-  },
-
-  logout: () => {
-    removeStorage(STORAGE_KEYS.USER)
-    removeStorage(STORAGE_KEYS.TOKEN)
-    removeStorage(STORAGE_KEYS.REFRESH_TOKEN)
-    set({
-      user: null,
-      accessToken: null,
-      isAuthenticated: false,
-      isLoading: false,
-    })
-  },
-
-  setLoading: (loading) => set({ isLoading: loading }),
-
-  initialize: () => {
-    const user = getStorage<User>(STORAGE_KEYS.USER)
-    const token = getStorage<string>(STORAGE_KEYS.TOKEN)
-
-    set({
-      user,
-      accessToken: token,
-      isAuthenticated: !!(user && token),
-      isLoading: false,
-    })
-  },
+  clearUser: () => set({ user: null }),
 }))

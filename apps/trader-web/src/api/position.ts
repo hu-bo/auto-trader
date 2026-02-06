@@ -21,7 +21,7 @@ export const positionApi = {
   // 同步持仓
   sync: (exchangeId: string) =>
     requestData.post<PositionListResponse>('/positions/sync', null, {
-      params: { exchange_id: exchangeId },
+      params: { exchangeId },
     } as never),
 
   // 平仓
@@ -32,7 +32,7 @@ export const positionApi = {
 export const accountApi = {
   // 获取账户余额
   getBalance: (exchangeId: string, tradeType: TradeType) =>
-    requestData.get<AccountBalance>('/balance', { exchange_id: exchangeId, trade_type: tradeType }),
+    requestData.get<AccountBalance>('/balance', { exchangeId, tradeType }),
 
   // 设置杠杆
   setLeverage: (params: SetLeverageParams) => requestData.post<unknown>('/leverage', params),
