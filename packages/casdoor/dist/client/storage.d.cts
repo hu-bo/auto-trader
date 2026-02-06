@@ -1,4 +1,4 @@
-import { S as StorageConfig, T as TokenResponse, d as CasdoorUser } from '../types-dmynJi7Z.cjs';
+import { StorageConfig, TokenResponse, CasdoorUser } from '../types.cjs';
 
 /**
  * Token 存储管理器

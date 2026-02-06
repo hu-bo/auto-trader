@@ -1,6 +1,4 @@
 import { SDK as CasdoorSDK } from "casdoor-nodejs-sdk";
-import path from "path";
-import fs from "fs";
 export * from "../types.js";
 function decodeJwt(token) {
   const parts = token.split(".");
@@ -13,16 +11,10 @@ function decodeJwt(token) {
   const decoded = Buffer.from(padded, "base64").toString("utf-8");
   return JSON.parse(decoded);
 }
-const DEFAULT_CERT_PATH = path.join(__dirname, "8plus1.png");
-console.log(DEFAULT_CERT_PATH);
-const certificate = fs.readFileSync(DEFAULT_CERT_PATH, "utf-8");
 class CasdoorServer {
   sdk;
   config;
   constructor(config) {
-    if (certificate) {
-      config.certificate = certificate;
-    }
     if (!config.clientSecret) {
       throw new Error("clientSecret is required for server-side SDK");
     }
@@ -82,6 +74,7 @@ class CasdoorServer {
    * @param token JWT Token
    */
   async verifyToken(token) {
+    console.log(11112)
     try {
       const claims = this.parseJwtToken(token);
       const now = Math.floor(Date.now() / 1e3);
@@ -110,6 +103,7 @@ class CasdoorServer {
    */
   async getUser(name) {
     const response = await this.sdk.getUser(name);
+    console.log("response", response.data);
     const user = response.data ?? response;
     return user;
   }

@@ -128,13 +128,13 @@ func (a *WsPublicAdapter) OnMiniTicker(handler func(marketdata.MiniTicker)) { a.
 func (a *WsPublicAdapter) OnError(handler func(error))                      { a.onError = handler }
 
 func buildOKXPublicArgs(symbols []marketdata.SubscribeRequest) []map[string]any {
-	args := make([]map[string]any, 0, len(symbols)*4)
+	channels := []string{"candle15m", "trades", "books", "tickers"}
+	args := make([]map[string]any, 0, len(symbols)*len(channels))
 	for _, s := range symbols {
 		instID := marketdata.ToExchangeSymbol(marketdata.OKX, s.Symbol, s.TradeType)
-		args = append(args, map[string]any{"channel": "candle15m", "instId": instID})
-		args = append(args, map[string]any{"channel": "trades", "instId": instID})
-		args = append(args, map[string]any{"channel": "books", "instId": instID})
-		args = append(args, map[string]any{"channel": "tickers", "instId": instID})
+		for _, ch := range channels {
+			args = append(args, map[string]any{"channel": ch, "instId": instID})
+		}
 	}
 	return args
 }

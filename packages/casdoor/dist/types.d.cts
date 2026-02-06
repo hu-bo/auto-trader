@@ -155,4 +155,4 @@ interface AuthResult {
     error?: string;
 }
 
-export type { AuthResult as A, CasdoorConfig as C, JwtClaims as J, StorageConfig as S, TokenResponse as T, AuthState as a, CasdoorPermission as b, CasdoorRole as c, CasdoorUser as d, ClientConfig as e };
+export type { AuthResult, AuthState, CasdoorConfig, CasdoorPermission, CasdoorRole, CasdoorUser, ClientConfig, JwtClaims, StorageConfig, TokenResponse };

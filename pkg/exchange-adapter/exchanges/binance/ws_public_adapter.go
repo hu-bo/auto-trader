@@ -141,17 +141,16 @@ func (a *WsPublicAdapter) subscribeSymbols(tradeType marketdata.TradeType, rawSy
 		}
 		batch := rawSymbols[i:end]
 
-		// Subscribe to each symbol in the batch
+		topics := make([]string, 0, len(batch)*3)
 		for _, raw := range batch {
-			if err := conn.ws.SubscribeKlines(conn.wsKey, raw, "15m"); err != nil {
-				return err
-			}
-			if err := conn.ws.SubscribeDiffDepth(conn.wsKey, raw, ""); err != nil {
-				return err
-			}
+			rawLower := strings.ToLower(raw)
+			topics = append(topics, rawLower+"@kline_15m", rawLower+"@depth")
 			if a.subAggTrades {
-				_ = conn.ws.SubscribeAggregateTrades(conn.wsKey, raw)
+				topics = append(topics, rawLower+"@aggTrade")
 			}
+		}
+		if err := conn.ws.Subscribe(conn.wsKey, topics...); err != nil {
+			return err
 		}
 
 		// Add delay between batches to respect rate limits
@@ -332,13 +331,15 @@ func (a *WsPublicAdapter) resubscribeLocked(tradeType marketdata.TradeType) erro
 		}
 		batch := rawSymbols[i:end]
 
+		topics := make([]string, 0, len(batch)*3)
 		for _, raw := range batch {
-			_ = conn.ws.SubscribeKlines(conn.wsKey, raw, "15m")
-			_ = conn.ws.SubscribeDiffDepth(conn.wsKey, raw, "")
+			rawLower := strings.ToLower(raw)
+			topics = append(topics, rawLower+"@kline_15m", rawLower+"@depth")
 			if a.subAggTrades {
-				_ = conn.ws.SubscribeAggregateTrades(conn.wsKey, raw)
+				topics = append(topics, rawLower+"@aggTrade")
 			}
 		}
+		_ = conn.ws.Subscribe(conn.wsKey, topics...)
 
 		if end < len(rawSymbols) {
 			time.Sleep(batchDelay)

@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { e as ClientConfig, d as CasdoorUser, T as TokenResponse } from '../types-dmynJi7Z.js';
+import { ClientConfig, CasdoorUser, TokenResponse } from '../types.js';
 import { CasdoorClient } from './core.js';
 
 /**

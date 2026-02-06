@@ -1,6 +1,6 @@
 import { SDK } from 'casdoor-nodejs-sdk';
-import { C as CasdoorConfig, T as TokenResponse, J as JwtClaims, A as AuthResult, d as CasdoorUser } from '../types-dmynJi7Z.cjs';
-export { a as AuthState, b as CasdoorPermission, c as CasdoorRole, e as ClientConfig, S as StorageConfig } from '../types-dmynJi7Z.cjs';
+import { CasdoorConfig, TokenResponse, JwtClaims, AuthResult, CasdoorUser } from '../types.cjs';
+export { AuthState, CasdoorPermission, CasdoorRole, ClientConfig, StorageConfig } from '../types.cjs';
 
 /**
  * Casdoor 服务端 SDK

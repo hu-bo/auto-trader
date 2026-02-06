@@ -1,5 +1,5 @@
 import { DeepReadonly, Ref } from 'vue';
-import { d as CasdoorUser, T as TokenResponse, e as ClientConfig } from '../types-dmynJi7Z.js';
+import { CasdoorUser, TokenResponse, ClientConfig } from '../types.js';
 import { CasdoorClient } from './core.js';
 
 /**

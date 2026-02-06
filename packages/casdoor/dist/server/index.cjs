@@ -1,9 +1,7 @@
 "use strict";
-var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -18,14 +16,6 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __reExport = (target, mod, secondTarget) => (__copyProps(target, mod, "default"), secondTarget && __copyProps(secondTarget, mod, "default"));
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var server_exports = {};
 __export(server_exports, {
@@ -38,8 +28,6 @@ __export(server_exports, {
 });
 module.exports = __toCommonJS(server_exports);
 var import_casdoor_nodejs_sdk = require("casdoor-nodejs-sdk");
-var import_path = __toESM(require("path"), 1);
-var import_fs = __toESM(require("fs"), 1);
 __reExport(server_exports, require("../types.js"), module.exports);
 function decodeJwt(token) {
   const parts = token.split(".");
@@ -52,16 +40,10 @@ function decodeJwt(token) {
   const decoded = Buffer.from(padded, "base64").toString("utf-8");
   return JSON.parse(decoded);
 }
-const DEFAULT_CERT_PATH = import_path.default.join(__dirname, "8plus1.png");
-console.log(DEFAULT_CERT_PATH);
-const certificate = import_fs.default.readFileSync(DEFAULT_CERT_PATH, "utf-8");
 class CasdoorServer {
   sdk;
   config;
   constructor(config) {
-    if (certificate) {
-      config.certificate = certificate;
-    }
     if (!config.clientSecret) {
       throw new Error("clientSecret is required for server-side SDK");
     }
@@ -149,6 +131,7 @@ class CasdoorServer {
    */
   async getUser(name) {
     const response = await this.sdk.getUser(name);
+    console.log("response", response.data);
     const user = response.data ?? response;
     return user;
   }

@@ -1,4 +1,4 @@
-import { e as ClientConfig, a as AuthState, T as TokenResponse, d as CasdoorUser } from '../types-dmynJi7Z.cjs';
+import { ClientConfig, AuthState, TokenResponse, CasdoorUser } from '../types.cjs';
 
 type AuthStateListener = (state: AuthState) => void;
 /**
