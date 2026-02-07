@@ -1,23 +1,37 @@
-import { Provide, httpError } from '@midwayjs/core';
+import { Config, Provide, httpError } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import type { Context } from '@midwayjs/koa';
 import type { Repository } from 'typeorm';
 import type { CasdoorUser } from '@hquant/casdoor/server';
 import { User } from '../entity/user.entity.js';
 import { IUserOptions } from '../interface.js';
+import { AuthConfig } from '../common/casdoor.js';
 
 @Provide()
 export class UserService {
+  @Config('auth')
+  authConfig!: AuthConfig;
+
   @InjectEntityModel(User)
-  userRepo?: Repository<User>;
+  userRepo!: Repository<User>;
+
+  async getUsers() {
+    return await this.userRepo.find();
+  }
 
   async getUser(options: IUserOptions) {
-    return {
-      uid: options.uid,
-      username: 'mockedName',
-      phone: '12345678901',
-      email: 'xxx.xxx@xxx.com',
-    };
+    if (this.authConfig.mode === "mock") {
+      return {
+        id: options.casdoorid,
+        username: 'mockedName',
+        displayname: 'mockedName',
+      };
+    }
+    return await this.userRepo.findOne({
+      where: {
+        casdoorid: options.casdoorid,
+      },
+    })
   }
 
   private requireRepo(): Repository<User> {
@@ -26,16 +40,6 @@ export class UserService {
     }
     return this.userRepo;
   }
-
-  private getCasdoorUserFromContext(ctx: Context): Partial<CasdoorUser> & { id: string; name?: string } {
-    const user = (ctx.state as any)?.user as any;
-    const id = String(user?.id ?? '').trim();
-    if (!id) {
-      throw new httpError.UnauthorizedError('User not authenticated');
-    }
-    return user;
-  }
-
   async getOrCreateFromCasdoorUser(
     casdoorUser: Partial<CasdoorUser> & { id: string; name?: string }
   ): Promise<User> {
@@ -115,18 +119,12 @@ export class UserService {
     return dirty ? await repo.save(existing) : existing;
   }
 
-  async getOrCreateCurrentUser(ctx: Context): Promise<User> {
-    const casdoorUser = this.getCasdoorUserFromContext(ctx);
+  async getOrCreateCurrentUser(casdoorUser: CasdoorUser): Promise<User> {
     return await this.getOrCreateFromCasdoorUser(casdoorUser);
   }
 
-  async syncCurrentUser(ctx: Context): Promise<User> {
-    const casdoorUser = this.getCasdoorUserFromContext(ctx);
-    return await this.syncFromCasdoorUser(casdoorUser);
-  }
-
   async getCurrentUserid(ctx: Context): Promise<number> {
-    const user = await this.getOrCreateCurrentUser(ctx);
+    const user = await this.getOrCreateCurrentUser(ctx.state.user);
     return user.id;
   }
 }

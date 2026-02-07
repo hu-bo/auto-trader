@@ -47,6 +47,7 @@ class TokenStorage {
   }
   /**
    * 保存 Token
+   * 兼容 SDK 返回的 { access_token, refresh_token } 和完整的 TokenResponse
    */
   saveToken(token) {
     this.storage.setItem(this.getKey(this.accessTokenKey), token.access_token);
@@ -79,10 +80,11 @@ class TokenStorage {
   }
   /**
    * 检查 Token 是否过期
+   * 如果没有存储过期时间（SDK 未返回 expires_in），视为未过期
    */
   isTokenExpired() {
     const expiresAt = this.getExpiresAt();
-    if (!expiresAt) return true;
+    if (!expiresAt) return false;
     return Date.now() >= expiresAt;
   }
   /**
@@ -91,7 +93,7 @@ class TokenStorage {
    */
   isTokenExpiringSoon(thresholdSeconds = 60) {
     const expiresAt = this.getExpiresAt();
-    if (!expiresAt) return true;
+    if (!expiresAt) return false;
     return Date.now() >= expiresAt - thresholdSeconds * 1e3;
   }
   /**

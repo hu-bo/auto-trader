@@ -52,7 +52,7 @@ declare class CasdoorClient {
      * @param serverExchangeToken 服务端 Token 交换函数
      */
     handleCallback(serverExchangeToken: (code: string) => Promise<{
-        token: TokenResponse;
+        token: Pick<TokenResponse, 'access_token'> & Partial<TokenResponse>;
         user: CasdoorUser;
     }>): Promise<boolean>;
     /**

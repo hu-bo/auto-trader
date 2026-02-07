@@ -1,7 +1,7 @@
-import { Config, Middleware } from '@midwayjs/core';
+import { Inject, Middleware } from '@midwayjs/core';
 import type { IMiddleware } from '@midwayjs/core';
 import type { Context, NextFunction } from '@midwayjs/koa';
-import { getCasdoorServer, type AuthConfig, type CasdoorConfig } from '../common/casdoor.js';
+import { CasdoorService } from '../service/casdoor.service.js';
 import { apiFail } from '../util/api-response.js';
 
 const isExcludedPath = (path: string): boolean => {
@@ -13,11 +13,8 @@ const isExcludedPath = (path: string): boolean => {
 
 @Middleware()
 export class AuthMiddleware implements IMiddleware<Context, NextFunction> {
-  @Config('auth')
-  authConfig!: AuthConfig;
-
-  @Config('casdoor')
-  casdoorConfig!: CasdoorConfig;
+  @Inject()
+  casdoorService!: CasdoorService;
 
   resolve() {
     return async (ctx: Context, next: NextFunction) => {
@@ -25,17 +22,31 @@ export class AuthMiddleware implements IMiddleware<Context, NextFunction> {
         return await next();
       }
 
-      const isEnabled = (this.authConfig?.mode ?? 'mock') === 'casdoor';
-
       // Mock mode
-      if (!isEnabled) {
+      if (!this.casdoorService.isEnabled()) {
         const userId = (ctx.get('x-user-id') || 'demo-user').trim() || 'demo-user';
         const username = (ctx.get('x-username') || 'demo').trim() || 'demo';
-        (ctx.state as any).user = {
+        ctx.state.user = {
           id: userId,
+          owner: 'built-in',
           name: username,
+          displayName: username,
+          avatar: '',
+          email: `${username}@localhost`,
+          phone: '',
+          type: 'normal-user',
+          createdTime: new Date().toISOString(),
+          updatedTime: new Date().toISOString(),
           isAdmin: true,
           isGlobalAdmin: true,
+          isForbidden: false,
+          isDeleted: false,
+          signupApplication: 'app-built-in',
+          score: 0,
+          ranking: 0,
+          properties: {},
+          roles: [],
+          permissions: [],
         };
         return await next();
       }
@@ -56,23 +67,13 @@ export class AuthMiddleware implements IMiddleware<Context, NextFunction> {
           return;
         }
 
-        const server = getCasdoorServer(this.casdoorConfig);
-        const claims = server.parseJwtToken(token);
-  
-        const isValid = await server.verifyToken(token);
-        if (!isValid) {
+        const { valid, user } = await this.casdoorService.verifyTokenGetUser(token);
+        if (!valid || !user) {
           ctx.status = 401;
           ctx.body = apiFail('Invalid or expired token');
           return;
         }
-
-        (ctx.state as any).user = {
-          id: claims.sub,
-          name: claims.name || claims.sub,
-          isAdmin: claims.isAdmin || false,
-          isGlobalAdmin: claims.isGlobalAdmin || false,
-          ...claims,
-        };
+        ctx.state.user = user;
 
         await next();
       } catch (err) {

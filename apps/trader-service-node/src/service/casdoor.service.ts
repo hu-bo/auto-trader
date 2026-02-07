@@ -3,9 +3,6 @@ import { readFileSync } from 'node:fs';
 import {
   createCasdoorServer,
   type CasdoorServer,
-  type CasdoorUser,
-  type JwtClaims,
-  type TokenResponse,
 } from '@hquant/casdoor/server';
 import type { AuthConfig, CasdoorConfig } from '../types/index.js';
 
@@ -19,7 +16,6 @@ export class CasdoorService {
   casdoorConfig!: CasdoorConfig;
 
   private server?: CasdoorServer;
-  private warnedDeprecatedCertificateEnv = false;
 
   isEnabled(): boolean {
     return (this.authConfig?.mode ?? 'mock') === 'casdoor';
@@ -27,32 +23,15 @@ export class CasdoorService {
 
   private resolveCertificate(): string {
     const certificatePath = (this.casdoorConfig?.certificatePath ?? '').trim();
-    if (certificatePath) {
-      try {
-        const content = readFileSync(certificatePath, 'utf-8').trim();
-        if (!content) {
-          throw new Error('CASDOOR_CERTIFICATE_PATH points to an empty file');
-        }
-        return content;
-      } catch (_err) {
-        throw new httpError.ServiceUnavailableError('CASDOOR_CERTIFICATE_PATH is invalid or unreadable');
+    try {
+      const content = readFileSync(certificatePath, 'utf-8').trim();
+      if (!content) {
+        throw new Error('CASDOOR_CERTIFICATE_PATH points to an empty file');
       }
+      return content;
+    } catch (_err) {
+      throw new httpError.ServiceUnavailableError('CASDOOR_CERTIFICATE_PATH is invalid or unreadable');
     }
-
-    const certificate = (this.casdoorConfig?.certificate ?? '').trim();
-    if (!certificate) {
-      // Prefer CASDOOR_CERTIFICATE_PATH (file-based) to avoid multi-line env vars.
-      throw new httpError.ServiceUnavailableError('CASDOOR_CERTIFICATE_PATH is required');
-    }
-
-    // Backward-compat: accept CASDOOR_CERTIFICATE, but warn if it came from env.
-    if (!this.warnedDeprecatedCertificateEnv && (process.env.CASDOOR_CERTIFICATE ?? '').trim()) {
-      this.warnedDeprecatedCertificateEnv = true;
-      // eslint-disable-next-line no-console
-      console.warn('[casdoor] CASDOOR_CERTIFICATE is deprecated; please use CASDOOR_CERTIFICATE_PATH instead');
-    }
-
-    return certificate;
   }
 
   private requireServer(): CasdoorServer {
@@ -95,39 +74,12 @@ export class CasdoorService {
     return this.requireServer();
   }
 
-  getSigninUrl(redirectUri?: string): string {
-    const server = this.requireServer();
-    const uri = (redirectUri ?? this.casdoorConfig?.redirectUri ?? '').trim();
-    if (!uri) throw new httpError.ServiceUnavailableError('CASDOOR_REDIRECT_URI is required');
-    return server.getSigninUrl(uri);
-  }
-
-  async exchangeToken(code: string): Promise<{ token: TokenResponse; user: CasdoorUser; claims: JwtClaims }> {
-    const server = this.requireServer();
-    const trimmed = code.trim();
-    if (!trimmed) throw new httpError.BadRequestError('code is required');
-
-    const token = await server.getToken(trimmed);
-    const claims = server.parseJwtToken(token.access_token);
-    const name = String((claims.name as string | undefined) ?? claims.sub ?? '').trim();
-    if (!name) throw new httpError.BadGatewayError('Casdoor token missing user claim');
-    const user = await server.getUser(name);
-
-    return { token, user, claims };
-  }
-
-  async verifyToken(accessToken: string) {
+  async verifyTokenGetUser(accessToken: string) {
     const server = this.requireServer();
     return await server.verifyToken(accessToken);
   }
-
-  async getUsers(): Promise<CasdoorUser[]> {
+  async verifyCode(code: string) {
     const server = this.requireServer();
-    return await server.getUsers();
-  }
-
-  async updateUser(user: Partial<CasdoorUser> & { name: string }): Promise<boolean> {
-    const server = this.requireServer();
-    return await server.updateUser(user);
+    return await server.getToken(code);
   }
 }

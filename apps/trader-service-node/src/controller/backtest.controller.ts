@@ -18,7 +18,7 @@ export class BacktestController {
   userService!: UserService;
 
   private async getUserid(): Promise<number> {
-    const user = await this.userService.getOrCreateCurrentUser(this.ctx);
+    const user = await this.userService.getOrCreateCurrentUser(this.ctx.state.user);
     return user.id;
   }
 

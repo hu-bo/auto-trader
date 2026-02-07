@@ -15,7 +15,6 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   if (isLoading) {
     return <Loading fullscreen tip="正在验证登录状态..." />
   }
-
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }

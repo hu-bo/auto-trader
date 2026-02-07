@@ -171,7 +171,7 @@ export class CasdoorClient {
    * @param serverExchangeToken 服务端 Token 交换函数
    */
   async handleCallback(
-    serverExchangeToken: (code: string) => Promise<{ token: TokenResponse; user: CasdoorUser }>
+    serverExchangeToken: (code: string) => Promise<{ token: Pick<TokenResponse, 'access_token'> & Partial<TokenResponse>; user: CasdoorUser }>
   ): Promise<boolean> {
     this.updateState({ isLoading: true });
 

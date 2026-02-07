@@ -38,16 +38,16 @@ export function useAuth() {
    * casdoor client 会自动从 URL 中提取 code 并调用 serverExchangeToken。
    */
   const handleCallback = useCallback(async () => {
-    const serverExchangeToken = async (code: string) => {
+
+    const success = await casdoor.handleCallback(async (code: string) => {
       const response = await authApi.callback(code)
       const data = response.data!
+      
       return {
-        token: data.token as unknown as TokenResponse,
-        user: data.user as unknown as CasdoorUser,
+        token: data.token,
+        user: data.user,
       }
-    }
-
-    const success = await casdoor.handleCallback(serverExchangeToken)
+    })
 
     if (success) {
       await fetchCurrentUser()

@@ -1,7 +1,7 @@
 import { Body, Config, Controller, Get, Inject } from '@midwayjs/core';
 import type { Context } from '@midwayjs/koa';
 import { type AuthConfig, type CasdoorConfig } from '../common/casdoor.js';
-import { apiOk } from '../util/api-response.js';
+import { apiFail, apiOk } from '../util/api-response.js';
 import { getCurrentUser } from '../util/current-user.js';
 import { UserService } from '../service/user.service.js';
 
@@ -47,17 +47,13 @@ export class UserController {
 
   @Get('/current')
   async current() {
-    const user = await this.userService.syncCurrentUser(this.ctx);
-    return apiOk({
-      id: user.id,
-      casdoorid: user.casdoorid,
-      username: user.username,
-      displayname: user.displayname,
-      role: user.role,
-      isadmin: user.isadmin,
-      isactive: user.isactive,
-      created_at: user.createdAt,
-      updated_at: user.updatedAt,
-    });
+    const casdoorUser = await this.ctx.state.user
+    const user = await this.userService.getUser({
+      casdoorid: casdoorUser.id
+    })
+    if (!user) {
+      return apiFail(`${casdoorUser.displayName} 不存在`)
+    }
+    return apiOk(user);
   }
 }

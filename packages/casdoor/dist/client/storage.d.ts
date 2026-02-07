@@ -14,8 +14,9 @@ declare class TokenStorage {
     private getKey;
     /**
      * 保存 Token
+     * 兼容 SDK 返回的 { access_token, refresh_token } 和完整的 TokenResponse
      */
-    saveToken(token: TokenResponse): void;
+    saveToken(token: Pick<TokenResponse, 'access_token'> & Partial<TokenResponse>): void;
     /**
      * 获取 Access Token
      */
@@ -30,6 +31,7 @@ declare class TokenStorage {
     getExpiresAt(): number | null;
     /**
      * 检查 Token 是否过期
+     * 如果没有存储过期时间（SDK 未返回 expires_in），视为未过期
      */
     isTokenExpired(): boolean;
     /**
