@@ -68,7 +68,6 @@ export const lightTheme: DeepPartial<Styles> = {
       },
     },
     tooltip: {
-      defaultValue: 'n/a',
       rect: {
         paddingLeft: 4,
         paddingRight: 4,
@@ -83,7 +82,8 @@ export const lightTheme: DeepPartial<Styles> = {
         borderColor: '#F2F3F5',
         color: '#FEFEFE',
       },
-      text: {
+      legend: {
+        defaultValue: 'n/a',
         size: 12,
         family: 'Helvetica Neue',
         weight: 'normal',
@@ -109,10 +109,12 @@ export const lightTheme: DeepPartial<Styles> = {
       { size: 1, color: '#01C5C4' },
     ],
     tooltip: {
-      showName: true,
-      showParams: true,
-      defaultValue: 'n/a',
-      text: {
+      title: {
+        showName: true,
+        showParams: true,
+      },
+      legend: {
+        defaultValue: 'n/a',
         size: 12,
         family: 'Helvetica Neue',
         weight: 'normal',
@@ -345,7 +347,6 @@ export const darkTheme: DeepPartial<Styles> = {
       },
     },
     tooltip: {
-      defaultValue: 'n/a',
       rect: {
         paddingLeft: 4,
         paddingRight: 4,
@@ -360,7 +361,8 @@ export const darkTheme: DeepPartial<Styles> = {
         borderColor: '#3D3D3D',
         color: '#1F1F1F',
       },
-      text: {
+      legend: {
+        defaultValue: 'n/a',
         size: 12,
         family: 'Helvetica Neue',
         weight: 'normal',
@@ -386,10 +388,12 @@ export const darkTheme: DeepPartial<Styles> = {
       { size: 1, color: '#01C5C4' },
     ],
     tooltip: {
-      showName: true,
-      showParams: true,
-      defaultValue: 'n/a',
-      text: {
+      title: {
+        showName: true,
+        showParams: true,
+      },
+      legend: {
+        defaultValue: 'n/a',
         size: 12,
         family: 'Helvetica Neue',
         weight: 'normal',

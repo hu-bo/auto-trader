@@ -1,21 +1,20 @@
 // src/react/KLineChart.tsx
-import * as React from "react";
-import { useRef, useEffect, useCallback, useImperativeHandle } from "react";
+import { useRef, useEffect, useCallback, useImperativeHandle, useState, useMemo } from "react";
 
 // src/core/KLineChartPro.ts
 import { init, dispose, registerLocale, registerStyles } from "klinecharts";
 
 // src/core/defaults.ts
 var DEFAULT_PERIODS = [
-  { multiplier: 1, timespan: "minute", text: "1m" },
-  { multiplier: 5, timespan: "minute", text: "5m" },
-  { multiplier: 15, timespan: "minute", text: "15m" },
-  { multiplier: 30, timespan: "minute", text: "30m" },
-  { multiplier: 1, timespan: "hour", text: "1H" },
-  { multiplier: 4, timespan: "hour", text: "4H" },
-  { multiplier: 1, timespan: "day", text: "1D" },
-  { multiplier: 1, timespan: "week", text: "1W" },
-  { multiplier: 1, timespan: "month", text: "1M" }
+  { span: 1, type: "minute", text: "1m" },
+  { span: 5, type: "minute", text: "5m" },
+  { span: 15, type: "minute", text: "15m" },
+  { span: 30, type: "minute", text: "30m" },
+  { span: 1, type: "hour", text: "1H" },
+  { span: 4, type: "hour", text: "4H" },
+  { span: 1, type: "day", text: "1D" },
+  { span: 1, type: "week", text: "1W" },
+  { span: 1, type: "month", text: "1M" }
 ];
 function getDefaultMainIndicators() {
   return ["MA"];
@@ -173,7 +172,6 @@ var lightTheme = {
       }
     },
     tooltip: {
-      defaultValue: "n/a",
       rect: {
         paddingLeft: 4,
         paddingRight: 4,
@@ -188,7 +186,8 @@ var lightTheme = {
         borderColor: "#F2F3F5",
         color: "#FEFEFE"
       },
-      text: {
+      legend: {
+        defaultValue: "n/a",
         size: 12,
         family: "Helvetica Neue",
         weight: "normal",
@@ -214,10 +213,12 @@ var lightTheme = {
       { size: 1, color: "#01C5C4" }
     ],
     tooltip: {
-      showName: true,
-      showParams: true,
-      defaultValue: "n/a",
-      text: {
+      title: {
+        showName: true,
+        showParams: true
+      },
+      legend: {
+        defaultValue: "n/a",
         size: 12,
         family: "Helvetica Neue",
         weight: "normal",
@@ -449,7 +450,6 @@ var darkTheme = {
       }
     },
     tooltip: {
-      defaultValue: "n/a",
       rect: {
         paddingLeft: 4,
         paddingRight: 4,
@@ -464,7 +464,8 @@ var darkTheme = {
         borderColor: "#3D3D3D",
         color: "#1F1F1F"
       },
-      text: {
+      legend: {
+        defaultValue: "n/a",
         size: 12,
         family: "Helvetica Neue",
         weight: "normal",
@@ -490,10 +491,12 @@ var darkTheme = {
       { size: 1, color: "#01C5C4" }
     ],
     tooltip: {
-      showName: true,
-      showParams: true,
-      defaultValue: "n/a",
-      text: {
+      title: {
+        showName: true,
+        showParams: true
+      },
+      legend: {
+        defaultValue: "n/a",
         size: 12,
         family: "Helvetica Neue",
         weight: "normal",
@@ -667,7 +670,14 @@ var zhCN = {
   close: "\u6536",
   volume: "\u6210\u4EA4\u91CF",
   turnover: "\u6210\u4EA4\u989D",
-  change: "\u6DA8\u8DCC\u5E45"
+  change: "\u6DA8\u8DCC\u5E45",
+  second: "\u79D2",
+  minute: "\u5206",
+  hour: "\u65F6",
+  day: "\u65E5",
+  week: "\u5468",
+  month: "\u6708",
+  year: "\u5E74"
 };
 var zhTW = {
   time: "\u6642\u9593",
@@ -677,7 +687,14 @@ var zhTW = {
   close: "\u6536",
   volume: "\u6210\u4EA4\u91CF",
   turnover: "\u6210\u4EA4\u984D",
-  change: "\u6F32\u8DCC\u5E45"
+  change: "\u6F32\u8DCC\u5E45",
+  second: "\u79D2",
+  minute: "\u5206",
+  hour: "\u6642",
+  day: "\u65E5",
+  week: "\u9031",
+  month: "\u6708",
+  year: "\u5E74"
 };
 var enUS = {
   time: "Time",
@@ -687,7 +704,14 @@ var enUS = {
   close: "Close",
   volume: "Volume",
   turnover: "Turnover",
-  change: "Change"
+  change: "Change",
+  second: "s",
+  minute: "m",
+  hour: "h",
+  day: "D",
+  week: "W",
+  month: "M",
+  year: "Y"
 };
 
 // src/core/KLineChartPro.ts
@@ -698,7 +722,6 @@ var KLineChartPro = class {
     this.currentLocale = "en-US";
     this.currentTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     this.subPaneIds = /* @__PURE__ */ new Map();
-    this.isLoading = false;
     this.actionCallbacks = /* @__PURE__ */ new Map();
     this.markerGroupId = "trade_markers";
     const containerElement = typeof options.container === "string" ? document.getElementById(options.container) : options.container;
@@ -724,7 +747,6 @@ var KLineChartPro = class {
     this.registerBuiltinLocales();
     this.registerBuiltinThemes();
     this.initChart(options);
-    this.loadData();
   }
   registerBuiltinLocales() {
     registerLocale("zh-CN", zhCN);
@@ -758,6 +780,71 @@ var KLineChartPro = class {
       this.setWatermark(options.watermark);
     }
     this.setupChartEvents();
+    this.setupDataLoader();
+    this.chart.setSymbol(this.currentSymbol);
+    this.chart.setPeriod(this.currentPeriod);
+  }
+  /**
+   * v10: Use setDataLoader instead of setLoadDataCallback / applyNewData / updateData.
+   * getBars handles initial load + backward/forward scrolling.
+   * subscribeBar / unsubscribeBar handle real-time updates.
+   */
+  setupDataLoader() {
+    if (!this.chart) return;
+    const self = this;
+    this.chart.setDataLoader({
+      getBars: async ({ type, timestamp, symbol, period, callback }) => {
+        const extPeriod = self.findPeriod(period) || self.currentPeriod;
+        if (type === "init" || type === "forward") {
+          const now = Date.now();
+          const from = now - self.getPeriodDuration(extPeriod) * 500;
+          try {
+            const data = await self.datafeed.getHistoryKLineData(
+              symbol,
+              extPeriod,
+              from,
+              now
+            );
+            callback(data, data.length > 0);
+          } catch (err) {
+            console.error("Failed to load data:", err);
+            callback([], false);
+          }
+        } else if (type === "backward") {
+          const earliestTimestamp = timestamp ?? Date.now();
+          const duration = self.getPeriodDuration(extPeriod) * 500;
+          const from = earliestTimestamp - duration;
+          try {
+            const data = await self.datafeed.getHistoryKLineData(
+              symbol,
+              extPeriod,
+              from,
+              earliestTimestamp
+            );
+            callback(data, data.length > 0);
+          } catch (err) {
+            console.error("Failed to load more data:", err);
+            callback([], false);
+          }
+        } else {
+          callback([], false);
+        }
+      },
+      subscribeBar: ({ symbol, period, callback }) => {
+        const extPeriod = self.findPeriod(period) || self.currentPeriod;
+        self.datafeed.subscribe(symbol, extPeriod, callback);
+      },
+      unsubscribeBar: ({ symbol, period }) => {
+        const extPeriod = self.findPeriod(period) || self.currentPeriod;
+        self.datafeed.unsubscribe(symbol, extPeriod);
+      }
+    });
+  }
+  /** Find our extended Period (with text) matching a klinecharts Period */
+  findPeriod(kcPeriod) {
+    return this.periods.find(
+      (p) => p.type === kcPeriod.type && p.span === kcPeriod.span
+    );
   }
   setupChartEvents() {
     if (!this.chart) return;
@@ -786,37 +873,10 @@ var KLineChartPro = class {
       callbacks.forEach((callback) => callback(data));
     }
   }
-  async loadData() {
-    if (this.isLoading) return;
-    this.isLoading = true;
-    try {
-      this.datafeed.unsubscribe(this.currentSymbol, this.currentPeriod);
-      const now = Date.now();
-      const from = now - this.getPeriodDuration() * 500;
-      const data = await this.datafeed.getHistoryKLineData(
-        this.currentSymbol,
-        this.currentPeriod,
-        from,
-        now
-      );
-      if (this.chart && data.length > 0) {
-        this.chart.applyNewData(data);
-      }
-      this.datafeed.subscribe(
-        this.currentSymbol,
-        this.currentPeriod,
-        (newData) => {
-          this.chart?.updateData(newData);
-        }
-      );
-    } catch (error) {
-      console.error("Failed to load data:", error);
-    } finally {
-      this.isLoading = false;
-    }
-  }
-  getPeriodDuration() {
+  getPeriodDuration(period) {
+    const p = period || this.currentPeriod;
     const multipliers = {
+      second: 1e3,
       minute: 60 * 1e3,
       hour: 60 * 60 * 1e3,
       day: 24 * 60 * 60 * 1e3,
@@ -824,7 +884,7 @@ var KLineChartPro = class {
       month: 30 * 24 * 60 * 60 * 1e3,
       year: 365 * 24 * 60 * 60 * 1e3
     };
-    return (multipliers[this.currentPeriod.timespan] || 60 * 1e3) * this.currentPeriod.multiplier;
+    return (multipliers[p.type] || 60 * 1e3) * p.span;
   }
   setTheme(theme) {
     if (!this.chart) return;
@@ -859,7 +919,7 @@ var KLineChartPro = class {
   setSymbol(symbol) {
     const oldSymbol = this.currentSymbol;
     this.currentSymbol = symbol;
-    this.loadData();
+    this.chart?.setSymbol(symbol);
     this.emitAction("onSymbolChange", { oldSymbol, newSymbol: symbol });
   }
   getSymbol() {
@@ -868,7 +928,7 @@ var KLineChartPro = class {
   setPeriod(period) {
     const oldPeriod = this.currentPeriod;
     this.currentPeriod = period;
-    this.loadData();
+    this.chart?.setPeriod(period);
     this.emitAction("onPeriodChange", { oldPeriod, newPeriod: period });
   }
   getPeriod() {
@@ -905,20 +965,27 @@ var KLineChartPro = class {
     return Array.isArray(result) ? result[0] || null : result;
   }
   removeIndicator(paneId, name) {
-    this.chart?.removeIndicator(paneId, name);
+    this.chart?.removeIndicator({ paneId, name });
     if (name) {
       this.subPaneIds.delete(name);
     }
   }
   createOverlay(overlay, paneId) {
-    const result = this.chart?.createOverlay(overlay, paneId);
+    if (paneId && typeof overlay === "object") {
+      overlay.paneId = paneId;
+    }
+    const result = this.chart?.createOverlay(overlay);
     if (result) {
       return Array.isArray(result) ? result[0] || null : result;
     }
     return null;
   }
   removeOverlay(overlayId) {
-    this.chart?.removeOverlay(overlayId);
+    if (typeof overlayId === "string") {
+      this.chart?.removeOverlay({ id: overlayId });
+    } else {
+      this.chart?.removeOverlay(overlayId);
+    }
   }
   setMarkers(markers) {
     if (!this.chart) return;
@@ -985,12 +1052,6 @@ var KLineChartPro = class {
   }
   async searchSymbols(search) {
     return this.datafeed.searchSymbols(search);
-  }
-  applyNewData(data, more) {
-    this.chart?.applyNewData(data, more);
-  }
-  updateData(data) {
-    this.chart?.updateData(data);
   }
   getDataList() {
     return this.chart?.getDataList() || [];
@@ -1072,8 +1133,6 @@ function createChartInstance(getChart, defaultSymbol, defaultPeriod) {
     subscribeAction: (type, callback) => getChart()?.subscribeAction(type, callback),
     unsubscribeAction: (type, callback) => getChart()?.unsubscribeAction(type, callback),
     searchSymbols: (search) => getChart()?.searchSymbols(search) || Promise.resolve([]),
-    applyNewData: (data, more) => getChart()?.applyNewData(data, more),
-    updateData: (data) => getChart()?.updateData(data),
     getDataList: () => getChart()?.getDataList() || [],
     scrollToRealTime: () => getChart()?.scrollToRealTime(),
     scrollToDataIndex: (dataIndex) => getChart()?.scrollToDataIndex(dataIndex),
@@ -1086,12 +1145,165 @@ function createChartInstance(getChart, defaultSymbol, defaultPeriod) {
   };
 }
 
+// src/react/IndicatorModal.tsx
+import { jsx, jsxs } from "react/jsx-runtime";
+function IndicatorModal({
+  visible,
+  onClose,
+  theme,
+  mainIndicator,
+  subIndicators,
+  onMainSelect,
+  onSubToggle
+}) {
+  if (!visible) return null;
+  const isDark = theme === "dark";
+  const bg = isDark ? "#252525" : "#ffffff";
+  const border = isDark ? "#3d3d3d" : "#e5e5e5";
+  const text = isDark ? "#e5e5e5" : "#333333";
+  const subText = isDark ? "#929aa5" : "#666666";
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      className: "klinecharts-pro-modal-overlay",
+      style: {
+        position: "fixed",
+        inset: 0,
+        backgroundColor: "rgba(0,0,0,0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 2e3
+      },
+      onClick: onClose,
+      children: /* @__PURE__ */ jsxs(
+        "div",
+        {
+          className: "klinecharts-pro-modal",
+          style: {
+            backgroundColor: bg,
+            borderRadius: 8,
+            width: 480,
+            maxHeight: "80vh",
+            overflow: "hidden",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.2)"
+          },
+          onClick: (e) => e.stopPropagation(),
+          children: [
+            /* @__PURE__ */ jsxs("div", { style: {
+              padding: "16px 20px",
+              borderBottom: `1px solid ${border}`,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center"
+            }, children: [
+              /* @__PURE__ */ jsx("span", { style: { fontSize: 16, fontWeight: 600, color: text }, children: "\u6307\u6807\u8BBE\u7F6E" }),
+              /* @__PURE__ */ jsx("button", { onClick: onClose, style: {
+                background: "none",
+                border: "none",
+                fontSize: 20,
+                cursor: "pointer",
+                color: subText,
+                padding: 4,
+                lineHeight: 1
+              }, children: "\xD7" })
+            ] }),
+            /* @__PURE__ */ jsxs("div", { style: { padding: "16px 20px", maxHeight: "60vh", overflow: "auto" }, children: [
+              /* @__PURE__ */ jsxs("div", { style: { marginBottom: 20 }, children: [
+                /* @__PURE__ */ jsxs("div", { style: {
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: text,
+                  marginBottom: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8
+                }, children: [
+                  /* @__PURE__ */ jsx("span", { style: { width: 4, height: 16, backgroundColor: "#1677ff", borderRadius: 2, display: "inline-block" } }),
+                  "\u4E3B\u56FE\u6307\u6807"
+                ] }),
+                /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }, children: BUILT_IN_INDICATORS.main.map((name) => {
+                  const active = mainIndicator === name;
+                  return /* @__PURE__ */ jsxs("label", { style: {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    backgroundColor: active ? isDark ? "rgba(22,119,255,0.15)" : "rgba(22,119,255,0.08)" : "transparent",
+                    border: `1px solid ${active ? "#1677ff" : border}`,
+                    transition: "all 0.2s"
+                  }, children: [
+                    /* @__PURE__ */ jsx(
+                      "input",
+                      {
+                        type: "radio",
+                        name: "main-indicator",
+                        checked: active,
+                        onChange: () => onMainSelect(active ? null : name),
+                        style: { accentColor: "#1677ff" }
+                      }
+                    ),
+                    /* @__PURE__ */ jsx("span", { style: { fontSize: 13, color: text }, children: name })
+                  ] }, name);
+                }) })
+              ] }),
+              /* @__PURE__ */ jsxs("div", { children: [
+                /* @__PURE__ */ jsxs("div", { style: {
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: text,
+                  marginBottom: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8
+                }, children: [
+                  /* @__PURE__ */ jsx("span", { style: { width: 4, height: 16, backgroundColor: "#52c41a", borderRadius: 2, display: "inline-block" } }),
+                  "\u526F\u56FE\u6307\u6807"
+                ] }),
+                /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }, children: BUILT_IN_INDICATORS.sub.map((name) => {
+                  const active = subIndicators.has(name);
+                  return /* @__PURE__ */ jsxs("label", { style: {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    backgroundColor: active ? isDark ? "rgba(82,196,26,0.15)" : "rgba(82,196,26,0.08)" : "transparent",
+                    border: `1px solid ${active ? "#52c41a" : border}`,
+                    transition: "all 0.2s"
+                  }, children: [
+                    /* @__PURE__ */ jsx(
+                      "input",
+                      {
+                        type: "checkbox",
+                        checked: active,
+                        onChange: () => onSubToggle(name),
+                        style: { accentColor: "#52c41a" }
+                      }
+                    ),
+                    /* @__PURE__ */ jsx("span", { style: { fontSize: 13, color: text }, children: name })
+                  ] }, name);
+                }) })
+              ] })
+            ] })
+          ]
+        }
+      )
+    }
+  );
+}
+
 // src/react/KLineChart.tsx
+import { jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
 function KLineChart(props) {
   const {
     className,
     style,
     markers,
+    toolbarVisible = true,
     ref,
     onReady,
     onSymbolChange,
@@ -1103,15 +1315,99 @@ function KLineChart(props) {
     ...options
   } = props;
   const containerRef = useRef(null);
+  const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
+  const searchRef = useRef(null);
+  const subPaneIds = useRef(/* @__PURE__ */ new Map());
+  const [searchText, setSearchText] = useState("");
+  const [allSymbols, setAllSymbols] = useState([]);
+  const [symbolsLoaded, setSymbolsLoaded] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [currentSymbol, setCurrentSymbol] = useState(options.symbol);
+  const [currentPeriod, setCurrentPeriod] = useState(options.period);
+  const [mainIndicator, setMainIndicator] = useState(
+    options.mainIndicators?.[0] || "MA"
+  );
+  const [subIndicatorsSet, setSubIndicatorsSet] = useState(
+    new Set(options.subIndicators || ["VOL"])
+  );
+  const [showIndicatorModal, setShowIndicatorModal] = useState(false);
+  const periods = options.periods || [];
+  useEffect(() => {
+    if (!toolbarVisible) return;
+    let cancelled = false;
+    options.datafeed.searchSymbols().then((symbols) => {
+      if (!cancelled) {
+        setAllSymbols(symbols);
+        setSymbolsLoaded(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [options.datafeed, toolbarVisible]);
+  const filteredResults = useMemo(() => {
+    if (!searchText.trim()) return allSymbols;
+    const lower = searchText.toLowerCase();
+    return allSymbols.filter(
+      (s) => s.ticker.toLowerCase().includes(lower) || s.name && s.name.toLowerCase().includes(lower) || s.shortName && s.shortName.toLowerCase().includes(lower)
+    );
+  }, [searchText, allSymbols]);
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setShowResults(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+  const handleSymbolSelect = useCallback((symbol) => {
+    setCurrentSymbol(symbol);
+    setShowResults(false);
+    setSearchText("");
+    chartRef.current?.setSymbol(symbol);
+  }, []);
+  const handlePeriodSelect = useCallback((period) => {
+    setCurrentPeriod(period);
+    chartRef.current?.setPeriod(period);
+  }, []);
+  const handleMainIndicatorSelect = useCallback((name) => {
+    setMainIndicator((prev) => {
+      if (prev) chartRef.current?.removeIndicator("candle_pane", prev);
+      if (name) chartRef.current?.createIndicator(name, false, { id: "candle_pane" });
+      return name;
+    });
+  }, []);
+  const handleSubIndicatorToggle = useCallback((name) => {
+    setSubIndicatorsSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+        const paneId = subPaneIds.current.get(name);
+        if (paneId) {
+          chartRef.current?.removeIndicator(paneId, name);
+          subPaneIds.current.delete(name);
+        }
+      } else {
+        next.add(name);
+        const paneId = chartRef.current?.createIndicator(name, true);
+        if (paneId) subPaneIds.current.set(name, paneId);
+      }
+      return next;
+    });
+  }, []);
+  const indicatorCount = (mainIndicator ? 1 : 0) + subIndicatorsSet.size;
   const handleSymbolChange = useCallback(
     (data) => {
+      setCurrentSymbol(data.newSymbol);
       onSymbolChange?.(data);
     },
     [onSymbolChange]
   );
   const handlePeriodChange = useCallback(
     (data) => {
+      setCurrentPeriod(data.newPeriod);
       onPeriodChange?.(data);
     },
     [onPeriodChange]
@@ -1141,30 +1437,18 @@ function KLineChart(props) {
     [onScroll]
   );
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!chartContainerRef.current) return;
     const chart = new KLineChartPro({
-      container: containerRef.current,
+      container: chartContainerRef.current,
       ...options
     });
     chartRef.current = chart;
-    if (onSymbolChange) {
-      chart.subscribeAction("onSymbolChange", handleSymbolChange);
-    }
-    if (onPeriodChange) {
-      chart.subscribeAction("onPeriodChange", handlePeriodChange);
-    }
-    if (onCrosshairChange) {
-      chart.subscribeAction("onCrosshairChange", handleCrosshairChange);
-    }
-    if (onBarClick) {
-      chart.subscribeAction("onBarClick", handleBarClick);
-    }
-    if (onZoom) {
-      chart.subscribeAction("onZoom", handleZoom);
-    }
-    if (onScroll) {
-      chart.subscribeAction("onScroll", handleScroll);
-    }
+    chart.subscribeAction("onSymbolChange", handleSymbolChange);
+    chart.subscribeAction("onPeriodChange", handlePeriodChange);
+    if (onCrosshairChange) chart.subscribeAction("onCrosshairChange", handleCrosshairChange);
+    if (onBarClick) chart.subscribeAction("onBarClick", handleBarClick);
+    if (onZoom) chart.subscribeAction("onZoom", handleZoom);
+    if (onScroll) chart.subscribeAction("onScroll", handleScroll);
     onReady?.(chart);
     return () => {
       chart.destroy();
@@ -1172,28 +1456,16 @@ function KLineChart(props) {
     };
   }, []);
   useEffect(() => {
-    if (!chartRef.current) return;
-    if (options.theme) {
-      chartRef.current.setTheme(options.theme);
-    }
+    if (options.theme) chartRef.current?.setTheme(options.theme);
   }, [options.theme]);
   useEffect(() => {
-    if (!chartRef.current) return;
-    if (options.locale) {
-      chartRef.current.setLocale(options.locale);
-    }
+    if (options.locale) chartRef.current?.setLocale(options.locale);
   }, [options.locale]);
   useEffect(() => {
-    if (!chartRef.current) return;
-    if (options.timezone) {
-      chartRef.current.setTimezone(options.timezone);
-    }
+    if (options.timezone) chartRef.current?.setTimezone(options.timezone);
   }, [options.timezone]);
   useEffect(() => {
-    if (!chartRef.current) return;
-    if (options.styles) {
-      chartRef.current.setStyles(options.styles);
-    }
+    if (options.styles) chartRef.current?.setStyles(options.styles);
   }, [options.styles]);
   useEffect(() => {
     if (!chartRef.current) return;
@@ -1208,24 +1480,110 @@ function KLineChart(props) {
       chartRef.current?.resize();
     };
     window.addEventListener("resize", handleResize);
-    return () => {
-      window.removeEventListener("resize", handleResize);
-    };
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
   useImperativeHandle(
     ref,
     () => createChartInstance(() => chartRef.current, options.symbol, options.period),
     [options.symbol, options.period]
   );
-  return React.createElement("div", {
-    ref: containerRef,
-    className,
-    style: {
-      width: "100%",
-      height: "100%",
-      ...style
+  const themeClass = options.theme === "dark" ? "dark" : "light";
+  return /* @__PURE__ */ jsxs2(
+    "div",
+    {
+      ref: containerRef,
+      className: `klinecharts-pro-container ${toolbarVisible ? "with-toolbar" : ""} ${className || ""}`.trim(),
+      "data-theme": themeClass,
+      style: { width: "100%", height: "100%", position: "relative", ...style },
+      children: [
+        toolbarVisible && /* @__PURE__ */ jsxs2("div", { className: "klinecharts-pro-toolbar", children: [
+          /* @__PURE__ */ jsxs2("div", { className: "klinecharts-pro-search", ref: searchRef, children: [
+            /* @__PURE__ */ jsx2(
+              "input",
+              {
+                className: "klinecharts-pro-search-input",
+                type: "text",
+                placeholder: currentSymbol.name || currentSymbol.ticker,
+                value: searchText,
+                onChange: (e) => {
+                  setSearchText(e.target.value);
+                  setShowResults(true);
+                },
+                onFocus: () => setShowResults(true)
+              }
+            ),
+            showResults && symbolsLoaded && /* @__PURE__ */ jsx2("div", { className: "klinecharts-pro-search-results", children: filteredResults.length === 0 ? /* @__PURE__ */ jsx2(
+              "div",
+              {
+                className: "klinecharts-pro-search-result-item",
+                style: { color: "#999", cursor: "default" },
+                children: "No results"
+              }
+            ) : filteredResults.slice(0, 50).map((s) => /* @__PURE__ */ jsxs2(
+              "div",
+              {
+                className: `klinecharts-pro-search-result-item ${s.ticker === currentSymbol.ticker ? "active" : ""}`,
+                onClick: () => handleSymbolSelect(s),
+                children: [
+                  /* @__PURE__ */ jsx2("div", { className: "klinecharts-pro-search-result-item-ticker", children: s.ticker }),
+                  s.name && /* @__PURE__ */ jsx2("div", { className: "klinecharts-pro-search-result-item-name", children: s.name })
+                ]
+              },
+              s.ticker
+            )) })
+          ] }),
+          /* @__PURE__ */ jsx2("div", { className: "klinecharts-pro-period-selector", children: periods.map((p) => /* @__PURE__ */ jsx2(
+            "button",
+            {
+              className: `klinecharts-pro-period-btn ${p.text === currentPeriod.text ? "active" : ""}`,
+              onClick: () => handlePeriodSelect(p),
+              children: p.text
+            },
+            p.text
+          )) }),
+          /* @__PURE__ */ jsx2("div", { className: "klinecharts-pro-indicator-selector", children: /* @__PURE__ */ jsxs2(
+            "button",
+            {
+              className: "klinecharts-pro-indicator-btn",
+              onClick: () => setShowIndicatorModal(true),
+              children: [
+                /* @__PURE__ */ jsx2("span", { children: "\u{1F4CA}" }),
+                /* @__PURE__ */ jsx2("span", { children: "\u6307\u6807" }),
+                indicatorCount > 0 && /* @__PURE__ */ jsx2("span", { style: {
+                  backgroundColor: "#1677ff",
+                  color: "#fff",
+                  padding: "0 6px",
+                  borderRadius: 10,
+                  fontSize: 11,
+                  lineHeight: "18px"
+                }, children: indicatorCount })
+              ]
+            }
+          ) })
+        ] }),
+        /* @__PURE__ */ jsx2(
+          "div",
+          {
+            ref: chartContainerRef,
+            className: "klinecharts-pro-chart",
+            style: { position: "absolute", left: 0, right: 0, bottom: 0, top: toolbarVisible ? 45 : 0 }
+          }
+        ),
+        /* @__PURE__ */ jsx2(
+          IndicatorModal,
+          {
+            visible: showIndicatorModal,
+            onClose: () => setShowIndicatorModal(false),
+            theme: themeClass,
+            mainIndicator,
+            subIndicators: subIndicatorsSet,
+            onMainSelect: handleMainIndicatorSelect,
+            onSubToggle: handleSubIndicatorToggle
+          }
+        )
+      ]
     }
-  });
+  );
 }
 
 // src/datafeed/index.ts
@@ -1238,7 +1596,7 @@ var DefaultDatafeed = class {
     this.apiKey = apiKey;
   }
   getSubscriptionKey(symbol, period) {
-    return `${symbol.ticker}_${period.multiplier}_${period.timespan}`;
+    return `${symbol.ticker}_${period.span}_${period.type}`;
   }
   periodToPolygonTimespan(period) {
     const timespanMap = {
@@ -1249,7 +1607,7 @@ var DefaultDatafeed = class {
       month: "month",
       year: "year"
     };
-    return timespanMap[period.timespan] || "day";
+    return timespanMap[period.type] || "day";
   }
   async searchSymbols(search) {
     if (!search || search.length < 1) {
@@ -1283,7 +1641,7 @@ var DefaultDatafeed = class {
     const toDate = new Date(to).toISOString().split("T")[0];
     try {
       const response = await fetch(
-        `${this.baseUrl}/v2/aggs/ticker/${symbol.ticker}/range/${period.multiplier}/${timespan}/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=50000&apiKey=${this.apiKey}`
+        `${this.baseUrl}/v2/aggs/ticker/${symbol.ticker}/range/${period.span}/${timespan}/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=50000&apiKey=${this.apiKey}`
       );
       const data = await response.json();
       if (data.results) {
@@ -1335,8 +1693,8 @@ var DefaultDatafeed = class {
       month: 30 * 24 * 60 * 60 * 1e3,
       year: 365 * 24 * 60 * 60 * 1e3
     };
-    const base = baseIntervals[period.timespan] || 60 * 1e3;
-    return Math.min(base * period.multiplier, 60 * 1e3);
+    const base = baseIntervals[period.type] || 60 * 1e3;
+    return Math.min(base * period.span, 60 * 1e3);
   }
   destroy() {
     this.subscriptions.forEach((intervalId) => {
@@ -1351,6 +1709,7 @@ export {
   DEFAULT_PERIODS,
   DRAWING_TOOL_GROUPS,
   DefaultDatafeed,
+  IndicatorModal,
   KLineChart,
   KLineChartPro,
   createChartInstance,

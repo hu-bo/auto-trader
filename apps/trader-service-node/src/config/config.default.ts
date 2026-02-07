@@ -46,7 +46,14 @@ export default {
       },
     },
   },
-  exchangeGrpc: {
-    url: process.env.EXCHANGE_GRPC_URL ?? 'localhost:50051',
+  exchangeAdapter: {
+    grpc: 'localhost:50051',
+    apiKey: ''
   },
+  nats: {
+    url: process.env.NATS_URL ?? 'nats://152.32.210.32:15001',
+    user: process.env.NATS_USER ?? '',
+    pass: process.env.NATS_PASS ?? '',
+    subjectPrefix: 'exchange',
+  }
 } as MidwayConfig;

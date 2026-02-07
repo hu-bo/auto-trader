@@ -30,7 +30,6 @@ export class KLineChartPro {
   private mainIndicators: string[]
   private subIndicators: string[]
   private subPaneIds: Map<string, string> = new Map()
-  private isLoading = false
   private actionCallbacks: Map<ChartActionType, Set<ChartActionCallback>> = new Map()
   private markerGroupId = 'trade_markers'
 
@@ -55,11 +54,9 @@ export class KLineChartPro {
     if (options.theme) {
       this.currentTheme = options.theme
     }
-
     if (options.locale) {
       this.currentLocale = options.locale
     }
-
     if (options.timezone) {
       this.currentTimezone = options.timezone
     }
@@ -67,7 +64,6 @@ export class KLineChartPro {
     this.registerBuiltinLocales()
     this.registerBuiltinThemes()
     this.initChart(options)
-    this.loadData()
   }
 
   private registerBuiltinLocales(): void {
@@ -110,6 +106,77 @@ export class KLineChartPro {
     }
 
     this.setupChartEvents()
+    this.setupDataLoader()
+
+    // Set initial symbol and period to trigger data loading via setDataLoader
+    this.chart.setSymbol(this.currentSymbol)
+    this.chart.setPeriod(this.currentPeriod)
+  }
+
+  /**
+   * v10: Use setDataLoader instead of setLoadDataCallback / applyNewData / updateData.
+   * getBars handles initial load + backward/forward scrolling.
+   * subscribeBar / unsubscribeBar handle real-time updates.
+   */
+  private setupDataLoader(): void {
+    if (!this.chart) return
+
+    const self = this
+
+    this.chart.setDataLoader({
+      getBars: async ({ type, timestamp, symbol, period, callback }) => {
+        // Map klinecharts v10 Period back to our extended Period (with text)
+        const extPeriod = self.findPeriod(period) || self.currentPeriod
+
+        if (type === 'init' || type === 'forward') {
+          // Initial load or forward load
+          const now = Date.now()
+          const from = now - self.getPeriodDuration(extPeriod) * 500
+          try {
+            const data = await self.datafeed.getHistoryKLineData(
+              symbol as SymbolInfo, extPeriod, from, now
+            )
+            callback(data, data.length > 0)
+          } catch (err) {
+            console.error('Failed to load data:', err)
+            callback([], false)
+          }
+        } else if (type === 'backward') {
+          // Scrolled to the left edge — load older data
+          const earliestTimestamp = timestamp ?? Date.now()
+          const duration = self.getPeriodDuration(extPeriod) * 500
+          const from = earliestTimestamp - duration
+          try {
+            const data = await self.datafeed.getHistoryKLineData(
+              symbol as SymbolInfo, extPeriod, from, earliestTimestamp
+            )
+            callback(data, data.length > 0)
+          } catch (err) {
+            console.error('Failed to load more data:', err)
+            callback([], false)
+          }
+        } else {
+          callback([], false)
+        }
+      },
+
+      subscribeBar: ({ symbol, period, callback }) => {
+        const extPeriod = self.findPeriod(period) || self.currentPeriod
+        self.datafeed.subscribe(symbol as SymbolInfo, extPeriod, callback)
+      },
+
+      unsubscribeBar: ({ symbol, period }) => {
+        const extPeriod = self.findPeriod(period) || self.currentPeriod
+        self.datafeed.unsubscribe(symbol as SymbolInfo, extPeriod)
+      },
+    })
+  }
+
+  /** Find our extended Period (with text) matching a klinecharts Period */
+  private findPeriod(kcPeriod: { type: string; span: number }): Period | undefined {
+    return this.periods.find(
+      (p) => p.type === kcPeriod.type && p.span === kcPeriod.span
+    )
   }
 
   private setupChartEvents(): void {
@@ -127,7 +194,6 @@ export class KLineChartPro {
       this.emitAction('onScroll', data)
     })
 
-    // Map klinecharts built-in candle bar click action to a simpler "bar click" event.
     this.chart.subscribeAction('onCandleBarClick' as ActionType, (data: unknown) => {
       const partial = data as { dataIndex?: unknown; x?: unknown; data?: unknown } | null
       const event: BarClickEvent = {
@@ -146,42 +212,10 @@ export class KLineChartPro {
     }
   }
 
-  private async loadData(): Promise<void> {
-    if (this.isLoading) return
-    this.isLoading = true
-
-    try {
-      this.datafeed.unsubscribe(this.currentSymbol, this.currentPeriod)
-
-      const now = Date.now()
-      const from = now - this.getPeriodDuration() * 500
-      const data = await this.datafeed.getHistoryKLineData(
-        this.currentSymbol,
-        this.currentPeriod,
-        from,
-        now
-      )
-
-      if (this.chart && data.length > 0) {
-        this.chart.applyNewData(data)
-      }
-
-      this.datafeed.subscribe(
-        this.currentSymbol,
-        this.currentPeriod,
-        (newData: KLineData) => {
-          this.chart?.updateData(newData)
-        }
-      )
-    } catch (error) {
-      console.error('Failed to load data:', error)
-    } finally {
-      this.isLoading = false
-    }
-  }
-
-  private getPeriodDuration(): number {
+  private getPeriodDuration(period?: Period): number {
+    const p = period || this.currentPeriod
     const multipliers: Record<string, number> = {
+      second: 1000,
       minute: 60 * 1000,
       hour: 60 * 60 * 1000,
       day: 24 * 60 * 60 * 1000,
@@ -189,7 +223,7 @@ export class KLineChartPro {
       month: 30 * 24 * 60 * 60 * 1000,
       year: 365 * 24 * 60 * 60 * 1000,
     }
-    return (multipliers[this.currentPeriod.timespan] || 60 * 1000) * this.currentPeriod.multiplier
+    return (multipliers[p.type] || 60 * 1000) * p.span
   }
 
   setTheme(theme: ThemeType): void {
@@ -233,7 +267,8 @@ export class KLineChartPro {
   setSymbol(symbol: SymbolInfo): void {
     const oldSymbol = this.currentSymbol
     this.currentSymbol = symbol
-    this.loadData()
+    // v10: setSymbol triggers setDataLoader.getBars automatically
+    this.chart?.setSymbol(symbol)
     this.emitAction('onSymbolChange', { oldSymbol, newSymbol: symbol })
   }
 
@@ -244,7 +279,8 @@ export class KLineChartPro {
   setPeriod(period: Period): void {
     const oldPeriod = this.currentPeriod
     this.currentPeriod = period
-    this.loadData()
+    // v10: setPeriod triggers setDataLoader.getBars automatically
+    this.chart?.setPeriod(period)
     this.emitAction('onPeriodChange', { oldPeriod, newPeriod: period })
   }
 
@@ -294,7 +330,7 @@ export class KLineChartPro {
   }
 
   removeIndicator(paneId: string, name?: string): void {
-    this.chart?.removeIndicator(paneId, name)
+    this.chart?.removeIndicator({ paneId, name })
 
     if (name) {
       this.subPaneIds.delete(name)
@@ -302,7 +338,10 @@ export class KLineChartPro {
   }
 
   createOverlay(overlay: string | OverlayCreate, paneId?: string): string | null {
-    const result = this.chart?.createOverlay(overlay, paneId)
+    if (paneId && typeof overlay === 'object') {
+      overlay.paneId = paneId
+    }
+    const result = this.chart?.createOverlay(overlay)
     if (result) {
       return Array.isArray(result) ? result[0] || null : result
     }
@@ -310,7 +349,11 @@ export class KLineChartPro {
   }
 
   removeOverlay(overlayId?: string | { id?: string; groupId?: string; name?: string }): void {
-    this.chart?.removeOverlay(overlayId)
+    if (typeof overlayId === 'string') {
+      this.chart?.removeOverlay({ id: overlayId })
+    } else {
+      this.chart?.removeOverlay(overlayId)
+    }
   }
 
   setMarkers(markers: TradeMarker[]): void {
@@ -387,14 +430,6 @@ export class KLineChartPro {
 
   async searchSymbols(search: string): Promise<SymbolInfo[]> {
     return this.datafeed.searchSymbols(search)
-  }
-
-  applyNewData(data: KLineData[], more?: boolean): void {
-    this.chart?.applyNewData(data, more)
-  }
-
-  updateData(data: KLineData): void {
-    this.chart?.updateData(data)
   }
 
   getDataList(): KLineData[] {

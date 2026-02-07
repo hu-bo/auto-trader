@@ -3,7 +3,7 @@ import * as protoLoader from '@grpc/proto-loader';
 import { Config, Provide, httpError } from '@midwayjs/core';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import type { ExchangeGrpcConfig } from '../types/index.js';
+import type { ExchangeAdapterConfig } from '../types/index.js';
 
 type GrpcTradeType = 'TRADE_TYPE_SPOT' | 'TRADE_TYPE_FUTURES' | 'TRADE_TYPE_DELIVERY';
 type GrpcExchange = 'EXCHANGE_OKX' | 'EXCHANGE_BINANCE';
@@ -102,15 +102,15 @@ type ExchangeServiceClient = {
 
 @Provide()
 export class ExchangeGrpcClient {
-  @Config('exchangeGrpc')
-  grpcConfig!: ExchangeGrpcConfig;
+  @Config('exchangeAdapter')
+  exchangeAdapter!: ExchangeAdapterConfig;
 
   private client?: ExchangeServiceClient;
 
   private getClient(): ExchangeServiceClient {
     if (this.client) return this.client;
 
-    const url = (this.grpcConfig?.url ?? '').trim();
+    const url = (this.exchangeAdapter?.grpc ?? '').trim();
     if (!url) {
       throw new httpError.ServiceUnavailableError('EXCHANGE_GRPC_URL is required');
     }

@@ -13,6 +13,7 @@ import { DefaultErrorFilter } from './filter/default.filter.js';
 import { NotFoundFilter } from './filter/notfound.filter.js';
 import { AuthMiddleware } from './middleware/auth.middleware.js';
 import { ReportMiddleware } from './middleware/report.middleware.js';
+import { MarketGateway } from './socket/market.gateway.js';
 import DefaultConfig from './config/config.default.js';
 import LocalConfig from './config/config.local.js';
 import UnittestConfig from './config/config.unittest.js';
@@ -48,5 +49,8 @@ export class MainConfiguration implements ILifeCycle {
     this.app.useMiddleware([AuthMiddleware, ReportMiddleware]);
     // add filter
     this.app.useFilter([NotFoundFilter, DefaultErrorFilter]);
+
+    // 初始化 NATS -> Socket.IO 网关
+    await container.getAsync(MarketGateway);
   }
 }

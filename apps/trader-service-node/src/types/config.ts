@@ -21,13 +21,14 @@ export interface EncryptionConfig {
   key: string;
 }
 
-export interface ExchangeGrpcConfig {
-  url: string;
+export interface ExchangeAdapterConfig {
+  apiKey: string;
+  grpc: string;
 }
 
 export interface AppConfig {
   auth: AuthConfig;
   casdoor: CasdoorConfig;
   encryption: EncryptionConfig;
-  exchangeGrpc: ExchangeGrpcConfig;
+  exchangeAdapter: ExchangeAdapterConfig;
 }

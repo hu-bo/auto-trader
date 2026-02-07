@@ -3,124 +3,211 @@ import { KLineChart as KLineChartComponent, type KLineChartRef } from '@hquant/k
 import type { Datafeed, SymbolInfo, Period, KLineData } from '@hquant/klinecharts-pro'
 import '@hquant/klinecharts-pro/styles.css'
 import { useAppStore } from '@/stores/appStore'
+import { marketApi } from '@/api/market'
+import { io, Socket } from 'socket.io-client'
 
 interface KLineChartProps {
   symbol?: string
   interval?: string
   height?: number
+  exchange?: string
+  tradeType?: string
+  /** Show built-in toolbar (symbol search + period + indicator). Default true */
+  toolbarVisible?: boolean
   onSymbolChange?: (symbol: string) => void
   onIntervalChange?: (interval: string) => void
 }
 
-// 自定义 Datafeed，连接到后端 API
-class TradingDatafeed implements Datafeed {
-  async searchSymbols(search?: string): Promise<SymbolInfo[]> {
-    // 返回常用交易对
-    const symbols: SymbolInfo[] = [
-      { ticker: 'BTC-USDT', name: 'Bitcoin', exchange: 'Binance' },
-      { ticker: 'ETH-USDT', name: 'Ethereum', exchange: 'Binance' },
-      { ticker: 'BNB-USDT', name: 'Binance Coin', exchange: 'Binance' },
-      { ticker: 'SOL-USDT', name: 'Solana', exchange: 'Binance' },
-      { ticker: 'XRP-USDT', name: 'Ripple', exchange: 'Binance' },
-      { ticker: 'DOGE-USDT', name: 'Dogecoin', exchange: 'Binance' },
-      { ticker: 'ADA-USDT', name: 'Cardano', exchange: 'Binance' },
-      { ticker: 'AVAX-USDT', name: 'Avalanche', exchange: 'Binance' },
-    ]
+function periodToString(period: Period): string {
+  const { span, type } = period
+  switch (type) {
+    case 'minute': return `${span}m`
+    case 'hour': return `${span}h`
+    case 'day': return `${span}d`
+    case 'week': return `${span}w`
+    case 'month': return `${span}M`
+    default: return '15m'
+  }
+}
 
+class TradingDatafeed implements Datafeed {
+  private socket: Socket | null = null
+  private callbacks: Map<string, (data: KLineData) => void> = new Map()
+  private exchange: string
+  private tradeType: string
+  private allSymbols: SymbolInfo[] | null = null
+  private loadingPromise: Promise<SymbolInfo[]> | null = null
+
+  constructor(exchange = 'binance', tradeType = 'spot') {
+    this.exchange = exchange
+    this.tradeType = tradeType
+  }
+
+  private ensureSocket(): Socket {
+    if (!this.socket) {
+      const wsUrl = (import.meta as any).env?.VITE_WS_MARKET_URL || 'http://localhost:9004'
+      this.socket = io(wsUrl, {
+        path: '/ws',
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+      })
+
+      this.socket.on('connect', () => console.log('[KLine WS] Connected'))
+
+      this.socket.on('kline', (data: Record<string, unknown>) => {
+        const key = `${data.exchange}:${data.trade_type}:${data.symbol}:${data.period}`
+        const cb = this.callbacks.get(key)
+        if (cb) {
+          cb({
+            timestamp: data.timestamp as number,
+            open: data.open as number,
+            high: data.high as number,
+            low: data.low as number,
+            close: data.close as number,
+            volume: data.volume as number,
+          })
+        }
+      })
+
+      this.socket.on('disconnect', () => console.log('[KLine WS] Disconnected'))
+    }
+    return this.socket
+  }
+
+  private async loadAllSymbols(): Promise<SymbolInfo[]> {
+    if (this.allSymbols) return this.allSymbols
+    if (this.loadingPromise) return this.loadingPromise
+
+    this.loadingPromise = (async () => {
+      try {
+        const res = await marketApi.getSymbols({
+          exchange: this.exchange,
+          trade_type: this.tradeType,
+        })
+        const symbols = (res?.symbols || [])
+          .filter((s) => s.syncEnabled)
+          .map((s) => ({
+            ticker: s.symbol,
+            name: `${s.baseCurrency}/${s.quoteCurrency}`,
+            exchange: s.exchange,
+            market: s.tradeType,
+          }))
+        this.allSymbols = symbols
+        return symbols
+      } catch (err) {
+        console.error('[KLine] Failed to load symbols:', err)
+        this.allSymbols = []
+        return []
+      } finally {
+        this.loadingPromise = null
+      }
+    })()
+
+    return this.loadingPromise
+  }
+
+  async searchSymbols(search?: string): Promise<SymbolInfo[]> {
+    const symbols = await this.loadAllSymbols()
     if (!search) return symbols
-    const lowerSearch = search.toLowerCase()
+    const lower = search.toLowerCase()
     return symbols.filter(
       (s) =>
-        s.ticker.toLowerCase().includes(lowerSearch) ||
-        s.name?.toLowerCase().includes(lowerSearch)
+        s.ticker.toLowerCase().includes(lower) ||
+        s.name?.toLowerCase().includes(lower)
     )
   }
 
   async getHistoryKLineData(
     symbol: SymbolInfo,
     period: Period,
-    from: number,
-    to: number
+    _from: number,
+    _to: number
   ): Promise<KLineData[]> {
-    // TODO: 连接真实的 K 线数据 API
-    // 目前返回模拟数据
-    const data: KLineData[] = []
-    const now = Date.now()
-    const intervalMs = this.getIntervalMs(period)
-
-    for (let i = 500; i >= 0; i--) {
-      const timestamp = now - i * intervalMs
-      const basePrice = 40000 + Math.random() * 10000
-      const volatility = 0.02
-
-      data.push({
-        timestamp,
-        open: basePrice,
-        high: basePrice * (1 + Math.random() * volatility),
-        low: basePrice * (1 - Math.random() * volatility),
-        close: basePrice * (1 + (Math.random() - 0.5) * volatility),
-        volume: Math.random() * 1000000,
+    try {
+      const periodStr = periodToString(period)
+      const data = await marketApi.getCandles({
+        exchange: this.exchange,
+        symbol: symbol.ticker,
+        trade_type: this.tradeType,
+        period: periodStr,
+        start_time: _from,
+        end_time: _to,
       })
+      if (!Array.isArray(data)) return []
+      return data.map((c) => ({
+        timestamp: c.timestamp,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume,
+      }))
+    } catch (err) {
+      console.error('[KLine] Failed to fetch history:', err)
+      return []
     }
-
-    return data
   }
 
-  subscribe(
-    symbol: SymbolInfo,
-    period: Period,
-    callback: (data: KLineData) => void
-  ): void {
-    // TODO: 实现 WebSocket 订阅实时数据
+  subscribe(symbol: SymbolInfo, period: Period, callback: (data: KLineData) => void): void {
+    const periodStr = periodToString(period)
+    const key = `${this.exchange}:${this.tradeType}:${symbol.ticker}:${periodStr}`
+    this.callbacks.set(key, callback)
+    const socket = this.ensureSocket()
+    socket.emit('subscribe:kline', {
+      exchange: this.exchange,
+      tradeType: this.tradeType,
+      symbol: symbol.ticker,
+      period: periodStr,
+    })
   }
 
   unsubscribe(symbol: SymbolInfo, period: Period): void {
-    // TODO: 取消订阅
+    const periodStr = periodToString(period)
+    const key = `${this.exchange}:${this.tradeType}:${symbol.ticker}:${periodStr}`
+    this.callbacks.delete(key)
+    if (this.socket?.connected) {
+      this.socket.emit('unsubscribe:kline', {
+        exchange: this.exchange,
+        tradeType: this.tradeType,
+        symbol: symbol.ticker,
+        period: periodStr,
+      })
+    }
   }
 
-  private getIntervalMs(period: Period): number {
-    const multiplier = period.multiplier
-    switch (period.timespan) {
-      case 'minute':
-        return multiplier * 60 * 1000
-      case 'hour':
-        return multiplier * 60 * 60 * 1000
-      case 'day':
-        return multiplier * 24 * 60 * 60 * 1000
-      case 'week':
-        return multiplier * 7 * 24 * 60 * 60 * 1000
-      case 'month':
-        return multiplier * 30 * 24 * 60 * 60 * 1000
-      default:
-        return 60 * 1000
+  destroy(): void {
+    this.callbacks.clear()
+    if (this.socket) {
+      this.socket.disconnect()
+      this.socket = null
     }
   }
 }
 
 const periods: Period[] = [
-  { multiplier: 1, timespan: 'minute', text: '1m' },
-  { multiplier: 5, timespan: 'minute', text: '5m' },
-  { multiplier: 15, timespan: 'minute', text: '15m' },
-  { multiplier: 30, timespan: 'minute', text: '30m' },
-  { multiplier: 1, timespan: 'hour', text: '1H' },
-  { multiplier: 4, timespan: 'hour', text: '4H' },
-  { multiplier: 1, timespan: 'day', text: '1D' },
-  { multiplier: 1, timespan: 'week', text: '1W' },
+  { span: 15, type: 'minute', text: '15m' },
+  { span: 4, type: 'hour', text: '4H' },
+  { span: 1, type: 'day', text: '1D' },
 ]
 
 export const KLineChart: React.FC<KLineChartProps> = ({
   symbol = 'BTC-USDT',
   interval = '15m',
   height = 500,
+  exchange = 'binance',
+  tradeType = 'spot',
+  toolbarVisible = true,
   onSymbolChange,
   onIntervalChange,
 }) => {
   const chartRef = useRef<KLineChartRef>(null)
   const { theme } = useAppStore()
-  const datafeed = useMemo(() => new TradingDatafeed(), [])
+  const datafeed = useMemo(() => new TradingDatafeed(exchange, tradeType), [exchange, tradeType])
 
   const currentPeriod = useMemo(() => {
-    return periods.find((p) => p.text === interval) || periods[2]
+    return periods.find((p) => p.text === interval) || periods[0]
   }, [interval])
 
   const symbolInfo: SymbolInfo = useMemo(
@@ -132,10 +219,12 @@ export const KLineChart: React.FC<KLineChartProps> = ({
   )
 
   useEffect(() => {
-    if (chartRef.current) {
-      chartRef.current.setTheme(theme)
-    }
+    chartRef.current?.setTheme(theme)
   }, [theme])
+
+  useEffect(() => {
+    return () => { datafeed.destroy() }
+  }, [datafeed])
 
   return (
     <KLineChartComponent
@@ -146,15 +235,11 @@ export const KLineChart: React.FC<KLineChartProps> = ({
       datafeed={datafeed}
       theme={theme}
       locale="zh-CN"
-      drawingBarVisible={true}
+      toolbarVisible={toolbarVisible}
       mainIndicators={['MA']}
       subIndicators={['VOL']}
-      onSymbolChange={(data) => {
-        onSymbolChange?.(data.newSymbol.ticker)
-      }}
-      onPeriodChange={(data) => {
-        onIntervalChange?.(data.newPeriod.text)
-      }}
+      onSymbolChange={(data) => onSymbolChange?.(data.newSymbol.ticker)}
+      onPeriodChange={(data) => onIntervalChange?.(data.newPeriod.text)}
       style={{ width: '100%', height }}
     />
   )

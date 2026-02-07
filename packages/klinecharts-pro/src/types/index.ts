@@ -1,6 +1,23 @@
-import type { Styles, KLineData as BaseKLineData, Chart, Indicator, Overlay, OverlayCreate, IndicatorCreate, DeepPartial as KCDeepPartial } from 'klinecharts'
+import type {
+  Styles,
+  KLineData as BaseKLineData,
+  Chart,
+  Indicator,
+  Overlay,
+  OverlayCreate,
+  IndicatorCreate,
+  DeepPartial as KCDeepPartial,
+  Period as KCPeriod,
+  DataLoader,
+  DataLoaderGetBarsParams,
+  DataLoaderSubscribeBarParams,
+  DataLoaderUnsubscribeBarParams,
+} from 'klinecharts'
 
-export type { Chart, Indicator, Overlay, Styles, IndicatorCreate, OverlayCreate }
+export type {
+  Chart, Indicator, Overlay, Styles, IndicatorCreate, OverlayCreate,
+  DataLoader, DataLoaderGetBarsParams, DataLoaderSubscribeBarParams, DataLoaderUnsubscribeBarParams,
+}
 
 export type DeepPartial<T> = KCDeepPartial<T>
 
@@ -27,8 +44,16 @@ export interface BarClickEvent {
   data: KLineData | null
 }
 
+/**
+ * Extended SymbolInfo for klinecharts-pro.
+ * klinecharts v10 requires `ticker`. `pricePrecision` and `volumePrecision`
+ * are optional here — they default to sensible values in klinecharts.
+ * We keep extra fields (name, exchange, etc.) for UI display.
+ */
 export interface SymbolInfo {
   ticker: string
+  pricePrecision?: number
+  volumePrecision?: number
   name?: string
   shortName?: string
   exchange?: string
@@ -39,11 +64,13 @@ export interface SymbolInfo {
   [key: string]: unknown
 }
 
-export type PeriodTimespan = 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year'
+export type PeriodType = KCPeriod['type']
 
-export interface Period {
-  multiplier: number
-  timespan: PeriodTimespan
+/**
+ * Extended Period for klinecharts-pro.
+ * klinecharts v10 uses `{ type, span }`. We add `text` for UI display.
+ */
+export interface Period extends KCPeriod {
   text: string
 }
 
@@ -104,6 +131,9 @@ export interface KLineChartProOptions {
   datafeed: Datafeed
 }
 
+/** @deprecated Use PeriodType instead */
+export type PeriodTimespan = PeriodType
+
 export interface ChartReadyCallback {
   (chart: Chart): void
 }
@@ -147,8 +177,6 @@ export interface KLineChartInstance {
   subscribeAction: (type: ChartActionType, callback: ChartActionCallback) => void
   unsubscribeAction: (type: ChartActionType, callback?: ChartActionCallback) => void
   searchSymbols: (search: string) => Promise<SymbolInfo[]>
-  applyNewData: (data: KLineData[], more?: boolean) => void
-  updateData: (data: KLineData) => void
   getDataList: () => KLineData[]
   scrollToRealTime: () => void
   scrollToDataIndex: (dataIndex: number) => void

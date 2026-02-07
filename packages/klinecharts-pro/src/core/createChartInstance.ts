@@ -39,8 +39,6 @@ export function createChartInstance(
     subscribeAction: (type, callback) => getChart()?.subscribeAction(type, callback),
     unsubscribeAction: (type, callback) => getChart()?.unsubscribeAction(type, callback),
     searchSymbols: (search) => getChart()?.searchSymbols(search) || Promise.resolve([]),
-    applyNewData: (data: KLineData[], more?: boolean) => getChart()?.applyNewData(data, more),
-    updateData: (data: KLineData) => getChart()?.updateData(data),
     getDataList: () => getChart()?.getDataList() || [],
     scrollToRealTime: () => getChart()?.scrollToRealTime(),
     scrollToDataIndex: (dataIndex) => getChart()?.scrollToDataIndex(dataIndex),

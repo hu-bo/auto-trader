@@ -1,4 +1,6 @@
-export const zhCN = {
+import type { Locales } from 'klinecharts'
+
+export const zhCN: Locales = {
   time: '时间',
   open: '开',
   high: '高',
@@ -7,9 +9,16 @@ export const zhCN = {
   volume: '成交量',
   turnover: '成交额',
   change: '涨跌幅',
+  second: '秒',
+  minute: '分',
+  hour: '时',
+  day: '日',
+  week: '周',
+  month: '月',
+  year: '年',
 }
 
-export const zhTW = {
+export const zhTW: Locales = {
   time: '時間',
   open: '開',
   high: '高',
@@ -18,9 +27,16 @@ export const zhTW = {
   volume: '成交量',
   turnover: '成交額',
   change: '漲跌幅',
+  second: '秒',
+  minute: '分',
+  hour: '時',
+  day: '日',
+  week: '週',
+  month: '月',
+  year: '年',
 }
 
-export const enUS = {
+export const enUS: Locales = {
   time: 'Time',
   open: 'Open',
   high: 'High',
@@ -29,4 +45,11 @@ export const enUS = {
   volume: 'Volume',
   turnover: 'Turnover',
   change: 'Change',
+  second: 's',
+  minute: 'm',
+  hour: 'h',
+  day: 'D',
+  week: 'W',
+  month: 'M',
+  year: 'Y',
 }

@@ -47,7 +47,7 @@ export class DefaultDatafeed implements Datafeed {
   }
 
   private getSubscriptionKey(symbol: SymbolInfo, period: Period): string {
-    return `${symbol.ticker}_${period.multiplier}_${period.timespan}`
+    return `${symbol.ticker}_${period.span}_${period.type}`
   }
 
   private periodToPolygonTimespan(period: Period): string {
@@ -59,7 +59,7 @@ export class DefaultDatafeed implements Datafeed {
       month: 'month',
       year: 'year',
     }
-    return timespanMap[period.timespan] || 'day'
+    return timespanMap[period.type] || 'day'
   }
 
   async searchSymbols(search?: string): Promise<SymbolInfo[]> {
@@ -103,7 +103,7 @@ export class DefaultDatafeed implements Datafeed {
 
     try {
       const response = await fetch(
-        `${this.baseUrl}/v2/aggs/ticker/${symbol.ticker}/range/${period.multiplier}/${timespan}/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=50000&apiKey=${this.apiKey}`
+        `${this.baseUrl}/v2/aggs/ticker/${symbol.ticker}/range/${period.span}/${timespan}/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=50000&apiKey=${this.apiKey}`
       )
       const data = await response.json()
 
@@ -167,8 +167,8 @@ export class DefaultDatafeed implements Datafeed {
       month: 30 * 24 * 60 * 60 * 1000,
       year: 365 * 24 * 60 * 60 * 1000,
     }
-    const base = baseIntervals[period.timespan] || 60 * 1000
-    return Math.min(base * period.multiplier, 60 * 1000)
+    const base = baseIntervals[period.type] || 60 * 1000
+    return Math.min(base * period.span, 60 * 1000)
   }
 
   destroy(): void {

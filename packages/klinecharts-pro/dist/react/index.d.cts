@@ -1,6 +1,6 @@
-import * as React from 'react';
-import { KLineData as KLineData$1, Chart, DeepPartial as DeepPartial$1, Styles, IndicatorCreate, OverlayCreate } from 'klinecharts';
-export { Chart, Indicator, IndicatorCreate, Overlay, OverlayCreate, Styles } from 'klinecharts';
+import React from 'react';
+import { KLineData as KLineData$1, Period as Period$1, Chart, DeepPartial as DeepPartial$1, Styles, IndicatorCreate, OverlayCreate, Locales } from 'klinecharts';
+export { Chart, DataLoader, DataLoaderGetBarsParams, DataLoaderSubscribeBarParams, DataLoaderUnsubscribeBarParams, Indicator, IndicatorCreate, Overlay, OverlayCreate, Styles } from 'klinecharts';
 
 type DeepPartial<T> = DeepPartial$1<T>;
 interface KLineData extends KLineData$1 {
@@ -23,8 +23,16 @@ interface BarClickEvent {
     x: number;
     data: KLineData | null;
 }
+/**
+ * Extended SymbolInfo for klinecharts-pro.
+ * klinecharts v10 requires `ticker`. `pricePrecision` and `volumePrecision`
+ * are optional here — they default to sensible values in klinecharts.
+ * We keep extra fields (name, exchange, etc.) for UI display.
+ */
 interface SymbolInfo {
     ticker: string;
+    pricePrecision?: number;
+    volumePrecision?: number;
     name?: string;
     shortName?: string;
     exchange?: string;
@@ -34,10 +42,12 @@ interface SymbolInfo {
     logo?: string;
     [key: string]: unknown;
 }
-type PeriodTimespan = 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year';
-interface Period {
-    multiplier: number;
-    timespan: PeriodTimespan;
+type PeriodType = Period$1['type'];
+/**
+ * Extended Period for klinecharts-pro.
+ * klinecharts v10 uses `{ type, span }`. We add `text` for UI display.
+ */
+interface Period extends Period$1 {
     text: string;
 }
 type DatafeedSubscribeCallback = (data: KLineData) => void;
@@ -80,6 +90,8 @@ interface KLineChartProOptions {
     subIndicators?: string[];
     datafeed: Datafeed;
 }
+/** @deprecated Use PeriodType instead */
+type PeriodTimespan = PeriodType;
 interface ChartReadyCallback {
     (chart: Chart): void;
 }
@@ -119,8 +131,6 @@ interface KLineChartInstance {
     subscribeAction: (type: ChartActionType, callback: ChartActionCallback) => void;
     unsubscribeAction: (type: ChartActionType, callback?: ChartActionCallback) => void;
     searchSymbols: (search: string) => Promise<SymbolInfo[]>;
-    applyNewData: (data: KLineData[], more?: boolean) => void;
-    updateData: (data: KLineData) => void;
     getDataList: () => KLineData[];
     scrollToRealTime: () => void;
     scrollToDataIndex: (dataIndex: number) => void;
@@ -148,16 +158,22 @@ declare class KLineChartPro {
     private mainIndicators;
     private subIndicators;
     private subPaneIds;
-    private isLoading;
     private actionCallbacks;
     private markerGroupId;
     constructor(options: KLineChartProOptions);
     private registerBuiltinLocales;
     private registerBuiltinThemes;
     private initChart;
+    /**
+     * v10: Use setDataLoader instead of setLoadDataCallback / applyNewData / updateData.
+     * getBars handles initial load + backward/forward scrolling.
+     * subscribeBar / unsubscribeBar handle real-time updates.
+     */
+    private setupDataLoader;
+    /** Find our extended Period (with text) matching a klinecharts Period */
+    private findPeriod;
     private setupChartEvents;
     private emitAction;
-    private loadData;
     private getPeriodDuration;
     setTheme(theme: ThemeType): void;
     getTheme(): ThemeType;
@@ -193,8 +209,6 @@ declare class KLineChartPro {
     getChart(): Chart | null;
     resize(): void;
     searchSymbols(search: string): Promise<SymbolInfo[]>;
-    applyNewData(data: KLineData[], more?: boolean): void;
-    updateData(data: KLineData): void;
     getDataList(): KLineData[];
     scrollToRealTime(): void;
     scrollToDataIndex(dataIndex: number): void;
@@ -238,6 +252,8 @@ interface KLineChartProps extends Omit<KLineChartProOptions, 'container'> {
     className?: string;
     style?: React.CSSProperties;
     markers?: TradeMarker[];
+    /** Hide the built-in toolbar (symbol search + period selector + indicator) */
+    toolbarVisible?: boolean;
     ref?: React.Ref<KLineChartInstance>;
     onReady?: (chart: KLineChartPro) => void;
     onSymbolChange?: (data: {
@@ -254,6 +270,18 @@ interface KLineChartProps extends Omit<KLineChartProOptions, 'container'> {
     onScroll?: (data: unknown) => void;
 }
 declare function KLineChart(props: KLineChartProps): React.ReactElement;
+
+interface IndicatorModalProps {
+    visible: boolean;
+    onClose: () => void;
+    theme: 'light' | 'dark' | string;
+    /** Current active main indicator (single select, null = none) */
+    mainIndicator: string | null;
+    subIndicators: Set<string>;
+    onMainSelect: (name: string | null) => void;
+    onSubToggle: (name: string) => void;
+}
+declare function IndicatorModal({ visible, onClose, theme, mainIndicator, subIndicators, onMainSelect, onSubToggle, }: IndicatorModalProps): React.ReactElement | null;
 
 declare function createChartInstance(getChart: () => KLineChartPro | null, defaultSymbol: SymbolInfo, defaultPeriod: Period): KLineChartInstance;
 
@@ -281,36 +309,9 @@ declare class DefaultDatafeed implements Datafeed {
 declare const lightTheme: DeepPartial$1<Styles>;
 declare const darkTheme: DeepPartial$1<Styles>;
 
-declare const zhCN: {
-    time: string;
-    open: string;
-    high: string;
-    low: string;
-    close: string;
-    volume: string;
-    turnover: string;
-    change: string;
-};
-declare const zhTW: {
-    time: string;
-    open: string;
-    high: string;
-    low: string;
-    close: string;
-    volume: string;
-    turnover: string;
-    change: string;
-};
-declare const enUS: {
-    time: string;
-    open: string;
-    high: string;
-    low: string;
-    close: string;
-    volume: string;
-    turnover: string;
-    change: string;
-};
+declare const zhCN: Locales;
+declare const zhTW: Locales;
+declare const enUS: Locales;
 
 declare const DEFAULT_PERIODS: Period[];
 declare function getDefaultMainIndicators(): string[];
@@ -321,4 +322,4 @@ declare const BUILT_IN_INDICATORS: {
 };
 declare const DRAWING_TOOL_GROUPS: DrawingToolGroup[];
 
-export { BUILT_IN_INDICATORS, type BarClickEvent, BaseDatafeed, type ChartActionCallback, type ChartActionType, type ChartReadyCallback, DEFAULT_PERIODS, DRAWING_TOOL_GROUPS, type Datafeed, type DatafeedSubscribeCallback, type DeepPartial, DefaultDatafeed, type DrawingTool, type DrawingToolGroup, type IndicatorInfo, KLineChart, type KLineChartInstance, KLineChartPro, type KLineChartProOptions, type KLineChartProps, type KLineChartInstance as KLineChartRef, type KLineData, type LocaleType, type Period, type PeriodTimespan, type SymbolInfo, type ThemeType, type TradeMarker, createChartInstance, darkTheme, enUS, getDefaultMainIndicators, getDefaultSubIndicators, lightTheme, zhCN, zhTW };
+export { BUILT_IN_INDICATORS, type BarClickEvent, BaseDatafeed, type ChartActionCallback, type ChartActionType, type ChartReadyCallback, DEFAULT_PERIODS, DRAWING_TOOL_GROUPS, type Datafeed, type DatafeedSubscribeCallback, type DeepPartial, DefaultDatafeed, type DrawingTool, type DrawingToolGroup, type IndicatorInfo, IndicatorModal, type IndicatorModalProps, KLineChart, type KLineChartInstance, KLineChartPro, type KLineChartProOptions, type KLineChartProps, type KLineChartInstance as KLineChartRef, type KLineData, type LocaleType, type Period, type PeriodTimespan, type PeriodType, type SymbolInfo, type ThemeType, type TradeMarker, createChartInstance, darkTheme, enUS, getDefaultMainIndicators, getDefaultSubIndicators, lightTheme, zhCN, zhTW };

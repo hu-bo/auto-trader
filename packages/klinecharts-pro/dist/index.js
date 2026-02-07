@@ -3,15 +3,15 @@ import { init, dispose, registerLocale, registerStyles } from "klinecharts";
 
 // src/core/defaults.ts
 var DEFAULT_PERIODS = [
-  { multiplier: 1, timespan: "minute", text: "1m" },
-  { multiplier: 5, timespan: "minute", text: "5m" },
-  { multiplier: 15, timespan: "minute", text: "15m" },
-  { multiplier: 30, timespan: "minute", text: "30m" },
-  { multiplier: 1, timespan: "hour", text: "1H" },
-  { multiplier: 4, timespan: "hour", text: "4H" },
-  { multiplier: 1, timespan: "day", text: "1D" },
-  { multiplier: 1, timespan: "week", text: "1W" },
-  { multiplier: 1, timespan: "month", text: "1M" }
+  { span: 1, type: "minute", text: "1m" },
+  { span: 5, type: "minute", text: "5m" },
+  { span: 15, type: "minute", text: "15m" },
+  { span: 30, type: "minute", text: "30m" },
+  { span: 1, type: "hour", text: "1H" },
+  { span: 4, type: "hour", text: "4H" },
+  { span: 1, type: "day", text: "1D" },
+  { span: 1, type: "week", text: "1W" },
+  { span: 1, type: "month", text: "1M" }
 ];
 function getDefaultMainIndicators() {
   return ["MA"];
@@ -169,7 +169,6 @@ var lightTheme = {
       }
     },
     tooltip: {
-      defaultValue: "n/a",
       rect: {
         paddingLeft: 4,
         paddingRight: 4,
@@ -184,7 +183,8 @@ var lightTheme = {
         borderColor: "#F2F3F5",
         color: "#FEFEFE"
       },
-      text: {
+      legend: {
+        defaultValue: "n/a",
         size: 12,
         family: "Helvetica Neue",
         weight: "normal",
@@ -210,10 +210,12 @@ var lightTheme = {
       { size: 1, color: "#01C5C4" }
     ],
     tooltip: {
-      showName: true,
-      showParams: true,
-      defaultValue: "n/a",
-      text: {
+      title: {
+        showName: true,
+        showParams: true
+      },
+      legend: {
+        defaultValue: "n/a",
         size: 12,
         family: "Helvetica Neue",
         weight: "normal",
@@ -445,7 +447,6 @@ var darkTheme = {
       }
     },
     tooltip: {
-      defaultValue: "n/a",
       rect: {
         paddingLeft: 4,
         paddingRight: 4,
@@ -460,7 +461,8 @@ var darkTheme = {
         borderColor: "#3D3D3D",
         color: "#1F1F1F"
       },
-      text: {
+      legend: {
+        defaultValue: "n/a",
         size: 12,
         family: "Helvetica Neue",
         weight: "normal",
@@ -486,10 +488,12 @@ var darkTheme = {
       { size: 1, color: "#01C5C4" }
     ],
     tooltip: {
-      showName: true,
-      showParams: true,
-      defaultValue: "n/a",
-      text: {
+      title: {
+        showName: true,
+        showParams: true
+      },
+      legend: {
+        defaultValue: "n/a",
         size: 12,
         family: "Helvetica Neue",
         weight: "normal",
@@ -663,7 +667,14 @@ var zhCN = {
   close: "\u6536",
   volume: "\u6210\u4EA4\u91CF",
   turnover: "\u6210\u4EA4\u989D",
-  change: "\u6DA8\u8DCC\u5E45"
+  change: "\u6DA8\u8DCC\u5E45",
+  second: "\u79D2",
+  minute: "\u5206",
+  hour: "\u65F6",
+  day: "\u65E5",
+  week: "\u5468",
+  month: "\u6708",
+  year: "\u5E74"
 };
 var zhTW = {
   time: "\u6642\u9593",
@@ -673,7 +684,14 @@ var zhTW = {
   close: "\u6536",
   volume: "\u6210\u4EA4\u91CF",
   turnover: "\u6210\u4EA4\u984D",
-  change: "\u6F32\u8DCC\u5E45"
+  change: "\u6F32\u8DCC\u5E45",
+  second: "\u79D2",
+  minute: "\u5206",
+  hour: "\u6642",
+  day: "\u65E5",
+  week: "\u9031",
+  month: "\u6708",
+  year: "\u5E74"
 };
 var enUS = {
   time: "Time",
@@ -683,7 +701,14 @@ var enUS = {
   close: "Close",
   volume: "Volume",
   turnover: "Turnover",
-  change: "Change"
+  change: "Change",
+  second: "s",
+  minute: "m",
+  hour: "h",
+  day: "D",
+  week: "W",
+  month: "M",
+  year: "Y"
 };
 
 // src/core/KLineChartPro.ts
@@ -694,7 +719,6 @@ var KLineChartPro = class {
     this.currentLocale = "en-US";
     this.currentTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     this.subPaneIds = /* @__PURE__ */ new Map();
-    this.isLoading = false;
     this.actionCallbacks = /* @__PURE__ */ new Map();
     this.markerGroupId = "trade_markers";
     const containerElement = typeof options.container === "string" ? document.getElementById(options.container) : options.container;
@@ -720,7 +744,6 @@ var KLineChartPro = class {
     this.registerBuiltinLocales();
     this.registerBuiltinThemes();
     this.initChart(options);
-    this.loadData();
   }
   registerBuiltinLocales() {
     registerLocale("zh-CN", zhCN);
@@ -754,6 +777,71 @@ var KLineChartPro = class {
       this.setWatermark(options.watermark);
     }
     this.setupChartEvents();
+    this.setupDataLoader();
+    this.chart.setSymbol(this.currentSymbol);
+    this.chart.setPeriod(this.currentPeriod);
+  }
+  /**
+   * v10: Use setDataLoader instead of setLoadDataCallback / applyNewData / updateData.
+   * getBars handles initial load + backward/forward scrolling.
+   * subscribeBar / unsubscribeBar handle real-time updates.
+   */
+  setupDataLoader() {
+    if (!this.chart) return;
+    const self = this;
+    this.chart.setDataLoader({
+      getBars: async ({ type, timestamp, symbol, period, callback }) => {
+        const extPeriod = self.findPeriod(period) || self.currentPeriod;
+        if (type === "init" || type === "forward") {
+          const now = Date.now();
+          const from = now - self.getPeriodDuration(extPeriod) * 500;
+          try {
+            const data = await self.datafeed.getHistoryKLineData(
+              symbol,
+              extPeriod,
+              from,
+              now
+            );
+            callback(data, data.length > 0);
+          } catch (err) {
+            console.error("Failed to load data:", err);
+            callback([], false);
+          }
+        } else if (type === "backward") {
+          const earliestTimestamp = timestamp ?? Date.now();
+          const duration = self.getPeriodDuration(extPeriod) * 500;
+          const from = earliestTimestamp - duration;
+          try {
+            const data = await self.datafeed.getHistoryKLineData(
+              symbol,
+              extPeriod,
+              from,
+              earliestTimestamp
+            );
+            callback(data, data.length > 0);
+          } catch (err) {
+            console.error("Failed to load more data:", err);
+            callback([], false);
+          }
+        } else {
+          callback([], false);
+        }
+      },
+      subscribeBar: ({ symbol, period, callback }) => {
+        const extPeriod = self.findPeriod(period) || self.currentPeriod;
+        self.datafeed.subscribe(symbol, extPeriod, callback);
+      },
+      unsubscribeBar: ({ symbol, period }) => {
+        const extPeriod = self.findPeriod(period) || self.currentPeriod;
+        self.datafeed.unsubscribe(symbol, extPeriod);
+      }
+    });
+  }
+  /** Find our extended Period (with text) matching a klinecharts Period */
+  findPeriod(kcPeriod) {
+    return this.periods.find(
+      (p) => p.type === kcPeriod.type && p.span === kcPeriod.span
+    );
   }
   setupChartEvents() {
     if (!this.chart) return;
@@ -782,37 +870,10 @@ var KLineChartPro = class {
       callbacks.forEach((callback) => callback(data));
     }
   }
-  async loadData() {
-    if (this.isLoading) return;
-    this.isLoading = true;
-    try {
-      this.datafeed.unsubscribe(this.currentSymbol, this.currentPeriod);
-      const now = Date.now();
-      const from = now - this.getPeriodDuration() * 500;
-      const data = await this.datafeed.getHistoryKLineData(
-        this.currentSymbol,
-        this.currentPeriod,
-        from,
-        now
-      );
-      if (this.chart && data.length > 0) {
-        this.chart.applyNewData(data);
-      }
-      this.datafeed.subscribe(
-        this.currentSymbol,
-        this.currentPeriod,
-        (newData) => {
-          this.chart?.updateData(newData);
-        }
-      );
-    } catch (error) {
-      console.error("Failed to load data:", error);
-    } finally {
-      this.isLoading = false;
-    }
-  }
-  getPeriodDuration() {
+  getPeriodDuration(period) {
+    const p = period || this.currentPeriod;
     const multipliers = {
+      second: 1e3,
       minute: 60 * 1e3,
       hour: 60 * 60 * 1e3,
       day: 24 * 60 * 60 * 1e3,
@@ -820,7 +881,7 @@ var KLineChartPro = class {
       month: 30 * 24 * 60 * 60 * 1e3,
       year: 365 * 24 * 60 * 60 * 1e3
     };
-    return (multipliers[this.currentPeriod.timespan] || 60 * 1e3) * this.currentPeriod.multiplier;
+    return (multipliers[p.type] || 60 * 1e3) * p.span;
   }
   setTheme(theme) {
     if (!this.chart) return;
@@ -855,7 +916,7 @@ var KLineChartPro = class {
   setSymbol(symbol) {
     const oldSymbol = this.currentSymbol;
     this.currentSymbol = symbol;
-    this.loadData();
+    this.chart?.setSymbol(symbol);
     this.emitAction("onSymbolChange", { oldSymbol, newSymbol: symbol });
   }
   getSymbol() {
@@ -864,7 +925,7 @@ var KLineChartPro = class {
   setPeriod(period) {
     const oldPeriod = this.currentPeriod;
     this.currentPeriod = period;
-    this.loadData();
+    this.chart?.setPeriod(period);
     this.emitAction("onPeriodChange", { oldPeriod, newPeriod: period });
   }
   getPeriod() {
@@ -901,20 +962,27 @@ var KLineChartPro = class {
     return Array.isArray(result) ? result[0] || null : result;
   }
   removeIndicator(paneId, name) {
-    this.chart?.removeIndicator(paneId, name);
+    this.chart?.removeIndicator({ paneId, name });
     if (name) {
       this.subPaneIds.delete(name);
     }
   }
   createOverlay(overlay, paneId) {
-    const result = this.chart?.createOverlay(overlay, paneId);
+    if (paneId && typeof overlay === "object") {
+      overlay.paneId = paneId;
+    }
+    const result = this.chart?.createOverlay(overlay);
     if (result) {
       return Array.isArray(result) ? result[0] || null : result;
     }
     return null;
   }
   removeOverlay(overlayId) {
-    this.chart?.removeOverlay(overlayId);
+    if (typeof overlayId === "string") {
+      this.chart?.removeOverlay({ id: overlayId });
+    } else {
+      this.chart?.removeOverlay(overlayId);
+    }
   }
   setMarkers(markers) {
     if (!this.chart) return;
@@ -982,12 +1050,6 @@ var KLineChartPro = class {
   async searchSymbols(search) {
     return this.datafeed.searchSymbols(search);
   }
-  applyNewData(data, more) {
-    this.chart?.applyNewData(data, more);
-  }
-  updateData(data) {
-    this.chart?.updateData(data);
-  }
   getDataList() {
     return this.chart?.getDataList() || [];
   }
@@ -1053,7 +1115,7 @@ var DefaultDatafeed = class {
     this.apiKey = apiKey;
   }
   getSubscriptionKey(symbol, period) {
-    return `${symbol.ticker}_${period.multiplier}_${period.timespan}`;
+    return `${symbol.ticker}_${period.span}_${period.type}`;
   }
   periodToPolygonTimespan(period) {
     const timespanMap = {
@@ -1064,7 +1126,7 @@ var DefaultDatafeed = class {
       month: "month",
       year: "year"
     };
-    return timespanMap[period.timespan] || "day";
+    return timespanMap[period.type] || "day";
   }
   async searchSymbols(search) {
     if (!search || search.length < 1) {
@@ -1098,7 +1160,7 @@ var DefaultDatafeed = class {
     const toDate = new Date(to).toISOString().split("T")[0];
     try {
       const response = await fetch(
-        `${this.baseUrl}/v2/aggs/ticker/${symbol.ticker}/range/${period.multiplier}/${timespan}/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=50000&apiKey=${this.apiKey}`
+        `${this.baseUrl}/v2/aggs/ticker/${symbol.ticker}/range/${period.span}/${timespan}/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=50000&apiKey=${this.apiKey}`
       );
       const data = await response.json();
       if (data.results) {
@@ -1150,8 +1212,8 @@ var DefaultDatafeed = class {
       month: 30 * 24 * 60 * 60 * 1e3,
       year: 365 * 24 * 60 * 60 * 1e3
     };
-    const base = baseIntervals[period.timespan] || 60 * 1e3;
-    return Math.min(base * period.multiplier, 60 * 1e3);
+    const base = baseIntervals[period.type] || 60 * 1e3;
+    return Math.min(base * period.span, 60 * 1e3);
   }
   destroy() {
     this.subscriptions.forEach((intervalId) => {

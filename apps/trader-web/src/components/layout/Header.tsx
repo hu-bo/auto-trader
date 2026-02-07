@@ -21,16 +21,38 @@ const { Header: SemiHeader } = Layout
 interface HeaderProps {
   onToggleSidebar?: () => void
 }
-
+const exchanges = [
+    // {
+    //     "id": 4,
+    //     "exchangeType": "BINANCE",
+    //     "name": "币安",
+    //     "isTestnet": true,
+    //     "isActive": true,
+    // },
+    // {
+    //     "id": 3,
+    //     "exchangeType": "BINANCE",
+    //     "name": "币安",
+    //     "isTestnet": true,
+    // },
+    {
+        "id": 2,
+        "exchangeType": "OKX",
+        "name": "欧易",
+        "isTestnet": false,
+        "isActive": true,
+    },
+    {
+        "id": 1,
+        "exchangeType": "BINANCE",
+        "name": "币安",
+        "isTestnet": false,
+    }
+]
 export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const { theme, toggleTheme, selectedExchange, setSelectedExchange } = useAppStore()
-
-  const { data: exchanges } = useQuery({
-    queryKey: ['exchanges'],
-    queryFn: exchangeApi.list,
-  })
 
   const handleExchangeChange = (value: string | number | any[] | Record<string, any> | undefined) => {
     const exchange = exchanges?.find((e) => e.id === value)
@@ -76,7 +98,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           placeholder="选择交易所"
           style={{ width: 200 }}
           prefix={<IconComponent />}
-          optionList={exchanges?.map((e: Exchange) => ({
+          optionList={exchanges.map((e) => ({
             value: e.id,
             label: (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

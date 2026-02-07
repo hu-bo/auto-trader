@@ -1,5 +1,7 @@
 export { KLineChart } from './KLineChart'
 export type { KLineChartProps, KLineChartRef } from './KLineChart'
+export { IndicatorModal } from './IndicatorModal'
+export type { IndicatorModalProps } from './IndicatorModal'
 export { KLineChartPro } from '../core/KLineChartPro'
 export { createChartInstance } from '../core/createChartInstance'
 export { DefaultDatafeed, BaseDatafeed } from '../datafeed'
