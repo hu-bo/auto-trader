@@ -119,6 +119,17 @@ type MiniTicker struct {
 	QuoteVolume24h float64   `json:"quote_volume_24h"` // 24h 成交量
 }
 
+// TickerUpdate 用于 TickerAggregator 的 ticker 输入
+// 用于从 ticker 流聚合成 K线
+type TickerUpdate struct {
+	Symbol    string    `json:"symbol"`      // 交易对: BTC-USDT
+	Exchange  string    `json:"exchange"`    // binance | okx
+	TradeType TradeType `json:"trade_type"`  // spot | futures
+	LastPrice float64   `json:"last_price"`  // 最新成交价格
+	LastSz    float64   `json:"last_sz"`     // 最新成交量 (Binance: Q, OKX: lastSz)
+	Timestamp int64     `json:"timestamp"`   // 事件时间 (ms)
+}
+
 // SubscribeRequest 订阅请求
 type SubscribeRequest struct {
 	Symbol    string    `json:"symbol"`     // 统一格式: BTC-USDT

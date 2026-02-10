@@ -77,6 +77,8 @@ type wsConn struct {
 	mu   sync.Mutex
 	conn *websocket.Conn
 
+	writeMu sync.Mutex // serialises all writes to conn
+
 	authMu sync.Mutex
 	authed bool
 
@@ -347,7 +349,9 @@ func (w *wsConn) pingLoop() {
 			if conn == nil {
 				continue
 			}
+			w.writeMu.Lock()
 			_ = conn.WriteMessage(websocket.TextMessage, []byte("ping"))
+			w.writeMu.Unlock()
 		}
 	}
 }
@@ -495,6 +499,8 @@ func (w *wsConn) sendOp(ctx context.Context, op string, args []map[string]any) e
 		return err
 	}
 	_ = ctx
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
 	return conn.WriteMessage(websocket.TextMessage, b)
 }
 
@@ -539,7 +545,10 @@ func (w *wsConn) ensureLogin(ctx context.Context) error {
 	if conn == nil {
 		return fmt.Errorf("okx ws not connected")
 	}
-	if err := conn.WriteMessage(websocket.TextMessage, b); err != nil {
+	w.writeMu.Lock()
+	err = conn.WriteMessage(websocket.TextMessage, b)
+	w.writeMu.Unlock()
+	if err != nil {
 		return err
 	}
 

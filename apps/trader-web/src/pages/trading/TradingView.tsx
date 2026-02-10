@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Row, Col, Tabs, TabPane } from '@douyinfe/semi-ui-19'
 import { KLineChart } from '@/components/charts/KLineChart'
 import { OrderForm } from '@/components/trading/OrderForm'
@@ -7,7 +8,22 @@ import { PositionCard } from '@/components/trading/PositionCard'
 import { useAppStore } from '@/stores/appStore'
 
 const TradingView: React.FC = () => {
+  const { symbol: urlSymbol } = useParams<{ symbol: string }>()
+  const navigate = useNavigate()
   const { tradingSymbol, tradingInterval, setTradingSymbol, setTradingInterval } = useAppStore()
+
+  // URL param → store 同步
+  useEffect(() => {
+    if (urlSymbol && urlSymbol !== tradingSymbol) {
+      setTradingSymbol(urlSymbol)
+    }
+  }, [urlSymbol])
+
+  // symbol 变化时同步 URL
+  const handleSymbolChange = (newSymbol: string) => {
+    setTradingSymbol(newSymbol)
+    navigate(`/trading/${newSymbol}`, { replace: true })
+  }
 
   return (
     <div>
@@ -16,10 +32,10 @@ const TradingView: React.FC = () => {
         <Col span={18}>
           <Card bodyStyle={{ padding: 0 }}>
             <KLineChart
-              symbol={tradingSymbol}
+              symbol={urlSymbol || tradingSymbol}
               interval={tradingInterval}
               height={560}
-              onSymbolChange={setTradingSymbol}
+              onSymbolChange={handleSymbolChange}
               onIntervalChange={setTradingInterval}
             />
           </Card>
@@ -28,7 +44,7 @@ const TradingView: React.FC = () => {
         {/* 下单区域 */}
         <Col span={6}>
           <Card title="下单" bodyStyle={{ padding: 16 }}>
-            <OrderForm symbol={tradingSymbol} />
+            <OrderForm symbol={urlSymbol || tradingSymbol} />
           </Card>
 
           {/* <Card title="当前持仓" style={{ marginTop: 16 }}>
@@ -42,12 +58,12 @@ const TradingView: React.FC = () => {
             <Tabs type="line">
               <TabPane tab="当前委托" itemKey="open">
                 <div style={{ padding: 16 }}>
-                  <OrderTable symbol={tradingSymbol} />
+                  <OrderTable symbol={urlSymbol || tradingSymbol} />
                 </div>
               </TabPane>
               <TabPane tab="历史订单" itemKey="history">
                 <div style={{ padding: 16 }}>
-                  <OrderTable symbol={tradingSymbol} showActions={false} />
+                  <OrderTable symbol={urlSymbol || tradingSymbol} showActions={false} />
                 </div>
               </TabPane>
               <TabPane tab="所有持仓" itemKey="positions">

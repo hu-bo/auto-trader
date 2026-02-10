@@ -17,13 +17,26 @@ export interface CandleData {
 
 export interface SymbolData {
   symbol: string
+  rawSymbol: string
   exchange: string
   tradeType: string
   baseCurrency: string
   quoteCurrency: string
-  lastPrice?: number
-  quoteVolume24h?: number
+  lastPrice: number
+  openPrice24h: number
+  priceChangePct24h: number
+  quoteVolume24h: number
+  pricePrecision: number
+  quantityPrecision: number
+  maxQty: string
+  minQty: string
+  stepSize: string
+  tickSize: string
+  status: string
   syncEnabled: boolean
+  earliestDataTs: number
+  latestSyncTs: number
+  tickerEventTimeMs: number
 }
 
 export interface GetCandlesParams {

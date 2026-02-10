@@ -15,12 +15,15 @@ type fakeExchange struct {
 	onTrade      func(md.Trade)
 	onDepth      func(md.DepthUpdate)
 	onMiniTicker func(md.MiniTicker)
+	onTickerAll  func(md.TickerUpdate)
 	onError      func(error)
 
 	subscribeCalls [][]md.SubscribeRequest
 	unsubscribeAll [][]string
+	activeSymbols  map[md.TradeType][]string
 
-	subFuturesMiniTickerCalls int
+	subFuturesTickerCalls int
+	subMultiPeriodCalls   int
 }
 
 func (f *fakeExchange) Name() md.ExchangeName { return f.name }
@@ -53,12 +56,26 @@ func (f *fakeExchange) OnDepth(handler func(md.DepthUpdate)) {
 func (f *fakeExchange) OnMiniTicker(handler func(md.MiniTicker)) {
 	f.onMiniTicker = handler
 }
+func (f *fakeExchange) OnTickerAll(handler func(md.TickerUpdate)) {
+	f.onTickerAll = handler
+}
 func (f *fakeExchange) OnError(handler func(error)) {
 	f.onError = handler
 }
-func (f *fakeExchange) SubFuturesMiniTicker() error {
-	f.subFuturesMiniTickerCalls++
+func (f *fakeExchange) SubFuturesTicker() error {
+	f.subFuturesTickerCalls++
 	return nil
+}
+func (f *fakeExchange) SubMultiPeriodCandles(tradeTypes []md.TradeType) error {
+	_ = tradeTypes
+	f.subMultiPeriodCalls++
+	return nil
+}
+func (f *fakeExchange) GetActiveSymbols(tradeType md.TradeType) []string {
+	symbols := f.activeSymbols[tradeType]
+	out := make([]string, len(symbols))
+	copy(out, symbols)
+	return out
 }
 
 func TestWSAggregator_SubscribeAndDispatch(t *testing.T) {
@@ -163,8 +180,8 @@ func TestWSAggregator_BinanceMiniTickerAndDedup(t *testing.T) {
 	if got := len(client.subscribeCalls); got != 1 {
 		t.Fatalf("expected deduped subscribe call count 1, got %d", got)
 	}
-	if got := client.subFuturesMiniTickerCalls; got != 1 {
-		t.Fatalf("expected SubFuturesMiniTicker to be called once, got %d", got)
+	if got := client.subFuturesTickerCalls; got != 1 {
+		t.Fatalf("expected SubFuturesTicker to be called once, got %d", got)
 	}
 
 	if err := hub.Unsubscribe([]string{"BTC-USDT"}); err != nil {
@@ -172,5 +189,52 @@ func TestWSAggregator_BinanceMiniTickerAndDedup(t *testing.T) {
 	}
 	if got := len(client.unsubscribeAll); got != 1 {
 		t.Fatalf("expected 1 unsubscribe call, got %d", got)
+	}
+}
+
+func TestWSAggregator_SubMultiPeriodCandlesSkipsUnsubscribedTicker(t *testing.T) {
+	client := &fakeExchange{
+		name: md.Binance,
+		activeSymbols: map[md.TradeType][]string{
+			md.Futures: []string{"BTC-USDT"},
+		},
+	}
+	hub := NewWSAggregator(client, WSAggregatorOptions{})
+	defer hub.Close()
+
+	if err := hub.SubMultiPeriodCandles([]md.TradeType{md.Futures}, func(Candle15mEvent) {}); err != nil {
+		t.Fatalf("sub multi period candles failed: %v", err)
+	}
+
+	if client.onTickerAll == nil {
+		t.Fatal("expected OnTickerAll handler to be registered")
+	}
+
+	baseTime := int64(1609459200000)
+	client.onTickerAll(md.TickerUpdate{
+		Symbol:    "ETH-USDT",
+		TradeType: md.Futures,
+		LastPrice: 3000,
+		Timestamp: baseTime,
+	})
+
+	hub.tickerAggMu.Lock()
+	tickerAgg := hub.tickerAgg
+	hub.tickerAggMu.Unlock()
+	if tickerAgg == nil {
+		t.Fatal("expected ticker aggregator to be initialized")
+	}
+	if candle := tickerAgg.GetCurrentCandle("ETH-USDT", md.Futures, md.Period15m); candle != nil {
+		t.Fatalf("expected ETH-USDT ticker to be ignored, got %+v", *candle)
+	}
+
+	client.onTickerAll(md.TickerUpdate{
+		Symbol:    "BTC-USDT",
+		TradeType: md.Futures,
+		LastPrice: 50000,
+		Timestamp: baseTime,
+	})
+	if candle := tickerAgg.GetCurrentCandle("BTC-USDT", md.Futures, md.Period15m); candle == nil {
+		t.Fatal("expected BTC-USDT ticker to be processed")
 	}
 }

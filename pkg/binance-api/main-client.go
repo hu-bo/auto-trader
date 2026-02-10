@@ -93,6 +93,13 @@ func (c *MainClient) GetAllSymbolPrices(ctx context.Context) ([]types.SymbolPric
 	return result, err
 }
 
+// GetAll24hrTickers returns 24hr change statistics for all spot symbols.
+func (c *MainClient) GetAll24hrTickers(ctx context.Context) ([]types.ChangeStats24hr, error) {
+	var result []types.ChangeStats24hr
+	err := c.Get(ctx, "/api/v3/ticker/24hr", nil, false, &result)
+	return result, err
+}
+
 // Account Endpoints
 
 // GetAccountInfo returns account information.

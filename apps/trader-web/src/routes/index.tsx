@@ -10,6 +10,7 @@ const Login = lazy(() => import('@/pages/auth/Login'))
 const Callback = lazy(() => import('@/pages/auth/Callback'))
 const Dashboard = lazy(() => import('@/pages/dashboard/Dashboard'))
 const TradingView = lazy(() => import('@/pages/trading/TradingView'))
+const Market = lazy(() => import('@/pages/market/Market'))
 const StrategyList = lazy(() => import('@/pages/strategy/StrategyList'))
 const StrategyConfig = lazy(() => import('@/pages/strategy/StrategyConfig'))
 const Positions = lazy(() => import('@/pages/position/Positions'))
@@ -61,10 +62,18 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'trading',
+        path: 'trading/:symbol',
         element: (
           <LazyPage>
             <TradingView />
+          </LazyPage>
+        ),
+      },
+      {
+        path: 'market',
+        element: (
+          <LazyPage>
+            <Market />
           </LazyPage>
         ),
       },

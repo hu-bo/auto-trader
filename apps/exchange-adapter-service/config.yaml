@@ -1,7 +1,7 @@
 # Exchange Adapter Service configuration
 server:
-  grpc_port: 9001
-  http_port: 9002
+  grpc_port: 9101
+  http_port: 9100
   # HTTP API auth (optional). If empty, no auth.
   api_key: ""
   # HTTP API rate limit (requests/sec). 0 disables rate limiting.

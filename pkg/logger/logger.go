@@ -55,12 +55,23 @@ func Init(cfg Config) error {
 		return fmt.Errorf("unsupported log output: %s", cfg.Output)
 	}
 
+	isStdout := !fileOutput
 	var w io.Writer = out
 	if strings.ToLower(cfg.Format) == "console" {
-		w = zerolog.ConsoleWriter{Out: out, TimeFormat: "2006-01-02 15:04:05", NoColor: fileOutput}
+		cw := zerolog.ConsoleWriter{Out: out, NoColor: fileOutput}
+		if isStdout {
+			cw.PartsExclude = []string{zerolog.TimestampFieldName}
+		} else {
+			cw.TimeFormat = "2006-01-02 15:04:05"
+		}
+		w = cw
 	}
 
-	L = zerolog.New(w).With().Timestamp().Logger()
+	ctx := zerolog.New(w).With()
+	if !isStdout {
+		ctx = ctx.Timestamp()
+	}
+	L = ctx.Logger()
 	initialized = true
 	return nil
 }

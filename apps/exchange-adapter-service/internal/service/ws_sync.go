@@ -284,6 +284,22 @@ func (s *WsSyncService) Unsubscribe(exchangeName exchange.ExchangeName, symbols 
 	return stream.Unsubscribe(symbols)
 }
 
+// SubscribeTickers 订阅所有 tickers (不需要指定 symbol)
+// 内部使用 TickerAggregator 将 ticker 数据聚合成 15m/4h/1d K线
+func (s *WsSyncService) SubscribeTickers(exchangeName exchange.ExchangeName, tradeTypes []exchange.TradeType) error {
+	stream, ok := s.streams[exchangeName]
+	if !ok {
+		return nil
+	}
+
+	logWs.Info().
+		Str("exchange", string(exchangeName)).
+		Int("tradeTypes", len(tradeTypes)).
+		Msg("Subscribing all tickers")
+
+	return stream.SubTickers(tradeTypes, nil)
+}
+
 // GetCurrentCandle 获取当前K线
 func (s *WsSyncService) GetCurrentCandle(exchangeName exchange.ExchangeName, tradeType exchange.TradeType, symbol string, period exchange.Period) *exchange.NormalizedCandle {
 	stream, ok := s.streams[exchangeName]

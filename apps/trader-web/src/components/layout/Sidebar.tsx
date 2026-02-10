@@ -22,7 +22,8 @@ interface SidebarProps {
 
 const menuItems = [
   { itemKey: '/dashboard', text: '仪表盘', icon: <IconHome /> },
-  { itemKey: '/trading', text: '交易', icon: <IconLineChartStroked /> },
+  { itemKey: '/market', text: '行情', icon: <IconLineChartStroked /> },
+  { itemKey: '/trading/BTC-USDT', text: '交易', icon: <IconPulse /> },
   { itemKey: '/strategies', text: '策略管理', icon: <IconGridStroked /> },
   { itemKey: '/positions', text: '持仓', icon: <IconPulse /> },
   { itemKey: '/orders', text: '订单', icon: <IconList /> },

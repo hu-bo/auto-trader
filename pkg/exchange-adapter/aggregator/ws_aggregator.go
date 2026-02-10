@@ -1,6 +1,7 @@
 package aggregator
 
 import (
+	"fmt"
 	"sync"
 
 	md "github.com/pkg/exchange-adapter/marketdata"
@@ -56,10 +57,31 @@ type WSAggregator struct {
 
 	miniTickerMu             sync.Mutex
 	futuresMiniTickerEnabled bool
+
+	// ticker aggregator for SubTickers
+	tickerAggMu sync.Mutex
+	tickerAgg   *TickerAggregator
 }
 
-type futuresMiniTickerSubscriber interface {
-	SubFuturesMiniTicker() error
+type futuresTickerSubscriber interface {
+	SubFuturesTicker() error
+}
+
+// tickerEventSubscriber ticker 事件回调接口
+type tickerEventSubscriber interface {
+	OnTickerAll(handler func(md.TickerUpdate))
+}
+
+// multiPeriodCandlesSubscriber 多周期 K 线订阅者接口（基于 ticker 聚合）
+type multiPeriodCandlesSubscriber interface {
+	SubMultiPeriodCandles(tradeTypes []md.TradeType) error
+	GetActiveSymbols(tradeType md.TradeType) []string
+}
+
+// klineSubscriber K线订阅者接口
+type klineSubscriber interface {
+	SubKline(symbols []md.SubscribeRequest, periods []md.Period) error
+	UnsubKline(symbols []md.SubscribeRequest, periods []md.Period) error
 }
 
 func NewWSAggregator(client md.Exchange, opts WSAggregatorOptions) *WSAggregator {
@@ -116,13 +138,129 @@ func (a *WSAggregator) SubMiniTicker(symbols []md.SubscribeRequest, handler func
 	if err := a.subscribeForChannel(symbols, a.miniTickerSubs); err != nil {
 		return err
 	}
-	return a.ensureFuturesMiniTicker(symbols)
+	return a.ensureFuturesTicker(symbols)
 }
 
 func (a *WSAggregator) OnError(handler func(error)) {
 	a.handlerMu.Lock()
 	a.errorHandler = handler
 	a.handlerMu.Unlock()
+}
+
+// SubTickers 订阅多周期 K 线数据（ticker 聚合）。
+// Deprecated: use SubMultiPeriodCandles.
+func (a *WSAggregator) SubTickers(tradeTypes []md.TradeType, handler func(Candle15mEvent)) error {
+	return a.SubMultiPeriodCandles(tradeTypes, handler)
+}
+
+// SubMultiPeriodCandles 订阅多周期 K 线数据（ticker 聚合）
+// 该入口仅依赖 ticker 流，不会自动订阅 depth。
+func (a *WSAggregator) SubMultiPeriodCandles(tradeTypes []md.TradeType, candleHandler func(Candle15mEvent)) error {
+	if candleHandler != nil {
+		a.handlerMu.Lock()
+		a.candleHandler = candleHandler
+		a.handlerMu.Unlock()
+	}
+
+	// 检查是否支持 SubMultiPeriodCandles
+	subscriber, ok := a.client.(multiPeriodCandlesSubscriber)
+	if !ok {
+		return fmt.Errorf("exchange %s does not support SubMultiPeriodCandles", a.exchange)
+	}
+
+	// 初始化 ticker 聚合器
+	a.tickerAggMu.Lock()
+	if a.tickerAgg == nil {
+		a.tickerAgg = NewTickerAggregator(string(a.exchange))
+		a.tickerAgg.OnCandle(func(candle md.NormalizedCandle, closed bool) {
+			a.emitCandle(candle, closed)
+		})
+	}
+	a.tickerAggMu.Unlock()
+
+	// 设置 ticker 回调
+	tickerSub, ok := a.client.(tickerEventSubscriber)
+	if !ok {
+		return fmt.Errorf("exchange %s does not support ticker callbacks", a.exchange)
+	}
+	tickerSub.OnTickerAll(func(ticker md.TickerUpdate) {
+		if !a.isSubscribedTo(a.candleSubs, ticker.Symbol, ticker.TradeType) {
+			return
+		}
+		a.tickerAggMu.Lock()
+		tickerAgg := a.tickerAgg
+		a.tickerAggMu.Unlock()
+		if tickerAgg != nil {
+			tickerAgg.ProcessTicker(ticker)
+		}
+	})
+
+	// 注册 candle 订阅
+	for _, tt := range tradeTypes {
+		symbols := subscriber.GetActiveSymbols(tt)
+		for _, symbol := range symbols {
+			key := streamSubKey(symbol, tt)
+			a.subMu.Lock()
+			a.candleSubs[key] = struct{}{}
+			a.subMu.Unlock()
+		}
+	}
+
+	// 订阅
+	return subscriber.SubMultiPeriodCandles(tradeTypes)
+}
+
+// GetActiveSymbols 获取活跃的交易对列表
+func (a *WSAggregator) GetActiveSymbols(tradeType md.TradeType) []string {
+	subscriber, ok := a.client.(multiPeriodCandlesSubscriber)
+	if !ok {
+		return nil
+	}
+	return subscriber.GetActiveSymbols(tradeType)
+}
+
+// SubKline 订阅 K线数据 (独立的临时订阅方式)
+// periods: 支持 15m, 4h, 1d
+func (a *WSAggregator) SubKline(symbols []md.SubscribeRequest, periods []md.Period, handler func(Candle15mEvent)) error {
+	if handler != nil {
+		a.handlerMu.Lock()
+		a.candleHandler = handler
+		a.handlerMu.Unlock()
+	}
+
+	// 检查是否支持 SubKline
+	subscriber, ok := a.client.(klineSubscriber)
+	if !ok {
+		return fmt.Errorf("exchange %s does not support SubKline", a.exchange)
+	}
+
+	// 注册订阅
+	for _, s := range symbols {
+		key := streamSubKey(s.Symbol, s.TradeType)
+		a.subMu.Lock()
+		a.candleSubs[key] = struct{}{}
+		a.subMu.Unlock()
+	}
+
+	return subscriber.SubKline(symbols, periods)
+}
+
+// UnsubKline 取消订阅 K线数据
+func (a *WSAggregator) UnsubKline(symbols []md.SubscribeRequest, periods []md.Period) error {
+	subscriber, ok := a.client.(klineSubscriber)
+	if !ok {
+		return nil
+	}
+
+	// 移除订阅
+	for _, s := range symbols {
+		key := streamSubKey(s.Symbol, s.TradeType)
+		a.subMu.Lock()
+		delete(a.candleSubs, key)
+		a.subMu.Unlock()
+	}
+
+	return subscriber.UnsubKline(symbols, periods)
 }
 
 func (a *WSAggregator) Unsubscribe(symbols []string) error {
@@ -202,6 +340,14 @@ func (a *WSAggregator) Close() {
 	for _, mgr := range managers {
 		mgr.Close()
 	}
+
+	// 关闭 ticker aggregator
+	a.tickerAggMu.Lock()
+	if a.tickerAgg != nil {
+		a.tickerAgg.Close()
+		a.tickerAgg = nil
+	}
+	a.tickerAggMu.Unlock()
 }
 
 func (a *WSAggregator) bindCallbacks() {
@@ -277,7 +423,7 @@ func (a *WSAggregator) subscribeForChannel(symbols []md.SubscribeRequest, channe
 	return nil
 }
 
-func (a *WSAggregator) ensureFuturesMiniTicker(symbols []md.SubscribeRequest) error {
+func (a *WSAggregator) ensureFuturesTicker(symbols []md.SubscribeRequest) error {
 	if a.exchange != md.Binance {
 		return nil
 	}
@@ -293,7 +439,7 @@ func (a *WSAggregator) ensureFuturesMiniTicker(symbols []md.SubscribeRequest) er
 		return nil
 	}
 
-	subscriber, ok := a.client.(futuresMiniTickerSubscriber)
+	subscriber, ok := a.client.(futuresTickerSubscriber)
 	if !ok {
 		return nil
 	}
@@ -303,7 +449,7 @@ func (a *WSAggregator) ensureFuturesMiniTicker(symbols []md.SubscribeRequest) er
 	if a.futuresMiniTickerEnabled {
 		return nil
 	}
-	if err := subscriber.SubFuturesMiniTicker(); err != nil {
+	if err := subscriber.SubFuturesTicker(); err != nil {
 		return err
 	}
 	a.futuresMiniTickerEnabled = true

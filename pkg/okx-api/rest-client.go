@@ -233,6 +233,33 @@ func (c *RestClient) GetHistoryCandles(ctx context.Context, params any) ([]byte,
 	return c.do(ctx, http.MethodGet, "/api/v5/market/history-candles", params, nil, false)
 }
 
+// Ticker24hr represents OKX 24hr ticker data
+type Ticker24hr struct {
+	InstID    string `json:"instId"`
+	Last      string `json:"last"`
+	LastSz    string `json:"lastSz"`
+	Open24h   string `json:"open24h"`
+	High24h   string `json:"high24h"`
+	Low24h    string `json:"low24h"`
+	Vol24h    string `json:"vol24h"`    // 24h volume in base currency
+	VolCcy24h string `json:"volCcy24h"` // 24h volume in quote currency (used for ranking)
+	Ts        string `json:"ts"`
+}
+
+// GetTickers returns 24hr tickers for all instruments of specified type
+// instType: SPOT, SWAP, FUTURES, OPTION
+func (c *RestClient) GetTickers(ctx context.Context, instType string) ([]Ticker24hr, error) {
+	data, err := c.do(ctx, http.MethodGet, "/api/v5/market/tickers", map[string]string{"instType": instType}, nil, false)
+	if err != nil {
+		return nil, err
+	}
+	var tickers []Ticker24hr
+	if err := json.Unmarshal(data, &tickers); err != nil {
+		return nil, err
+	}
+	return tickers, nil
+}
+
 // Private endpoints
 
 func (c *RestClient) GetBalance(ctx context.Context, params any) ([]byte, error) {

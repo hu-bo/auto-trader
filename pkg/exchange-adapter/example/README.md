@@ -28,6 +28,12 @@ go run ./example/trader --ws-only
 go run ./example/ws_user_data
 go run ./example/ws_user_data binance
 go run ./example/ws_user_data --trade-type=futures okx
+
+# Binance 现货
+EXCHANGE=binance TRADE_TYPE=spot SYMBOL=BTC-USDT go run ./example/ticker_stream
+
+# OKX 合约
+EXCHANGE=okx TRADE_TYPE=futures SYMBOL=BTC-USDT go run ./example/ticker_stream
 ```
 
 ## 重要提示

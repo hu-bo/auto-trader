@@ -104,7 +104,7 @@ func (c *USDMClient) GetFundingRateHistory(ctx context.Context, params types.Bas
 	return result, err
 }
 
-// Get24hrChangeStatistics returns 24hr change statistics.
+// Get24hrChangeStatistics returns 24hr change statistics for a symbol.
 func (c *USDMClient) Get24hrChangeStatistics(ctx context.Context, symbol string) (*types.ChangeStats24hr, error) {
 	var result types.ChangeStats24hr
 	params := map[string]interface{}{}
@@ -113,6 +113,13 @@ func (c *USDMClient) Get24hrChangeStatistics(ctx context.Context, symbol string)
 	}
 	err := c.Get(ctx, "/fapi/v1/ticker/24hr", params, false, &result)
 	return &result, err
+}
+
+// GetAll24hrTickers returns 24hr change statistics for all futures symbols.
+func (c *USDMClient) GetAll24hrTickers(ctx context.Context) ([]types.ChangeStats24hr, error) {
+	var result []types.ChangeStats24hr
+	err := c.Get(ctx, "/fapi/v1/ticker/24hr", nil, false, &result)
+	return result, err
 }
 
 // GetSymbolPrice returns the latest price for a symbol.

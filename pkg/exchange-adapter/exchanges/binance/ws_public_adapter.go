@@ -3,12 +3,14 @@ package binance
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	binanceapi "github.com/pkg/binance-api"
+	binancetypes "github.com/pkg/binance-api/types"
 	bws "github.com/pkg/binance-api/types/websockets"
 	"github.com/pkg/exchange-adapter/core"
 	"github.com/pkg/exchange-adapter/marketdata"
@@ -23,6 +25,11 @@ type WsPublicAdapterOptions struct {
 	// SubscribeAggTrades enables `aggTrade` subscriptions per symbol.
 	// Default is false (same behavior as exchange-sync's previous Binance WS client).
 	SubscribeAggTrades bool
+
+	// REST client options for InitSymbols
+	APIKey    string
+	APISecret string
+	Proxy     string
 }
 
 type WsPublicAdapter struct {
@@ -38,12 +45,23 @@ type WsPublicAdapter struct {
 	conns      map[marketdata.TradeType]*binancePublicConn
 	subscribed map[string]struct{} // key: symbol:tradeType
 
-	futuresMiniTickerAll atomic.Bool
+	spotTickerAll    atomic.Bool
+	futuresTickerAll atomic.Bool
+
+	// Active symbols management (for SubMultiPeriodCandles)
+	activeSymbolsMu sync.RWMutex
+	activeSymbols   map[marketdata.TradeType][]string
+	activeSymbolSet map[marketdata.TradeType]map[string]struct{}
+
+	// REST clients for InitSymbols
+	spotClient    *binanceapi.MainClient
+	futuresClient *binanceapi.USDMClient
 
 	onKline      func(marketdata.Kline)
 	onTrade      func(marketdata.Trade)
 	onDepth      func(marketdata.DepthUpdate)
 	onMiniTicker func(marketdata.MiniTicker)
+	onTickerAll  func(marketdata.TickerUpdate)
 	onError      func(error)
 }
 
@@ -64,7 +82,7 @@ func NewWsPublicAdapter(opts WsPublicAdapterOptions) *WsPublicAdapter {
 		reconnect = 5 * time.Second
 	}
 
-	return &WsPublicAdapter{
+	a := &WsPublicAdapter{
 		proxy:             opts.SocksProxy,
 		testnet:           opts.Testnet,
 		heartbeatInterval: heartbeat,
@@ -72,7 +90,29 @@ func NewWsPublicAdapter(opts WsPublicAdapterOptions) *WsPublicAdapter {
 		subAggTrades:      opts.SubscribeAggTrades,
 		conns:             make(map[marketdata.TradeType]*binancePublicConn),
 		subscribed:        make(map[string]struct{}),
+		activeSymbols:     make(map[marketdata.TradeType][]string),
+		activeSymbolSet:   make(map[marketdata.TradeType]map[string]struct{}),
 	}
+
+	// Initialize REST clients
+	proxy := opts.Proxy
+	if proxy == "" {
+		proxy = opts.SocksProxy
+	}
+	a.spotClient = binanceapi.NewMainClient(binanceapi.MainClientOptions{
+		APIKey:    opts.APIKey,
+		APISecret: opts.APISecret,
+		Testnet:   opts.Testnet,
+		Proxy:     proxy,
+	})
+	a.futuresClient = binanceapi.NewUSDMClient(binanceapi.USDMClientOptions{
+		APIKey:    opts.APIKey,
+		APISecret: opts.APISecret,
+		Testnet:   opts.Testnet,
+		Proxy:     proxy,
+	})
+
+	return a
 }
 
 func (a *WsPublicAdapter) Name() marketdata.ExchangeName { return marketdata.Binance }
@@ -159,8 +199,11 @@ func (a *WsPublicAdapter) subscribeSymbols(tradeType marketdata.TradeType, rawSy
 		}
 	}
 
-	if tradeType == marketdata.Futures && a.futuresMiniTickerAll.Load() {
-		_ = conn.ws.SubscribeAllMiniTickers(conn.wsKey)
+	if tradeType == marketdata.Futures && a.futuresTickerAll.Load() {
+		_ = conn.ws.Subscribe(conn.wsKey, "!ticker@arr")
+	}
+	if tradeType == marketdata.Spot && a.spotTickerAll.Load() {
+		_ = conn.ws.Subscribe(conn.wsKey, "!ticker@arr")
 	}
 
 	return nil
@@ -221,21 +264,48 @@ func (a *WsPublicAdapter) Close() error {
 	return nil
 }
 
-// SubFuturesMiniTicker subscribes Binance futures `!miniTicker@arr`.
-func (a *WsPublicAdapter) SubFuturesMiniTicker() error {
-	a.futuresMiniTickerAll.Store(true)
+// SubFuturesTicker subscribes Binance futures `!ticker@arr` (24hrTicker).
+func (a *WsPublicAdapter) SubFuturesTicker() error {
+	a.futuresTickerAll.Store(true)
 	conn, err := a.ensureConn(marketdata.Futures)
 	if err != nil {
 		return err
 	}
-	return conn.ws.SubscribeAllMiniTickers(conn.wsKey)
+	return conn.ws.Subscribe(conn.wsKey, "!ticker@arr")
 }
 
-func (a *WsPublicAdapter) OnKline(handler func(marketdata.Kline))           { a.onKline = handler }
-func (a *WsPublicAdapter) OnTrade(handler func(marketdata.Trade))           { a.onTrade = handler }
-func (a *WsPublicAdapter) OnDepth(handler func(marketdata.DepthUpdate))     { a.onDepth = handler }
-func (a *WsPublicAdapter) OnMiniTicker(handler func(marketdata.MiniTicker)) { a.onMiniTicker = handler }
-func (a *WsPublicAdapter) OnError(handler func(error))                      { a.onError = handler }
+// SubSpotTicker subscribes Binance spot `!ticker@arr` (24hrTicker).
+func (a *WsPublicAdapter) SubSpotTicker() error {
+	a.spotTickerAll.Store(true)
+	conn, err := a.ensureConn(marketdata.Spot)
+	if err != nil {
+		return err
+	}
+	return conn.ws.Subscribe(conn.wsKey, "!ticker@arr")
+}
+
+func (a *WsPublicAdapter) subTickersByTradeTypes(tradeTypes []marketdata.TradeType) error {
+	for _, tt := range tradeTypes {
+		switch tt {
+		case marketdata.Spot:
+			if err := a.SubSpotTicker(); err != nil {
+				return err
+			}
+		case marketdata.Futures:
+			if err := a.SubFuturesTicker(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (a *WsPublicAdapter) OnKline(handler func(marketdata.Kline))            { a.onKline = handler }
+func (a *WsPublicAdapter) OnTrade(handler func(marketdata.Trade))            { a.onTrade = handler }
+func (a *WsPublicAdapter) OnDepth(handler func(marketdata.DepthUpdate))      { a.onDepth = handler }
+func (a *WsPublicAdapter) OnMiniTicker(handler func(marketdata.MiniTicker))  { a.onMiniTicker = handler }
+func (a *WsPublicAdapter) OnTickerAll(handler func(marketdata.TickerUpdate)) { a.onTickerAll = handler }
+func (a *WsPublicAdapter) OnError(handler func(error))                       { a.onError = handler }
 
 func (a *WsPublicAdapter) ensureConn(tradeType marketdata.TradeType) (*binancePublicConn, error) {
 	a.mu.Lock()
@@ -346,8 +416,11 @@ func (a *WsPublicAdapter) resubscribeLocked(tradeType marketdata.TradeType) erro
 		}
 	}
 
-	if tradeType == marketdata.Futures && a.futuresMiniTickerAll.Load() {
-		_ = conn.ws.SubscribeAllMiniTickers(conn.wsKey)
+	if tradeType == marketdata.Futures && a.futuresTickerAll.Load() {
+		_ = conn.ws.Subscribe(conn.wsKey, "!ticker@arr")
+	}
+	if tradeType == marketdata.Spot && a.spotTickerAll.Load() {
+		_ = conn.ws.Subscribe(conn.wsKey, "!ticker@arr")
 	}
 	return nil
 }
@@ -404,6 +477,23 @@ func (a *WsPublicAdapter) registerHandlers(conn *binancePublicConn) {
 		}
 	})
 
+	// 24hrTicker (spot !ticker@arr)
+	conn.ws.OnMessage("24hrTicker", func(event interface{}) {
+		if a.onTickerAll == nil {
+			return
+		}
+		switch v := event.(type) {
+		case []interface{}:
+			for _, item := range v {
+				if msg, ok := item.(map[string]interface{}); ok {
+					a.handle24hrTicker(msg, tradeType)
+				}
+			}
+		case map[string]interface{}:
+			a.handle24hrTicker(v, tradeType)
+		}
+	})
+
 	conn.ws.OnError(func(err error) {
 		if err == nil {
 			return
@@ -432,6 +522,29 @@ func (a *WsPublicAdapter) handleMiniTicker(msg map[string]interface{}, tradeType
 		OpenPrice24h:   core.ParseFloat(openStr),
 		LastPrice:      core.ParseFloat(lastStr),
 		QuoteVolume24h: core.ParseFloat(quoteVolStr),
+	})
+}
+
+// handle24hrTicker 处理 24hrTicker (spot !ticker@arr)
+// 字段: E=事件时间, s=交易对, c=最新价, Q=最新成交量
+func (a *WsPublicAdapter) handle24hrTicker(msg map[string]interface{}, tradeType marketdata.TradeType) {
+	rawSymbol, _ := msg["s"].(string)
+	symbol := marketdata.NormalizeSymbol(marketdata.Binance, rawSymbol, tradeType)
+	if !a.isAllowedTickerSymbol(tradeType, symbol) {
+		return
+	}
+
+	lastStr, _ := msg["c"].(string)
+	lastSzStr, _ := msg["Q"].(string)
+	eventTimeMs := core.Int64FromAny(msg["E"])
+
+	a.onTickerAll(marketdata.TickerUpdate{
+		Symbol:    symbol,
+		Exchange:  string(marketdata.Binance),
+		TradeType: tradeType,
+		LastPrice: core.ParseFloat(lastStr),
+		LastSz:    core.ParseFloat(lastSzStr),
+		Timestamp: eventTimeMs,
 	})
 }
 
@@ -518,4 +631,249 @@ func toCoreTradeType(tt marketdata.TradeType) core.TradeType {
 	default:
 		return core.TradeTypeSpot
 	}
+}
+
+// InitSymbols initializes active symbols by fetching 24hr tickers and filtering by volume
+// blacklist: symbols to exclude
+// volumeFilterPct: percentage of low-volume symbols to exclude (e.g., 0.3 = bottom 30%)
+func (a *WsPublicAdapter) InitSymbols(ctx context.Context, tradeTypes []marketdata.TradeType, blacklist []string, volumeFilterPct float64) error {
+	blacklistSet := buildCanonicalSymbolSet(blacklist)
+
+	for _, tt := range tradeTypes {
+		var tickers []binancetypes.ChangeStats24hr
+		var err error
+
+		switch tt {
+		case marketdata.Spot:
+			tickers, err = a.spotClient.GetAll24hrTickers(ctx)
+		case marketdata.Futures:
+			tickers, err = a.futuresClient.GetAll24hrTickers(ctx)
+		default:
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("failed to get 24hr tickers for %s: %w", tt, err)
+		}
+
+		fmt.Printf("[binance] InitSymbols: tradeType=%s, totalTickers=%d, volumeFilterPct=%.2f\n", tt, len(tickers), volumeFilterPct)
+
+		// Sort by quoteVolume descending
+		sort.Slice(tickers, func(i, j int) bool {
+			vi := core.ParseFloat(tickers[i].QuoteVolume)
+			vj := core.ParseFloat(tickers[j].QuoteVolume)
+			return vi > vj
+		})
+
+		// Take top (1 - volumeFilterPct) symbols
+		cutoff := int(float64(len(tickers)) * (1 - volumeFilterPct))
+		if cutoff <= 0 {
+			cutoff = len(tickers)
+		}
+
+		fmt.Printf("[binance] InitSymbols: cutoff=%d (top %.0f%%)\n", cutoff, (1-volumeFilterPct)*100)
+
+		activeSymbols := make([]string, 0, cutoff)
+		activeSet := make(map[string]struct{}, cutoff)
+		for i := 0; i < cutoff && i < len(tickers); i++ {
+			rawSymbol := tickers[i].Symbol
+			// Only include USDT pairs
+			if !strings.HasSuffix(rawSymbol, "USDT") {
+				continue
+			}
+			// Convert to unified format
+			symbol := rawToUnifiedSymbol(rawSymbol, toCoreTradeType(tt))
+			if inCanonicalSymbolSet(blacklistSet, rawSymbol, symbol) {
+				continue
+			}
+			if _, exists := activeSet[symbol]; exists {
+				continue
+			}
+			activeSet[symbol] = struct{}{}
+			activeSymbols = append(activeSymbols, symbol)
+		}
+
+		fmt.Printf("[binance] InitSymbols: activeSymbols=%d (USDT pairs only)\n", len(activeSymbols))
+
+		a.activeSymbolsMu.Lock()
+		a.activeSymbols[tt] = activeSymbols
+		a.activeSymbolSet[tt] = activeSet
+		a.activeSymbolsMu.Unlock()
+	}
+	return nil
+}
+
+func (a *WsPublicAdapter) isAllowedTickerSymbol(tradeType marketdata.TradeType, symbol string) bool {
+	a.activeSymbolsMu.RLock()
+	set := a.activeSymbolSet[tradeType]
+	a.activeSymbolsMu.RUnlock()
+	if len(set) == 0 {
+		return true
+	}
+	_, ok := set[symbol]
+	return ok
+}
+
+func buildCanonicalSymbolSet(symbols []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(symbols))
+	for _, symbol := range symbols {
+		key := canonicalSymbolKey(symbol)
+		if key == "" {
+			continue
+		}
+		set[key] = struct{}{}
+	}
+	return set
+}
+
+func inCanonicalSymbolSet(set map[string]struct{}, candidates ...string) bool {
+	for _, candidate := range candidates {
+		key := canonicalSymbolKey(candidate)
+		if key == "" {
+			continue
+		}
+		if _, ok := set[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func canonicalSymbolKey(symbol string) string {
+	s := strings.ToUpper(strings.TrimSpace(symbol))
+	if s == "" {
+		return ""
+	}
+	s = strings.TrimSuffix(s, "-SWAP")
+	s = strings.TrimSuffix(s, "_SWAP")
+	s = strings.ReplaceAll(s, "-", "")
+	s = strings.ReplaceAll(s, "_", "")
+	return s
+}
+
+// GetActiveSymbols returns the list of active symbols for a trade type
+func (a *WsPublicAdapter) GetActiveSymbols(tradeType marketdata.TradeType) []string {
+	a.activeSymbolsMu.RLock()
+	defer a.activeSymbolsMu.RUnlock()
+	symbols := a.activeSymbols[tradeType]
+	result := make([]string, len(symbols))
+	copy(result, symbols)
+	return result
+}
+
+// SubMultiPeriodCandles subscribes only ticker streams used to aggregate 15m/4h/1d candles.
+// It intentionally does not subscribe depth to reduce subscription pressure.
+func (a *WsPublicAdapter) SubMultiPeriodCandles(tradeTypes []marketdata.TradeType) error {
+	return a.subTickersByTradeTypes(tradeTypes)
+}
+
+// SubSymbolDepth subscribes to depth updates for a single symbol
+func (a *WsPublicAdapter) SubSymbolDepth(symbol string, tradeType marketdata.TradeType) error {
+	conn, err := a.ensureConn(tradeType)
+	if err != nil {
+		return err
+	}
+	rawSymbol := unifiedToRawSymbol(symbol, toCoreTradeType(tradeType))
+	rawLower := strings.ToLower(rawSymbol)
+	return conn.ws.Subscribe(conn.wsKey, rawLower+"@depth")
+}
+
+// UnsubSymbolDepth unsubscribes from depth updates for a single symbol
+func (a *WsPublicAdapter) UnsubSymbolDepth(symbol string, tradeType marketdata.TradeType) error {
+	a.mu.Lock()
+	conn := a.conns[tradeType]
+	a.mu.Unlock()
+
+	if conn == nil || conn.ws == nil || !conn.ws.IsConnected(conn.wsKey) {
+		return nil
+	}
+
+	rawSymbol := unifiedToRawSymbol(symbol, toCoreTradeType(tradeType))
+	rawLower := strings.ToLower(rawSymbol)
+	return conn.ws.Unsubscribe(conn.wsKey, rawLower+"@depth")
+}
+
+// SubKline subscribes to kline data for symbols with specified periods
+// Supports 15m, 4h, 1d periods
+func (a *WsPublicAdapter) SubKline(symbols []marketdata.SubscribeRequest, periods []marketdata.Period) error {
+	spotSymbols := make([]string, 0)
+	futuresSymbols := make([]string, 0)
+
+	for _, s := range symbols {
+		raw := unifiedToRawSymbol(s.Symbol, toCoreTradeType(s.TradeType))
+		if s.TradeType == marketdata.Futures {
+			futuresSymbols = append(futuresSymbols, raw)
+		} else {
+			spotSymbols = append(spotSymbols, raw)
+		}
+	}
+
+	// Build topics for each period
+	buildTopics := func(rawSymbols []string) []string {
+		topics := make([]string, 0, len(rawSymbols)*len(periods))
+		for _, raw := range rawSymbols {
+			rawLower := strings.ToLower(raw)
+			for _, p := range periods {
+				topics = append(topics, rawLower+"@kline_"+string(p))
+			}
+		}
+		return topics
+	}
+
+	if len(spotSymbols) > 0 {
+		conn, err := a.ensureConn(marketdata.Spot)
+		if err != nil {
+			return err
+		}
+		topics := buildTopics(spotSymbols)
+		if err := conn.ws.Subscribe(conn.wsKey, topics...); err != nil {
+			return err
+		}
+	}
+
+	if len(futuresSymbols) > 0 {
+		conn, err := a.ensureConn(marketdata.Futures)
+		if err != nil {
+			return err
+		}
+		topics := buildTopics(futuresSymbols)
+		if err := conn.ws.Subscribe(conn.wsKey, topics...); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// UnsubKline unsubscribes from kline data for symbols with specified periods
+func (a *WsPublicAdapter) UnsubKline(symbols []marketdata.SubscribeRequest, periods []marketdata.Period) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	for _, s := range symbols {
+		conn := a.conns[s.TradeType]
+		if conn == nil || conn.ws == nil || !conn.ws.IsConnected(conn.wsKey) {
+			continue
+		}
+
+		raw := unifiedToRawSymbol(s.Symbol, toCoreTradeType(s.TradeType))
+		rawLower := strings.ToLower(raw)
+
+		topics := make([]string, 0, len(periods))
+		for _, p := range periods {
+			topics = append(topics, rawLower+"@kline_"+string(p))
+		}
+
+		_ = conn.ws.Unsubscribe(conn.wsKey, topics...)
+	}
+	return nil
+}
+
+// helper to check if slice contains string
+func containsString(slice []string, s string) bool {
+	for _, v := range slice {
+		if strings.EqualFold(v, s) {
+			return true
+		}
+	}
+	return false
 }
