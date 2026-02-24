@@ -26,9 +26,14 @@ export interface ExchangeAdapterConfig {
   grpc: string;
 }
 
+export interface StrategyEngineConfig {
+  grpc: string;
+}
+
 export interface AppConfig {
   auth: AuthConfig;
   casdoor: CasdoorConfig;
   encryption: EncryptionConfig;
   exchangeAdapter: ExchangeAdapterConfig;
+  strategyEngine: StrategyEngineConfig;
 }

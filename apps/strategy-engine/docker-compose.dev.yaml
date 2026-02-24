@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  nats:
+    image: nats:latest
+    container_name: strategy-engine-nats
+    ports:
+      - "16001:4222"
+    command: [ "-js", "--user=strategy_engine", "--pass=123456" ]
+    healthcheck:
+      test: ["CMD", "nats-server", "--help"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+networks:
+  shared_network:
+    external: true

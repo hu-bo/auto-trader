@@ -16,6 +16,10 @@ uvicorn = { extras = ["standard"], version = "^0.27.0" }
 # Message Queue
 nats-py = "^2.6.0"
 
+# gRPC
+grpcio = "^1.68.0"
+grpcio-tools = "^1.68.0"
+
 # Data Validation
 pydantic = "^2.5.3"
 pydantic-settings = "^2.1.0"

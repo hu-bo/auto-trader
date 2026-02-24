@@ -14,6 +14,11 @@ async def health() -> dict:
 
 @router.get("/health/ready")
 async def ready(request: Request) -> dict:
-    nats_client: NatsClient = request.app.state.nats
-    return {"status": "ready", "nats_connected": nats_client.is_connected}
+    signal_nats: NatsClient = request.app.state.nats
+    upstream_nats: NatsClient = request.app.state.upstream_nats
+    return {
+        "status": "ready",
+        "nats_connected": signal_nats.is_connected,
+        "upstream_nats_connected": upstream_nats.is_connected,
+    }
 

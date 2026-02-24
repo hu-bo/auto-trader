@@ -62,8 +62,9 @@ generate_node() {
         if [ -f "$proto_file" ]; then
             log_info "Processing $(basename "$proto_file")..."
 
-            npx protoc \
-                --plugin=protoc-gen-ts_proto="$(npx which ts-proto)" \
+            local PLUGIN_PATH="$ROOT_DIR/node_modules/.bin/protoc-gen-ts_proto"
+            protoc \
+                --plugin=protoc-gen-ts_proto="$PLUGIN_PATH" \
                 --ts_proto_out="$OUT_DIR" \
                 --ts_proto_opt=outputServices=nice-grpc,outputServices=generic-definitions,useExactTypes=false,esModuleInterop=true \
                 --proto_path="$PROTO_DIR" \
@@ -76,6 +77,7 @@ generate_node() {
 // Auto-generated index file
 export * from './exchange.js';
 export * from './signal.js';
+export * from './strategy_subscription.js';
 EOF
 
     log_info "Node.js code generated at: $OUT_DIR"
@@ -119,6 +121,8 @@ from .exchange_pb2 import *
 from .exchange_pb2_grpc import *
 from .signal_pb2 import *
 from .signal_pb2_grpc import *
+from .strategy_subscription_pb2 import *
+from .strategy_subscription_pb2_grpc import *
 EOF
 
     log_info "Python code generated at: $OUT_DIR"

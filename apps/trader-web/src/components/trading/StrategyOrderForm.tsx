@@ -83,6 +83,7 @@ export const StrategyOrderForm: React.FC<StrategyOrderFormProps> = ({
     createMutation.mutate({
       strategyId: values.strategyId as string,
       exchangeId: values.exchangeId as string,
+      tradeType: (values.tradeType as string) || 'spot',
       symbols: values.symbols as string[],
       riskConfig,
       live: values.live as boolean,
@@ -115,6 +116,19 @@ export const StrategyOrderForm: React.FC<StrategyOrderFormProps> = ({
           value: e.id,
           label: `${e.name} (${e.exchangeType})`,
         }))}
+        style={{ width: '100%' }}
+      />
+
+      <Form.Select
+        field="tradeType"
+        label="交易类型"
+        initValue="spot"
+        rules={[{ required: true, message: '请选择交易类型' }]}
+        optionList={[
+          { value: 'spot', label: '现货' },
+          { value: 'futures', label: '合约' },
+          { value: 'swap', label: '永续' },
+        ]}
         style={{ width: '100%' }}
       />
 

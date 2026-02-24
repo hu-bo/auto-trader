@@ -11,9 +11,11 @@ logger = create_logger("strategy-engine").child("nats")
 
 
 class NatsClient:
-    def __init__(self, url: str, *, name: str = "strategy-engine") -> None:
+    def __init__(self, url: str, *, name: str = "strategy-engine", user: str | None = None, password: str | None = None) -> None:
         self._url = url
         self._name = name
+        self._user = user
+        self._password = password
         self._nc: _NatsConnection | None = None
         self._connect_lock = asyncio.Lock()
 
@@ -26,20 +28,23 @@ class NatsClient:
             if self.is_connected:
                 return
 
+            name = self._name
+            url = self._url
+
             async def disconnected_cb() -> None:
-                logger.warning("NATS disconnected")
+                logger.warning(f"NATS disconnected [{name}] {url}")
 
             async def reconnected_cb() -> None:
                 assert self._nc is not None
-                logger.info("NATS reconnected", url=str(self._nc.connected_url))
+                logger.info(f"NATS reconnected [{name}] {self._nc.connected_url}")
 
             async def closed_cb() -> None:
-                logger.warning("NATS connection closed")
+                logger.warning(f"NATS connection closed [{name}] {url}")
 
             async def error_cb(err: Exception) -> None:
-                logger.error("NATS error", err=str(err))
+                logger.error(f"NATS error [{name}] {url} [{type(err).__name__}] {err}")
 
-            self._nc = await nats.connect(
+            connect_opts: dict[str, Any] = dict(
                 servers=[self._url],
                 name=self._name,
                 disconnected_cb=disconnected_cb,
@@ -47,7 +52,13 @@ class NatsClient:
                 closed_cb=closed_cb,
                 error_cb=error_cb,
             )
-            logger.info("NATS connected", url=self._url)
+            if self._user:
+                connect_opts["user"] = self._user
+            if self._password:
+                connect_opts["password"] = self._password
+
+            self._nc = await nats.connect(**connect_opts)
+            logger.info(f"NATS connected [{self._name}] {self._url}")
 
     async def close(self) -> None:
         async with self._connect_lock:
@@ -58,7 +69,7 @@ class NatsClient:
             finally:
                 await self._nc.close()
                 self._nc = None
-                logger.info("NATS closed")
+                logger.info(f"NATS closed [{self._name}] {self._url}")
 
     async def publish(self, subject: str, payload: bytes) -> None:
         if not self._nc or self._nc.is_closed:

@@ -15,12 +15,22 @@ class Settings(BaseSettings):
     )
     app_port: int = Field(default=9002, alias="APP_PORT")
 
-    nats_url: str = Field(default="nats://localhost:16002", alias="NATS_URL")
-    nats_subject_prefix: str = Field(default="exchange", alias="NATS_SUBJECT_PREFIX")
+    # Signal NATS — publish signals & notifications to trader-service-node
+    signal_nats_url: str = Field(default="nats://localhost:16001", alias="SIGNAL_NATS_URL")
+    signal_nats_user: str | None = Field(default=None, alias="SIGNAL_NATS_USER")
+    signal_nats_pass: str | None = Field(default=None, alias="SIGNAL_NATS_PASS")
     signal_subject_prefix: str = Field(default="signal", alias="SIGNAL_SUBJECT_PREFIX")
     signal_strategy_subject_prefix: str | None = Field(
         default=None, alias="SIGNAL_STRATEGY_SUBJECT_PREFIX"
     )
+
+    # Upstream NATS — subscribe candle data from exchange-adapter-service
+    upstream_nats_url: str = Field(default="", alias="UPSTREAM_NATS_URL")
+    upstream_nats_user: str | None = Field(default=None, alias="UPSTREAM_NATS_USER")
+    upstream_nats_pass: str | None = Field(default=None, alias="UPSTREAM_NATS_PASS")
+    upstream_subject_prefix: str = Field(default="exchange", alias="UPSTREAM_SUBJECT_PREFIX")
+
+    grpc_port: int = Field(default=50052, alias="GRPC_PORT")
 
     candle_buffer_size: int = Field(default=1000, alias="CANDLE_BUFFER_SIZE")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")

@@ -32,6 +32,9 @@ export class StrategyOrder {
   @Column({ name: 'exchange_id', type: 'int' })
   exchangeId!: number;
 
+  @Column({ name: 'trade_type', type: 'varchar', length: 32, default: 'spot' })
+  tradeType!: string;
+
   @Column({ type: 'jsonb', default: [] })
   symbols!: string[];
 

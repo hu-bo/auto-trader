@@ -70,10 +70,12 @@ class CandleSubscriber:
         self._tasks.clear()
 
     async def _handle_msg(self, msg: Any) -> None:
+        logger.info("Raw NATS msg received", subject=msg.subject, size=len(msg.data))
         try:
             candle = Candle.model_validate_json(msg.data)
+            print(candle)
         except Exception as exc:
-            logger.warning("Invalid candle payload", err=str(exc))
+            logger.warning("Invalid candle payload", subject=msg.subject, err=str(exc), raw=msg.data[:200])
             return
 
         task = asyncio.create_task(self._on_candle(candle))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -11,6 +12,7 @@ from app.api.v1.router import router as v1_router
 from app.config import get_settings
 from app.core.strategy_executor import StrategyExecutor
 from app.core.strategy_manager import StrategyManager
+from app.grpc.server import GrpcServer
 from app.nats.client import NatsClient
 from app.nats.subscriber import CandleSubscriber
 
@@ -20,11 +22,31 @@ logger = create_logger("strategy-engine")
 def create_app() -> FastAPI:
     settings = get_settings()
 
-    nats_client = NatsClient(settings.nats_url, name="strategy-engine")
+    # Signal NATS — for publishing signals to trader-service-node
+    signal_nats = NatsClient(
+        settings.signal_nats_url,
+        name="strategy-engine-signal",
+        user=settings.signal_nats_user,
+        password=settings.signal_nats_pass,
+    )
+
+    # Upstream NATS — for subscribing candle data from exchange-adapter-service
+    # Falls back to the signal NATS when UPSTREAM_NATS_URL is not configured.
+    if settings.upstream_nats_url:
+        upstream_nats = NatsClient(
+            settings.upstream_nats_url,
+            name="strategy-engine-upstream",
+            user=settings.upstream_nats_user,
+            password=settings.upstream_nats_pass,
+        )
+    else:
+        upstream_nats = signal_nats
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        await nats_client.connect()
+        await signal_nats.connect()
+        if upstream_nats is not signal_nats:
+            await upstream_nats.connect()
 
         manager: StrategyManager | None = None
 
@@ -33,10 +55,12 @@ def create_app() -> FastAPI:
                 return
             await manager.handle_candle(candle)
 
-        subscriber = CandleSubscriber(nats_client, on_candle)
+        # Subscribe candles from upstream NATS
+        subscriber = CandleSubscriber(upstream_nats, on_candle)
 
+        # Publish signals to local NATS
         executor = StrategyExecutor(
-            nats_client=nats_client,
+            nats_client=signal_nats,
             signal_subject_prefix=settings.signal_subject_prefix,
             signal_strategy_subject_prefix=settings.signal_strategy_subject_prefix,
         )
@@ -44,23 +68,45 @@ def create_app() -> FastAPI:
             candle_subscriber=subscriber,
             executor=executor,
             candle_buffer_size=settings.candle_buffer_size,
-            candle_subject_prefix=settings.nats_subject_prefix,
+            candle_subject_prefix=settings.upstream_subject_prefix,
+        )
+
+        # --- gRPC server ---------------------------------------------------
+        grpc_server = GrpcServer(
+            port=settings.grpc_port,
+            manager=manager,
+            candle_subject_prefix=settings.upstream_subject_prefix,
+        )
+        await grpc_server.start()
+
+        # Notify downstream services that the engine is ready.
+        logger.info(f"Publishing strategy.engine.started to signal NATS [{settings.signal_nats_url}]")
+        await signal_nats.publish(
+            "strategy.engine.started",
+            json.dumps({"status": "started"}).encode(),
         )
 
         app.state.settings = settings
-        app.state.nats = nats_client
+        app.state.nats = signal_nats
+        app.state.upstream_nats = upstream_nats
         app.state.strategy_manager = manager
+        app.state.grpc_server = grpc_server
 
+        upstream_url = settings.upstream_nats_url or settings.signal_nats_url
         logger.info(
-            "Strategy engine started",
-            app_env=settings.app_env,
-            nats_url=settings.nats_url,
+            f"Strategy engine started env={settings.app_env} "
+            f"signal_nats={settings.signal_nats_url} "
+            f"upstream_nats={upstream_url} "
+            f"grpc_port={settings.grpc_port}"
         )
 
         yield
 
+        await grpc_server.stop()
         await subscriber.close()
-        await nats_client.close()
+        if upstream_nats is not signal_nats:
+            await upstream_nats.close()
+        await signal_nats.close()
 
         logger.info("Strategy engine stopped")
 
@@ -71,4 +117,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

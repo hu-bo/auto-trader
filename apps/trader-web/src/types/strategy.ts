@@ -57,6 +57,7 @@ export interface StrategyOrder {
   exchange_id: string
   exchange_name: string
   exchange_type: string
+  trade_type: string
   symbols: string[]
   parameters: Record<string, unknown>
   risk_config: RiskConfig
@@ -71,6 +72,7 @@ export interface StrategyOrder {
 export interface StrategyOrderCreate {
   strategyId: string
   exchangeId: string
+  tradeType?: string
   symbols: string[]
   parameters?: Record<string, unknown>
   riskConfig?: RiskConfig

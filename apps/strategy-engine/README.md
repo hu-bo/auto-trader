@@ -6,8 +6,11 @@
 
 ```bash
 cd apps/strategy-engine
+conda activate python312
 poetry install
-poetry run uvicorn app.main:app --host 0.0.0.0 --port 9002 --reload
+
+# 直接运行，避免 poetry run 导致 Ctrl+C 无法退出
+uvicorn app.main:app --host 0.0.0.0 --port 9002 --reload
 ```
 
 ## Env

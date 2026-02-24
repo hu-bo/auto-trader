@@ -20,8 +20,8 @@ export interface StrategyOrderListResponse {
 
 export const strategyOrderApi = {
   // 获取策略订单列表
-  list: (params?: StrategyOrderListParams) => 
-    requestData.get<StrategyOrderListResponse>('/strategy-order', { params }),
+  list: (params?: StrategyOrderListParams) =>
+    requestData.get<StrategyOrderListResponse>('/strategy-order', params),
 
   // 获取策略订单详情
   get: (id: string) => requestData.get<StrategyOrder>(`/strategy-order/${id}`),

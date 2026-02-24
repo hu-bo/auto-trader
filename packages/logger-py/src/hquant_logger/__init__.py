@@ -92,18 +92,31 @@ def create_logger(service: str) -> Logger:
         "scope": "main",
     }
 
+    # Keys managed by the logger itself — excluded from kwarg output.
+    _INTERNAL_KEYS = {"service", "env", "pid", "scope"}
+
+    def _dev_format(record: dict) -> str:
+        extra = record["extra"]
+        # Collect user-supplied kwargs (exclude internal context)
+        kv = {k: v for k, v in extra.items() if k not in _INTERNAL_KEYS}
+        kv_str = " ".join(f"<blue>{k}</blue>=<yellow>{v}</yellow>" for k, v in kv.items())
+        base = (
+            "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
+            "<level>{level: <8}</level>|"
+            "<cyan>{extra[service]}</cyan>:<cyan>{extra[scope]}</cyan> | "
+            "<level>{message}</level>"
+        )
+        if kv_str:
+            base += f" {kv_str}"
+        return base + "\n"
+
     if IS_DEV:
         # Development: colorized console output
         _loguru_logger.add(
             sys.stderr,
             level=LOG_LEVEL,
             colorize=True,
-            format=(
-                "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
-                "<level>{level: <8}</level>|"
-                "<cyan>{extra[service]}</cyan>:<cyan>{extra[scope]}</cyan> | "
-                "<level>{message}</level>"
-            ),
+            format=_dev_format,
         )
     else:
         # Production: rotating JSON log files

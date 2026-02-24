@@ -50,10 +50,18 @@ export default {
     grpc: 'localhost:50051',
     apiKey: ''
   },
+  strategyEngine: {
+    grpc: process.env.STRATEGY_ENGINE_GRPC ?? 'localhost:50052',
+  },
   nats: {
     url: process.env.NATS_URL ?? 'nats://152.32.210.32:15001',
     user: process.env.NATS_USER ?? '',
     pass: process.env.NATS_PASS ?? '',
     subjectPrefix: 'exchange',
-  }
+  },
+  signalNats: {
+    url: process.env.SIGNAL_NATS_URL ?? 'nats://localhost:16001',
+    user: process.env.SIGNAL_NATS_USER ?? 'strategy_engine',
+    pass: process.env.SIGNAL_NATS_PASS ?? '123456',
+  },
 } as MidwayConfig;

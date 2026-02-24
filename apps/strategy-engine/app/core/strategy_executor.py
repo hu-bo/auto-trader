@@ -42,6 +42,14 @@ class StrategyExecutor:
                 continue
 
             action = self._pick_action(signals)
+            logger.info(
+                "Strategy tick",
+                strategy_id=strategy.strategy_id,
+                strategy_name=strategy.strategy_name,
+                symbol=candle.symbol,
+                action=action or "none",
+                signal_count=len(signals) if signals else 0,
+            )
             if not action:
                 continue
 

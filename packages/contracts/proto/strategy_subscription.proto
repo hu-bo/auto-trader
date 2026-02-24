@@ -36,13 +36,17 @@ enum SubscriptionStatus {
 // 订阅请求
 message SubscribeRequest {
   string user_id = 1;                   // 用户ID
-  string subscription_id = 2;            // 订阅ID（strategy_order.id）
+  string subscription_id = 2;            // 订阅ID（strategy_order.id，多 symbol 时为 "orderId:symbol"）
   string strategy_id = 3;                // 策略ID
-  string symbol = 4;                     // 交易对（如 BTC-USDT）
-  string exchange = 5;                   // 交易所（binance, okx）
-  string trade_type = 6;                 // 交易类型（spot, futures, delivery）
-  string period = 7;                     // K线周期（15m, 1h, 1d）
-  string parameters = 8;                 // 策略参数（JSON 字符串）
+  string strategy_name = 4;              // 策略名称
+  string code = 5;                       // 策略代码（hquant DSL）
+  string symbol = 6;                     // 交易对（如 BTC-USDT）
+  string exchange = 7;                   // 交易所（binance, okx）
+  string trade_type = 8;                 // 交易类型（spot, futures, delivery）
+  string period = 9;                     // K线周期（15m, 1h, 1d）
+  string parameters = 10;               // 策略参数（JSON 字符串）
+  string risk_config = 11;              // 风控配置（JSON 字符串）
+  bool live = 12;                        // 是否实盘
 }
 
 // 订阅响应

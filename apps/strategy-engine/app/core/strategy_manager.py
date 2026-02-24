@@ -90,7 +90,7 @@ class StrategyManager:
             code=req.code,
             created_at=datetime.now(tz=timezone.utc),
             calculator=IndicatorCalculator(
-                capacity=self._buffer_size, strategy_name=req.strategy_name, code=req.code
+                capacity=self._buffer_size, strategy_name=req.strategy_name, code=req.code, period=req.period
             ),
         )
 
@@ -139,7 +139,7 @@ class StrategyManager:
             instance.code = req.code
             instance.last_emitted_action = None
             instance.calculator = IndicatorCalculator(
-                capacity=self._buffer_size, strategy_name=req.strategy_name, code=req.code
+                capacity=self._buffer_size, strategy_name=req.strategy_name, code=req.code, period=req.period
             )
 
         logger.info("Strategy instance updated", strategy_id=str(req.strategy_id))
@@ -199,7 +199,12 @@ class StrategyManager:
             symbol=candle.symbol,
             period=candle.period,
         )
-
+        logger.info(
+            "Received candle",
+            symbol=candle.symbol,
+            period=candle.period,
+            exchange=candle.exchange,
+        )
         async with self._lock:
             keys = list(self._routing.get(routing_key, set()))
             strategies = [self._instances[k] for k in keys if k in self._instances]
@@ -207,6 +212,13 @@ class StrategyManager:
         if not strategies:
             return
 
+        logger.info(
+            "Dispatching candle",
+            symbol=candle.symbol,
+            period=candle.period,
+            exchange=candle.exchange,
+            strategy_count=len(strategies),
+        )
         await self._executor.execute(candle, strategies)
 
     def _to_info(self, instance: StrategyInstance) -> StrategyInstanceInfo:

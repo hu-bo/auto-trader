@@ -97,7 +97,7 @@ const StrategyOrders: React.FC = () => {
         <div>
           <div>{name}</div>
           <div style={{ fontSize: 12, color: '#999' }}>
-            {record.exchange_type}
+            {record.exchange_type} / {record.trade_type}
           </div>
         </div>
       ),
@@ -249,6 +249,7 @@ const StrategyOrders: React.FC = () => {
                 <div>
                   交易所: {selectedOrder.exchange_name} ({selectedOrder.exchange_type})
                 </div>
+                <div>交易类型: {selectedOrder.trade_type}</div>
                 <div>
                   模式:{' '}
                   <Tag color={selectedOrder.live ? 'red' : 'blue'}>

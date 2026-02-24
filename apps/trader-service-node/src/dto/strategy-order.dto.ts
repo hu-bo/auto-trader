@@ -21,6 +21,9 @@ export class CreateStrategyOrderBodyDTO {
   @Rule(Joi.number().integer().positive().required())
   exchangeId!: number;
 
+  @Rule(Joi.string().trim().valid('spot', 'futures', 'swap').default('spot'))
+  tradeType?: string;
+
   @Rule(Joi.array().items(Joi.string().trim().min(1)).required())
   symbols!: string[];
 

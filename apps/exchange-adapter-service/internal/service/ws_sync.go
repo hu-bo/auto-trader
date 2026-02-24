@@ -144,6 +144,8 @@ func (s *WsSyncService) setupCallbacks() {
 
 			// 发布到 NATS（更新+闭合都发布）
 			if s.natsPublisher != nil {
+				// 打印candle
+				// logWs.Info().Msgf("Publishing candle: %v", candle)
 				s.natsPublisher.PublishCandle(candle)
 			}
 

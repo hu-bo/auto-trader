@@ -351,6 +351,12 @@ impl MultiHQuant {
         })
     }
 
+    fn add_strategy(&mut self, name: String, dsl: String) -> PyResult<u32> {
+        self.inner
+            .add_strategy(&name, &dsl)
+            .map_err(|e| py_err(e.to_string()))
+    }
+
     fn add_multi_strategy(&mut self, name: String, dsl: String) -> PyResult<u32> {
         self.inner
             .add_multi_strategy(&name, &dsl)
