@@ -32,9 +32,16 @@ export class StrategyOrderService {
     return this.orderRepo;
   }
 
-  async listForUser(userid: number): Promise<StrategyOrder[]> {
+  async listForUser(userid: number, page = 1, pageSize = 20): Promise<{ data: StrategyOrder[]; total: number }> {
     const repo = this.requireRepo();
-    return repo.find({ where: { userid }, order: { createdAt: 'DESC' } });
+    const [data, total] = await repo.findAndCount({ 
+      where: { userid }, 
+      relations: ['strategy', 'exchange'],
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    return { data, total };
   }
 
   async create(params: StrategyOrderCreateParams): Promise<StrategyOrder> {
@@ -56,7 +63,10 @@ export class StrategyOrderService {
 
   async get(userid: number, orderId: number): Promise<StrategyOrder> {
     const repo = this.requireRepo();
-    const order = await repo.findOne({ where: { id: orderId } });
+    const order = await repo.findOne({ 
+      where: { id: orderId },
+      relations: ['strategy', 'exchange']
+    });
     if (!order || order.userid !== userid) {
       throw new httpError.NotFoundError('Strategy order not found');
     }

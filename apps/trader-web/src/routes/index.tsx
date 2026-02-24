@@ -10,16 +10,15 @@ const Login = lazy(() => import('@/pages/auth/Login'))
 const Callback = lazy(() => import('@/pages/auth/Callback'))
 const Dashboard = lazy(() => import('@/pages/dashboard/Dashboard'))
 const TradingView = lazy(() => import('@/pages/trading/TradingView'))
-const Market = lazy(() => import('@/pages/market/Market'))
-const StrategyList = lazy(() => import('@/pages/strategy/StrategyList'))
-const StrategyConfig = lazy(() => import('@/pages/strategy/StrategyConfig'))
+const MarketList = lazy(() => import('@/pages/market/MarketList'))
 const Positions = lazy(() => import('@/pages/position/Positions'))
 const Orders = lazy(() => import('@/pages/order/Orders'))
+const StrategyOrders = lazy(() => import('@/pages/order/StrategyOrders'))
 const Overview = lazy(() => import('@/pages/stats/Overview'))
 const ExchangeConfig = lazy(() => import('@/pages/exchange/ExchangeConfig'))
 const Settings = lazy(() => import('@/pages/settings/Settings'))
 const UserManage = lazy(() => import('@/pages/admin/UserManage'))
-const StrategyManage = lazy(() => import('@/pages/admin/StrategyManage'))
+const StrategyLibrary = lazy(() => import('@/pages/admin/StrategyLibrary'))
 
 const LazyPage = ({ children }: { children: React.ReactNode }) => (
   <Suspense fallback={<Loading />}>{children}</Suspense>
@@ -73,31 +72,7 @@ export const router = createBrowserRouter([
         path: 'market',
         element: (
           <LazyPage>
-            <Market />
-          </LazyPage>
-        ),
-      },
-      {
-        path: 'strategies',
-        element: (
-          <LazyPage>
-            <StrategyList />
-          </LazyPage>
-        ),
-      },
-      {
-        path: 'strategies/new',
-        element: (
-          <LazyPage>
-            <StrategyConfig />
-          </LazyPage>
-        ),
-      },
-      {
-        path: 'strategies/:id',
-        element: (
-          <LazyPage>
-            <StrategyConfig />
+            <MarketList />
           </LazyPage>
         ),
       },
@@ -114,6 +89,14 @@ export const router = createBrowserRouter([
         element: (
           <LazyPage>
             <Orders />
+          </LazyPage>
+        ),
+      },
+      {
+        path: 'strategy-orders',
+        element: (
+          <LazyPage>
+            <StrategyOrders />
           </LazyPage>
         ),
       },
@@ -154,10 +137,10 @@ export const router = createBrowserRouter([
             ),
           },
           {
-            path: 'strategies',
+            path: 'strategy-library',
             element: (
               <LazyPage>
-                <StrategyManage />
+                <StrategyLibrary />
               </LazyPage>
             ),
           },

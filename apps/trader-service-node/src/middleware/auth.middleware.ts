@@ -73,12 +73,11 @@ export class AuthMiddleware implements IMiddleware<Context, NextFunction> {
           ctx.body = apiFail('Invalid or expired token');
           return;
         }
-        ctx.state.user = user;
 
+        ctx.state.user = user;
         await next();
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Authentication failed';
-        ctx.status = 401;
         ctx.body = apiFail(message);
       }
     };

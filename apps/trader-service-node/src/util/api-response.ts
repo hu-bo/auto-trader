@@ -16,7 +16,7 @@ export function apiOk<T>(data: T, message = 'OK'): ApiSuccess<T> {
   return {  message, data, code: 0 };
 }
 
-export function apiFail(message: string, data?: unknown): ApiFailure {
-  return data === undefined ? { code: 500, message } : { code: 500, message, data };
+export function apiFail(message: string, data?: unknown, code = 500): ApiFailure {
+  return data === undefined ? { code, message } : { code, message, data };
 }
 

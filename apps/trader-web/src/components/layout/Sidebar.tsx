@@ -23,10 +23,11 @@ interface SidebarProps {
 const menuItems = [
   { itemKey: '/dashboard', text: '仪表盘', icon: <IconHome /> },
   { itemKey: '/market', text: '行情', icon: <IconLineChartStroked /> },
+  { itemKey: '/market-list', text: '行情列表', icon: <IconList /> },
   { itemKey: '/trading/BTC-USDT', text: '交易', icon: <IconPulse /> },
-  { itemKey: '/strategies', text: '策略管理', icon: <IconGridStroked /> },
   { itemKey: '/positions', text: '持仓', icon: <IconPulse /> },
   { itemKey: '/orders', text: '订单', icon: <IconList /> },
+  { itemKey: '/strategy-orders', text: '策略运行', icon: <IconGridStroked /> },
   { itemKey: '/stats', text: '统计', icon: <IconHistogram /> },
   { itemKey: '/exchanges', text: '交易所', icon: <IconServer /> },
   { itemKey: '/settings', text: '设置', icon: <IconSetting /> },
@@ -34,7 +35,7 @@ const menuItems = [
 
 const adminMenuItems = [
   { itemKey: '/admin/users', text: '用户管理', icon: <IconUserGroup /> },
-  { itemKey: '/admin/strategies', text: '策略管理', icon: <IconGridStroked /> },
+  { itemKey: '/admin/strategy-library', text: '策略库', icon: <IconServer /> },
 ]
 
 export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {

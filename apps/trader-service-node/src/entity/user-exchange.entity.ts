@@ -35,9 +35,6 @@ export class UserExchange {
   @Column({ name: 'passphrase_encrypted', type: 'text', nullable: true })
   passphraseEncrypted!: string | null;
 
-  @Column({ name: 'grpc_token_encrypted', type: 'text', nullable: true })
-  grpcTokenEncrypted!: string | null;
-
   @Column({ name: 'is_testnet', type: 'boolean', default: false })
   isTestnet!: boolean;
 

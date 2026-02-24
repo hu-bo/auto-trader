@@ -38,6 +38,8 @@ function useCasdoor() {
   const login = useCallback(() => client.login(), [client]);
   const signup = useCallback(() => client.signup(), [client]);
   const logout = useCallback(() => client.logout(), [client]);
+  const getLoginUrl = useCallback(() => client.getLoginUrl(), [client]);
+  const getSignupUrl = useCallback(() => client.getSignupUrl(), [client]);
   const handleCallback = useCallback(
     (serverExchangeToken) => client.handleCallback(serverExchangeToken),
     [client]
@@ -55,6 +57,8 @@ function useCasdoor() {
     login,
     signup,
     logout,
+    getLoginUrl,
+    getSignupUrl,
     handleCallback,
     refreshToken
   };

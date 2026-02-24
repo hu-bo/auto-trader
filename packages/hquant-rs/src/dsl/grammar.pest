@@ -44,5 +44,6 @@ string = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
 
 action = { action_name ~ action_meta? }
 action_name = @{ ^"BUY" | ^"SELL" | ^"HOLD" }
-action_meta = { "(" ~ meta_inner ~ ")" }
+action_meta = { "(" ~ meta_value ~ ")" }
+meta_value = _{ string | meta_inner }
 meta_inner = @{ (!")" ~ ANY)* }

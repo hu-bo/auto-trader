@@ -32,6 +32,14 @@ declare class CasdoorClient {
      */
     private buildAuthUrl;
     /**
+     * 获取登录 URL（不跳转）
+     */
+    getLoginUrl(): string;
+    /**
+     * 获取注册 URL（不跳转）
+     */
+    getSignupUrl(): string;
+    /**
      * 生成随机 state
      */
     private generateState;

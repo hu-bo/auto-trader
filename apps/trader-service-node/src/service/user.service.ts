@@ -45,18 +45,23 @@ export class UserService {
   ): Promise<User> {
     const repo = this.requireRepo();
 
-    const casdoorid = String(casdoorUser.id).trim();
+    const casdoorid = casdoorUser.id;
     if (!casdoorid) throw new httpError.UnauthorizedError('User not authenticated');
 
     const existing = await repo.findOne({ where: { casdoorid } });
-    if (existing) return existing;
+
+    if (existing) {
+      existing.role =  casdoorUser.roles ? casdoorUser.roles[0].name : '';
+      await  repo.save(existing);
+      return existing
+    };
 
     const username = String(casdoorUser.name ?? casdoorid).trim() || casdoorid;
     const created = repo.create({
       casdoorid,
       username,
       displayname: String(casdoorUser.displayName ?? '').trim(),
-      role: casdoorUser.roles ? casdoorUser.roles[0].displayName : '',
+      role: casdoorUser.roles ? casdoorUser.roles[0].name : '',
       isadmin: Boolean(casdoorUser.isAdmin || casdoorUser.isGlobalAdmin),
       isactive: !Boolean(casdoorUser.isForbidden),
     });
@@ -74,10 +79,10 @@ export class UserService {
 
     const username = String(casdoorUser.name ?? casdoorid).trim() || casdoorid;
     const displayname = String(casdoorUser.displayName ?? '').trim();
-    const role = casdoorUser.roles ? casdoorUser.roles[0].displayName : '';
+    const role = casdoorUser.roles ? casdoorUser.roles[0].name : '';
     const isadmin = Boolean(casdoorUser.isAdmin || casdoorUser.isGlobalAdmin);
     const isactive = !Boolean(casdoorUser.isForbidden);
-
+    console.log(casdoorUser.roles)
     const existing = await repo.findOne({ where: { casdoorid } });
     if (!existing) {
       const created = repo.create({

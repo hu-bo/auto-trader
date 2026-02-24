@@ -753,6 +753,60 @@ func (r *PostgresRepository) UpdateSymbolSyncStatus(ctx context.Context, status 
 	})
 }
 
+// GetAllSymbolsSyncStatus 获取所有交易对的同步状态
+func (r *PostgresRepository) GetAllSymbolsSyncStatus(ctx context.Context, exchangeName, tradeType string) ([]SymbolSyncStatusWithTime, error) {
+	query := `
+		SELECT 
+			exchange,
+			symbol,
+			trade_type,
+			earliest_data_ts,
+			latest_sync_ts,
+			created_at,
+			updated_at
+		FROM symbol_sync_status
+		WHERE exchange = $1
+	`
+	
+	args := []interface{}{exchangeName}
+	
+	if tradeType != "" {
+		query += " AND trade_type = $2"
+		args = append(args, tradeType)
+	}
+	
+	query += " ORDER BY symbol"
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	statuses := make([]SymbolSyncStatusWithTime, 0)
+	for rows.Next() {
+		var status SymbolSyncStatusWithTime
+		if err := rows.Scan(
+			&status.Exchange,
+			&status.Symbol,
+			&status.TradeType,
+			&status.EarliestDataTs,
+			&status.LatestSyncTs,
+			&status.CreatedAt,
+			&status.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		statuses = append(statuses, status)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return statuses, nil
+}
+
 // DeleteSymbolInfo 删除单个交易对 (使用 sqlc)
 func (r *PostgresRepository) DeleteSymbolInfo(ctx context.Context, exchangeName, symbol, tradeType string) error {
 	return r.queries.DeleteSymbolInfo(ctx, db.DeleteSymbolInfoParams{
@@ -813,6 +867,11 @@ func (r *PostgresRepository) Close() error {
 // GetPartitionManager 获取分表管理器
 func (r *PostgresRepository) GetPartitionManager() *PartitionManager {
 	return r.partition
+}
+
+// GetPool 获取数据库连接池 (用于自定义查询)
+func (r *PostgresRepository) GetPool() *pgxpool.Pool {
+	return r.pool
 }
 
 // helper functions

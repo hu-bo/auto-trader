@@ -1,23 +1,25 @@
 import React from 'react'
 import { Typography } from '@douyinfe/semi-ui-19'
-import type { SymbolData } from '@/api/market'
+import type { TickerData } from '@/api/market'
 
 const { Text } = Typography
 
-const formatVolume = (v: number) => {
-  if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`
-  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`
-  if (v >= 1e3) return `${(v / 1e3).toFixed(2)}K`
-  return v.toFixed(2)
+const formatVolume = (v: number | string) => {
+  const num = typeof v === 'string' ? parseFloat(v) : v
+  if (isNaN(num) || num === 0) return '0.00'
+  if (num >= 1e9) return `${(num / 1e9).toFixed(2)}B`
+  if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`
+  if (num >= 1e3) return `${(num / 1e3).toFixed(2)}K`
+  return num.toFixed(2)
 }
 
 interface SymbolCardProps {
-  data: SymbolData
+  data: TickerData
   onClick?: (symbol: string) => void
 }
 
 export const SymbolCard: React.FC<SymbolCardProps> = ({ data, onClick }) => {
-  const isUp = data.priceChangePct24h >= 0
+  const isUp = Number(data.priceChangePct) >= 0
   const color = isUp ? 'var(--semi-color-success)' : 'var(--semi-color-danger)'
   const bgColor = isUp
     ? 'rgba(var(--semi-green-5), 0.08)'
@@ -48,8 +50,7 @@ export const SymbolCard: React.FC<SymbolCardProps> = ({ data, onClick }) => {
       {/* 顶部：symbol */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div>
-          <Text strong style={{ fontSize: 16 }}>{data.baseCurrency}</Text>
-          <Text type="tertiary" style={{ fontSize: 12 }}> / {data.quoteCurrency}</Text>
+          <Text strong style={{ fontSize: 16 }}>{data.symbol}</Text>
         </div>
         <div
           style={{
@@ -61,21 +62,28 @@ export const SymbolCard: React.FC<SymbolCardProps> = ({ data, onClick }) => {
             fontWeight: 600,
           }}
         >
-          {isUp ? '+' : ''}{data.priceChangePct24h.toFixed(2)}%
+          {isUp ? '+' : ''}{data.priceChangePct.toFixed(2)}%
         </div>
       </div>
 
       {/* 价格 */}
       <div style={{ marginBottom: 8 }}>
         <Text style={{ fontSize: 20, fontWeight: 700, color }}>
-          {data.lastPrice.toFixed(data.pricePrecision)}
+          {data.lastPrice.toFixed(data.lastPrice >= 1 ? 2 : 6)}
         </Text>
       </div>
 
-      {/* 成交额 */}
+      {/* 24h交易量 (USDT) */}
+      <div style={{ marginBottom: 4 }}>
+        <Text type="secondary" style={{ fontSize: 13 }}>
+          USDT: {formatVolume(data.quoteVolume24h)}
+        </Text>
+      </div>
+
+      {/* 成交量 */}
       <div>
         <Text type="tertiary" style={{ fontSize: 12 }}>
-          Vol {formatVolume(data.quoteVolume24h)}
+          Vol {formatVolume(data.volume24h)}
         </Text>
       </div>
     </div>

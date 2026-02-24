@@ -40,13 +40,18 @@ export class StrategyService {
 
   async listForUser(userid: number): Promise<Strategy[]> {
     const repo = this.requireRepo();
-    return repo.find({ where: { userid }, order: { createdAt: 'DESC' } });
+    return repo.find({ 
+      where: { userid }, 
+      order: { createdAt: 'DESC' },
+      relations: ['user']
+    });
   }
 
   async listAvailable(userid: number): Promise<Strategy[]> {
     const repo = this.requireRepo();
     return repo
       .createQueryBuilder('strategy')
+      .leftJoinAndSelect('strategy.user', 'user')
       .where('strategy.isPublic = :isPublic', { isPublic: true })
       .orWhere('strategy.userid = :userid', { userid })
       .orderBy('strategy.createdAt', 'DESC')
@@ -71,7 +76,10 @@ export class StrategyService {
 
   async get(userid: number, strategyId: number): Promise<Strategy> {
     const repo = this.requireRepo();
-    const strategy = await repo.findOne({ where: { id: strategyId } });
+    const strategy = await repo.findOne({ 
+      where: { id: strategyId },
+      relations: ['user']
+    });
     if (!strategy) {
       throw new httpError.NotFoundError('Strategy not found');
     }

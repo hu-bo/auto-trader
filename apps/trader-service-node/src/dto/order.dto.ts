@@ -7,11 +7,7 @@ export class OrderIdParamDTO {
 }
 
 export class OrderTokenQueryDTO {
-  @Rule(Joi.number().integer().min(1).optional())
-  exchangeId?: number;
-
-  @Rule(Joi.string().trim().min(1).optional())
-  token?: string;
+  // No parameters needed for token query
 }
 
 export class ListOrdersQueryDTO extends OrderTokenQueryDTO {
@@ -29,9 +25,6 @@ export class ListOrdersQueryDTO extends OrderTokenQueryDTO {
 }
 
 export class PlaceOrderBodyDTO {
-  @Rule(Joi.number().integer().min(1).optional())
-  exchangeId?: number;
-
   @Rule(Joi.string().trim().min(1).required())
   symbol!: string;
 
@@ -61,7 +54,4 @@ export class PlaceOrderBodyDTO {
 
   @Rule(Joi.boolean().allow(null).optional().strict())
   reduceOnly?: boolean | null;
-
-  @Rule(Joi.string().trim().min(1).optional())
-  token?: string;
 }

@@ -26,7 +26,7 @@ type Server struct {
 }
 
 // NewServer 创建 API 服务器
-func NewServer(cfg *config.Config, wsSyncService *service.WsSyncService, historySyncService *service.HistorySyncService, verifyService *service.VerifyService, repo storage.Repository) (*Server, error) {
+func NewServer(cfg *config.Config, wsSyncService *service.WsSyncService, historySyncService *service.HistorySyncService, verifyService *service.VerifyService, tickerSyncService *service.TickerSyncService, repo storage.Repository) (*Server, error) {
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
@@ -55,7 +55,7 @@ func NewServer(cfg *config.Config, wsSyncService *service.WsSyncService, history
 	}
 
 	// 创建处理器
-	handler := NewHandler(wsSyncService, historySyncService, verifyService, repo)
+	handler := NewHandler(wsSyncService, historySyncService, verifyService, tickerSyncService, repo)
 
 	server := &Server{
 		cfg:     cfg,
@@ -136,6 +136,12 @@ func (s *Server) setupRoutes() {
 
 	// 同步任务管理
 	api.GET("/sync/tasks", s.handler.GetSyncTasks)
+	api.GET("/sync/status", s.handler.GetSymbolSyncStatus)
+	api.GET("/sync/status/all", s.handler.GetAllSymbolsSyncStatus)
+
+	// Ticker 相关
+	api.GET("/ticker", s.handler.GetTicker)
+	api.GET("/tickers", s.handler.GetTickers)
 }
 
 // Start 启动服务器

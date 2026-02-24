@@ -15,7 +15,7 @@ export class AuthController {
       return apiOk({ auth_mode: 'mock', code: query.code });
     }
     const token = await this.casdoorService.verifyCode(query.code);
-    console.log(token)
+
     const { user, valid, error } = await this.casdoorService.verifyTokenGetUser(token.access_token);
     
     if (!valid) {

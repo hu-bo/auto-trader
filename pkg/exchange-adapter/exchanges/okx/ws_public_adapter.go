@@ -365,12 +365,15 @@ func parseOKXDepth(levels [][]string) []marketdata.DepthEntry {
 }
 
 type okxWsTicker struct {
-	InstId    string `json:"instId"`
-	Last      string `json:"last"`
-	LastSz    string `json:"lastSz"` // 最新成交量
-	Open24h   string `json:"open24h"`
-	VolCcy24h string `json:"volCcy24h"`
-	Ts        string `json:"ts"`
+	InstId     string `json:"instId"`
+	Last       string `json:"last"`       // 最新成交价
+	LastSz     string `json:"lastSz"`     // 最新成交量
+	Open24h    string `json:"open24h"`    // 24h开盘价
+	High24h    string `json:"high24h"`    // 24h最高价
+	Low24h     string `json:"low24h"`     // 24h最低价
+	Vol24h     string `json:"vol24h"`     // 24h成交量（张）
+	VolCcy24h  string `json:"volCcy24h"`  // 24h成交量（币）
+	Ts         string `json:"ts"`         // 时间戳
 }
 
 func (a *WsPublicAdapter) handleTickers(instID string, tradeType marketdata.TradeType, data json.RawMessage) {
@@ -400,13 +403,44 @@ func (a *WsPublicAdapter) handleTickers(instID string, tradeType marketdata.Trad
 			continue
 		}
 
+		// Calculate price change and percentage
+		openPrice := core.ParseFloat(t.Open24h)
+		priceChange := 0.0
+		priceChangePct := 0.0
+		if openPrice > 0 {
+			priceChange = lastPrice - openPrice
+			priceChangePct = (priceChange / openPrice) * 100
+		}
+
+		// Calculate quote volume based on trade type
+		// For SPOT: volCcy24h is quote currency volume (USDT)
+		// For SWAP/FUTURES: volCcy24h is base currency volume (coins), need to multiply by price
+		quoteVolume := 0.0
+		if tradeType == marketdata.Spot {
+			// For spot, volCcy24h is already in quote currency
+			quoteVolume = core.ParseFloat(t.VolCcy24h)
+		} else {
+			// For futures/swap, volCcy24h is base currency volume
+			// Calculate quote volume: volCcy24h (base currency) * lastPrice
+			volCcy := core.ParseFloat(t.VolCcy24h)
+			if volCcy > 0 && lastPrice > 0 {
+				quoteVolume = volCcy * lastPrice
+			}
+		}
+
 		a.onTickerAll(marketdata.TickerUpdate{
-			Symbol:    symbol,
-			Exchange:  string(marketdata.OKX),
-			TradeType: tradeType,
-			LastPrice: lastPrice,
-			LastSz:    core.ParseFloat(t.LastSz),
-			Timestamp: core.ParseInt64(t.Ts),
+			Symbol:         symbol,
+			Exchange:       string(marketdata.OKX),
+			TradeType:      tradeType,
+			LastPrice:      lastPrice,
+			LastSz:         core.ParseFloat(t.LastSz),
+			PriceChange:    priceChange,
+			PriceChangePct: priceChangePct,
+			High24h:        core.ParseFloat(t.High24h),
+			Low24h:         core.ParseFloat(t.Low24h),
+			Volume24h:      core.ParseFloat(t.Vol24h),
+			QuoteVolume24h: quoteVolume,
+			Timestamp:      core.ParseInt64(t.Ts),
 		})
 	}
 
@@ -477,15 +511,25 @@ func (a *WsPublicAdapter) InitSymbols(ctx context.Context, tradeTypes []marketda
 				continue
 			}
 
-			// Calculate USDT volume
-			// For USDT pairs, volCcy24h is already in USDT (quote currency volume)
+			// Calculate USDT volume based on trade type
+			// For SPOT: volCcy24h is quote currency volume (already in USDT)
+			// For SWAP/FUTURES: volCcy24h is base currency volume, need to multiply by price
 			volCcy24h := parseFloat(tickers[i].VolCcy24h)
-			volumeUSDT := volCcy24h
+			lastPrice := parseFloat(tickers[i].Last)
+			
+			var volumeUSDT float64
+			if tt == marketdata.Spot {
+				// For spot, volCcy24h is already in USDT
+				volumeUSDT = volCcy24h
+			} else {
+				// For futures/swap, volCcy24h is base currency, multiply by price
+				volumeUSDT = volCcy24h * lastPrice
+			}
 
 			candidates = append(candidates, symbolVolume{
 				symbol:     symbol,
 				rawInstID:  rawInstID,
-				volumeUSDT: volumeUSDT * parseFloat(tickers[i].Last),
+				volumeUSDT: volumeUSDT,
 			})
 		}
 

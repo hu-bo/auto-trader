@@ -31,7 +31,6 @@ export class ExchangeController {
       userId: exchange.userid,
       exchangeType: exchange.exchangeType,
       name: exchange.name,
-      hasGrpcToken: Boolean(exchange.grpcTokenEncrypted),
       isTestnet: exchange.isTestnet,
       isActive: exchange.isActive,
       createdAt: exchange.createdAt,
@@ -51,7 +50,7 @@ export class ExchangeController {
     @Body() body: CreateExchangeBodyDTO
   ) {
     const userid = await this.getUserid();
-    let exchange = await this.exchangeService.create({
+    const exchange = await this.exchangeService.create({
       userid,
       exchangeType: body.exchangeType,
       name: body.name,
@@ -62,22 +61,7 @@ export class ExchangeController {
       isActive: body.isActive ?? true,
     });
 
-    try {
-      const initResp = await this.exchangeGrpc.initAccount({
-        exchangeType: exchange.exchangeType,
-        apiKey: body.apiKey,
-        apiSecret: body.apiSecret,
-        passphrase: body.passphrase ?? null,
-        demonet: exchange.isTestnet,
-        name: exchange.name,
-      });
-      if (initResp?.success && typeof initResp?.token === 'string' && initResp.token) {
-        exchange = await this.exchangeService.setGrpcToken(userid, exchange.id, initResp.token);
-      }
-    } catch (err) {
-      void err;
-    }
-
+    // Token 由上游服务生成和管理，不再在此处初始化
     return apiOk(this.toExchangeRead(exchange));
   }
 
@@ -101,14 +85,6 @@ export class ExchangeController {
   @Del('/:id')
   async remove(@Param() params: ExchangeIdParamDTO) {
     const userid = await this.getUserid();
-
-    try {
-      const token = await this.exchangeService.getGrpcToken(userid, params.id);
-      await this.exchangeGrpc.invalidateToken({ token });
-    } catch (err) {
-      void err;
-    }
-
     await this.exchangeService.delete(userid, params.id);
     return apiOk(null);
   }
@@ -116,22 +92,10 @@ export class ExchangeController {
   @Post('/:id/test')
   async test(@Param() params: ExchangeIdParamDTO) {
     const userid = await this.getUserid();
-
     const exchange = await this.exchangeService.get(userid, params.id);
-    let token: string | null = null;
-
-    try {
-      token = await this.exchangeService.getGrpcToken(userid, params.id);
-      const validateResp = await this.exchangeGrpc.validateToken({ token });
-      if (validateResp?.valid) {
-        return apiOk({ ...validateResp, initialized: false });
-      }
-    } catch (err) {
-      void err;
-      token = null;
-    }
-
     const creds = await this.exchangeService.getApiCredentials(userid, params.id);
+
+    // 使用 API 凭证初始化账户，token 由上游服务生成
     const initResp = await this.exchangeGrpc.initAccount({
       exchangeType: exchange.exchangeType,
       apiKey: creds.apiKey,
@@ -140,13 +104,18 @@ export class ExchangeController {
       demonet: exchange.isTestnet,
       name: exchange.name,
     });
+
     if (!initResp?.success || !initResp?.token) {
       const msg = initResp?.error?.message || 'InitAccount failed';
       throw new httpError.BadGatewayError(msg);
     }
 
-    await this.exchangeService.setGrpcToken(userid, params.id, initResp.token);
+    // 验证 token
     const validateResp = await this.exchangeGrpc.validateToken({ token: initResp.token });
-    return apiOk({ ...validateResp, initialized: true });
+    return apiOk({ 
+      ...validateResp, 
+      token: initResp.token, // 返回 token 供前端使用
+      initialized: true 
+    });
   }
 }

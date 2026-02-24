@@ -57,6 +57,8 @@ function useCasdoor() {
   const login = (0, import_react.useCallback)(() => client.login(), [client]);
   const signup = (0, import_react.useCallback)(() => client.signup(), [client]);
   const logout = (0, import_react.useCallback)(() => client.logout(), [client]);
+  const getLoginUrl = (0, import_react.useCallback)(() => client.getLoginUrl(), [client]);
+  const getSignupUrl = (0, import_react.useCallback)(() => client.getSignupUrl(), [client]);
   const handleCallback = (0, import_react.useCallback)(
     (serverExchangeToken) => client.handleCallback(serverExchangeToken),
     [client]
@@ -74,6 +76,8 @@ function useCasdoor() {
     login,
     signup,
     logout,
+    getLoginUrl,
+    getSignupUrl,
     handleCallback,
     refreshToken
   };

@@ -39,6 +39,22 @@ export interface SymbolData {
   tickerEventTimeMs: number
 }
 
+export interface TickerData {
+  exchange: string
+  symbol: string
+  tradeType: string
+  lastPrice: number
+  lastSz: number
+  priceChange: number
+  priceChangePct: number
+  high24h: number
+  low24h: number
+  volume24h: number
+  quoteVolume24h: number
+  timestamp: number
+  updatedAt: number
+}
+
 export interface GetCandlesParams {
   exchange: string
   symbol: string
@@ -64,9 +80,22 @@ export const marketApi = {
   getCurrentCandle: (params: { exchange: string; symbol: string; period?: string }) =>
     requestData.get<CandleData>('/market/candle/current', { ...params }),
 
-  getSymbols: (params: GetSymbolsParams) =>
+  getSymbols: (query: {exchange: string, tradeType: string }) =>
+    requestData.get<SymbolData[]>('/market/symbols', { exchange: query.exchange, trade_type: query.tradeType || 'spot' })
+      .then(res => {
+        console.log(res)
+        return res.symbols || []
+      }),
+
+  getSymbolsDetailed: (params: GetSymbolsParams) =>
     requestData.get<{ exchange: string; count: number; symbols: SymbolData[] }>(
       '/market/symbols',
       { ...params }
+    ),
+
+  getTickers: (params: { exchange: string; trade_type?: string }) =>
+    requestData.get<{ exchange: string; tradeType: string; count: number; tickers: TickerData[] }>(
+      '/market/tickers',
+      { exchange: params.exchange, trade_type: params.trade_type || 'spot' }
     ),
 }

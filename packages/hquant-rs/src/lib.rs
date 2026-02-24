@@ -276,4 +276,43 @@ mod tests {
         let sigs = mh.poll_signals();
         assert!(sigs.iter().any(|s| s.action == Action::Buy));
     }
+
+    #[test]
+    fn dsl_action_meta_supports_string_syntax() {
+        let mut hq = HQuant::new(64);
+        hq.add_indicator(IndicatorSpec::Rsi { period: 3 });
+        
+        // Test string meta syntax
+        hq.add_strategy(
+            "s1",
+            r#"IF RSI(3) < 30 THEN BUY("multi-period oversold")"#,
+        )
+        .unwrap();
+        
+        // Test bare meta syntax (backward compatibility)
+        hq.add_strategy(
+            "s2",
+            "IF RSI(3) > 70 THEN SELL(overbought signal)",
+        )
+        .unwrap();
+
+        let mut close = 100.0;
+        for i in 0..40 {
+            close -= 1.0;
+            hq.push_kline(Bar {
+                timestamp: i,
+                open: close,
+                high: close,
+                low: close,
+                close,
+                volume: 1.0,
+                buy_volume: 0.0,
+            });
+        }
+
+        let sigs = hq.poll_signals();
+        let buy_sig = sigs.iter().find(|s| s.action == Action::Buy);
+        assert!(buy_sig.is_some());
+        assert_eq!(buy_sig.unwrap().meta.as_deref(), Some("multi-period oversold"));
+    }
 }

@@ -526,7 +526,8 @@ func (a *WsPublicAdapter) handleMiniTicker(msg map[string]interface{}, tradeType
 }
 
 // handle24hrTicker 处理 24hrTicker (spot !ticker@arr)
-// 字段: E=事件时间, s=交易对, c=最新价, Q=最新成交量
+// 字段: E=事件时间, s=交易对, c=最新价, Q=最新成交量, p=价格变化, P=价格变化百分比
+// h=24h最高价, l=24h最低价, v=24h成交量, q=24h成交额
 func (a *WsPublicAdapter) handle24hrTicker(msg map[string]interface{}, tradeType marketdata.TradeType) {
 	rawSymbol, _ := msg["s"].(string)
 	symbol := marketdata.NormalizeSymbol(marketdata.Binance, rawSymbol, tradeType)
@@ -536,15 +537,27 @@ func (a *WsPublicAdapter) handle24hrTicker(msg map[string]interface{}, tradeType
 
 	lastStr, _ := msg["c"].(string)
 	lastSzStr, _ := msg["Q"].(string)
+	priceChangeStr, _ := msg["p"].(string)
+	priceChangePctStr, _ := msg["P"].(string)
+	high24hStr, _ := msg["h"].(string)
+	low24hStr, _ := msg["l"].(string)
+	volume24hStr, _ := msg["v"].(string)
+	quoteVolume24hStr, _ := msg["q"].(string)
 	eventTimeMs := core.Int64FromAny(msg["E"])
 
 	a.onTickerAll(marketdata.TickerUpdate{
-		Symbol:    symbol,
-		Exchange:  string(marketdata.Binance),
-		TradeType: tradeType,
-		LastPrice: core.ParseFloat(lastStr),
-		LastSz:    core.ParseFloat(lastSzStr),
-		Timestamp: eventTimeMs,
+		Symbol:         symbol,
+		Exchange:       string(marketdata.Binance),
+		TradeType:      tradeType,
+		LastPrice:      core.ParseFloat(lastStr),
+		LastSz:         core.ParseFloat(lastSzStr),
+		PriceChange:    core.ParseFloat(priceChangeStr),
+		PriceChangePct: core.ParseFloat(priceChangePctStr),
+		High24h:        core.ParseFloat(high24hStr),
+		Low24h:         core.ParseFloat(low24hStr),
+		Volume24h:      core.ParseFloat(volume24hStr),
+		QuoteVolume24h: core.ParseFloat(quoteVolume24hStr),
+		Timestamp:      eventTimeMs,
 	})
 }
 

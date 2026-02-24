@@ -112,6 +112,20 @@ export class CasdoorClient {
   }
 
   /**
+   * 获取登录 URL（不跳转）
+   */
+  getLoginUrl(): string {
+    return this.buildAuthUrl('signin');
+  }
+
+  /**
+   * 获取注册 URL（不跳转）
+   */
+  getSignupUrl(): string {
+    return this.buildAuthUrl('signup');
+  }
+
+  /**
    * 生成随机 state
    */
   private generateState(): string {

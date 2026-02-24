@@ -1,4 +1,4 @@
-import { Body, Controller, Del, Get, Inject, Param, Post, Put } from '@midwayjs/core';
+import { Body, Controller, Del, Get, Inject, Param, Post, Put, Query } from '@midwayjs/core';
 import type { Context } from '@midwayjs/koa';
 import { ExchangeService } from '../service/exchange.service.js';
 import { StrategyOrderService } from '../service/strategy-order.service.js';
@@ -7,6 +7,7 @@ import { UserService } from '../service/user.service.js';
 import { apiOk } from '../util/api-response.js';
 import {
   CreateStrategyOrderBodyDTO,
+  ListStrategyOrderQueryDTO,
   StrategyOrderIdParamDTO,
   UpdateStrategyOrderBodyDTO,
 } from '../dto/strategy-order.dto.js';
@@ -38,7 +39,10 @@ export class StrategyOrderController {
       id: order.id,
       user_id: order.userid,
       strategy_id: order.strategyId,
+      strategy_name: order.strategy?.name || '',
       exchange_id: order.exchangeId,
+      exchange_name: order.exchange?.name || '',
+      exchange_type: order.exchange?.exchangeType || '',
       symbols: order.symbols ?? [],
       parameters: order.parameters ?? {},
       risk_config: order.riskConfig ?? {},
@@ -52,10 +56,17 @@ export class StrategyOrderController {
   }
 
   @Get('/')
-  async list() {
+  async list(@Query() query: ListStrategyOrderQueryDTO) {
     const userid = await this.getUserid();
-    const orders = await this.strategyOrderService.listForUser(userid);
-    return apiOk(orders.map(o => this.toStrategyOrderRead(o)));
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const { data, total } = await this.strategyOrderService.listForUser(userid, page, pageSize);
+    return apiOk({
+      data: data.map(o => this.toStrategyOrderRead(o)),
+      total,
+      page,
+      pageSize,
+    });
   }
 
   @Post('/')
@@ -63,16 +74,16 @@ export class StrategyOrderController {
     @Body() body: CreateStrategyOrderBodyDTO
   ) {
     const userid = await this.getUserid();
-    await this.strategyService.get(userid, body.strategy_id);
-    await this.exchangeService.get(userid, body.exchange_id);
+    await this.strategyService.get(userid, body.strategyId);
+    await this.exchangeService.get(userid, body.exchangeId);
 
     const order = await this.strategyOrderService.create({
       userid,
-      strategyId: body.strategy_id,
-      exchangeId: body.exchange_id,
+      strategyId: body.strategyId,
+      exchangeId: body.exchangeId,
       symbols: body.symbols,
       parameters: body.parameters ?? {},
-      riskConfig: body.risk_config ?? {},
+      riskConfig: body.riskConfig ?? {},
       live: body.live ?? false,
     });
     return apiOk(this.toStrategyOrderRead(order));
@@ -94,7 +105,7 @@ export class StrategyOrderController {
     const order = await this.strategyOrderService.update(userid, params.id, {
       symbols: body?.symbols ?? undefined,
       parameters: body?.parameters ?? undefined,
-      riskConfig: body?.risk_config ?? undefined,
+      riskConfig: body?.riskConfig ?? undefined,
       live: body?.live ?? undefined,
     });
     return apiOk(this.toStrategyOrderRead(order));

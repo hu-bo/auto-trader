@@ -84,11 +84,11 @@ class TradingDatafeed implements Datafeed {
       try {
         const res = await marketApi.getSymbols({
           exchange: this.exchange,
-          trade_type: this.tradeType,
+          tradeType: this.tradeType,
         })
         const symbols = (res?.symbols || [])
-          .filter((s) => s.syncEnabled)
-          .map((s) => ({
+          .filter((s: any) => s.syncEnabled)
+          .map((s: any) => ({
             ticker: s.symbol,
             name: `${s.baseCurrency}/${s.quoteCurrency}`,
             exchange: s.exchange,

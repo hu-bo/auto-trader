@@ -137,6 +137,17 @@ export class ExchangeGrpcClient {
     return this.client;
   }
 
+  /**
+   * Get the API key (token) from config
+   */
+  private getToken(): string {
+    const token = (this.exchangeAdapter?.apiKey ?? '').trim();
+    if (!token) {
+      throw new httpError.ServiceUnavailableError('exchangeAdapter.apiKey is required in config');
+    }
+    return token;
+  }
+
   private async unary<T>(fn: (cb: (err: grpc.ServiceError | null, res: T) => void) => void): Promise<T> {
     return await new Promise<T>((resolve, reject) => {
       fn((err, res) => {
@@ -179,7 +190,6 @@ export class ExchangeGrpcClient {
   }
 
   async getOrders(params: {
-    token: string;
     symbol?: string;
     status?: string;
     limit?: number;
@@ -187,7 +197,7 @@ export class ExchangeGrpcClient {
   }): Promise<any> {
     const client = this.getClient();
     const req: any = {
-      token: params.token,
+      token: this.getToken(),
     };
     if (params.symbol) req.symbol = params.symbol;
     if (params.status) req.status = mapOrderStatus(params.status);
@@ -196,20 +206,19 @@ export class ExchangeGrpcClient {
     return await this.unary(cb => client.getOrders(req, cb));
   }
 
-  async getOrder(params: { token: string; orderId: string }): Promise<any> {
+  async getOrder(params: { orderId: string }): Promise<any> {
     const client = this.getClient();
-    const req = { token: params.token, order_id: params.orderId };
+    const req = { token: this.getToken(), order_id: params.orderId };
     return await this.unary(cb => client.getOrder(req, cb));
   }
 
-  async cancelOrder(params: { token: string; orderId: string }): Promise<any> {
+  async cancelOrder(params: { orderId: string }): Promise<any> {
     const client = this.getClient();
-    const req = { token: params.token, order_id: params.orderId };
+    const req = { token: this.getToken(), order_id: params.orderId };
     return await this.unary(cb => client.cancelOrder(req, cb));
   }
 
   async placeOrder(params: {
-    token: string;
     symbol: string;
     tradeType: string;
     side: string;
@@ -223,7 +232,7 @@ export class ExchangeGrpcClient {
   }): Promise<any> {
     const client = this.getClient();
     const req: any = {
-      token: params.token,
+      token: this.getToken(),
       symbol: params.symbol,
       trade_type: mapTradeType(params.tradeType),
       side: mapOrderSide(params.side),
@@ -238,27 +247,26 @@ export class ExchangeGrpcClient {
     return await this.unary(cb => client.placeOrder(req, cb));
   }
 
-  async getPositions(params: { token: string; symbol?: string }): Promise<any> {
+  async getPositions(params: { symbol?: string }): Promise<any> {
     const client = this.getClient();
-    const req: any = { token: params.token };
+    const req: any = { token: this.getToken() };
     if (params.symbol) req.symbol = params.symbol;
     return await this.unary(cb => client.getPositions(req, cb));
   }
 
-  async syncPositions(params: { token: string }): Promise<any> {
+  async syncPositions(): Promise<any> {
     const client = this.getClient();
-    const req = { token: params.token };
+    const req = { token: this.getToken() };
     return await this.unary(cb => client.syncPositions(req, cb));
   }
 
-  async getBalance(params: { token: string; tradeType: string }): Promise<any> {
+  async getBalance(params: { tradeType: string }): Promise<any> {
     const client = this.getClient();
-    const req = { token: params.token, trade_type: mapTradeType(params.tradeType) };
+    const req = { token: this.getToken(), trade_type: mapTradeType(params.tradeType) };
     return await this.unary(cb => client.getBalance(req, cb));
   }
 
   async setLeverage(params: {
-    token: string;
     symbol: string;
     leverage: number;
     tradeType: string;
@@ -266,7 +274,7 @@ export class ExchangeGrpcClient {
   }): Promise<any> {
     const client = this.getClient();
     const req: any = {
-      token: params.token,
+      token: this.getToken(),
       symbol: params.symbol,
       leverage: params.leverage,
       trade_type: mapTradeType(params.tradeType),

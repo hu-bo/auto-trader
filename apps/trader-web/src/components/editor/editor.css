@@ -1,0 +1,22 @@
+/* Monaco Editor 样式 */
+.monaco-editor {
+  border: 1px solid var(--semi-color-border);
+  border-radius: 4px;
+}
+
+.monaco-editor .margin {
+  background-color: transparent;
+}
+
+.monaco-editor .monaco-scrollable-element > .scrollbar > .slider {
+  border-radius: 4px;
+}
+
+/* 最大化按钮悬停效果 */
+.monaco-editor-maximize-btn {
+  transition: opacity 0.2s;
+}
+
+.monaco-editor-maximize-btn:hover {
+  opacity: 1 !important;
+}

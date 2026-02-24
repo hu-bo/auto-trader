@@ -9,6 +9,9 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  optimizeDeps: {
+    include: ['monaco-editor'],
+  },
   server: {
     port: 8002,
     host: '0.0.0.0',

@@ -1,0 +1,68 @@
+# HQuant DSL 策略示例
+
+## 1. RSI 超买超卖策略
+LET rsi = RSI(14)
+IF rsi < 30 THEN BUY("oversold")
+IF rsi > 70 THEN SELL("overbought")
+
+## 2. MACD 金叉死叉策略
+LET macd = MACD(12, 26, 9)
+IF macd.hist > 0 AND macd.macd > macd.signal THEN BUY("golden cross")
+IF macd.hist < 0 THEN SELL("death cross")
+
+## 3. 均线交叉策略
+LET ma_fast = EMA(close, 12)
+LET ma_slow = EMA(close, 26)
+IF ma_fast > ma_slow THEN BUY("ma crossover up")
+IF ma_fast < ma_slow THEN SELL("ma crossover down")
+
+## 4. 布林带突破策略
+LET boll = BOLL(20, 2.0)
+IF close < boll.lower THEN BUY("bollinger lower break")
+IF close > boll.upper THEN SELL("bollinger upper break")
+
+## 5. 多周期策略 (使用 @period 语法)
+LET rsi_4h = RSI(close@4h, 14)
+LET rsi_1d = RSI(close@1d, 14)
+IF rsi_4h < 30 AND rsi_1d < 40 THEN BUY("multi-period oversold")
+IF rsi_4h > 70 OR rsi_1d > 60 THEN SELL("multi-period overbought")
+
+## 6. 组合指标策略
+LET sma = SMA(close, 20)
+LET stddev = STDDEV(close, 20)
+LET rsi = RSI(14)
+IF close > sma AND rsi < 30 THEN BUY("trend + oversold")
+IF close < sma OR rsi > 70 THEN SELL("trend + overbought")
+
+## 可用指标列表:
+
+### 移动平均类
+- SMA(field, period)  - 简单移动平均
+- EMA(field, period)  - 指数移动平均
+
+### 波动率类
+- STDDEV(field, period) - 标准差
+- BOLL(period, k)       - 布林带 (返回 {mid, upper, lower})
+
+### 动量类
+- RSI(period)                    - 相对强弱指标
+- MACD(fast, slow, signal)       - MACD (返回 {macd, signal, hist})
+
+### 字段引用
+- open, high, low, close, volume, buy_volume
+- 支持周期引用: close@4h, close@1d, etc.
+
+### 逻辑运算符
+- AND, OR, NOT (或 !)
+- 比较运算符: ==, !=, <, >, <=, >=
+
+### 动作
+- BUY  - 买入信号
+- SELL - 卖出信号
+- HOLD - 持有信号
+
+### 动作元数据 (支持两种写法)
+- BUY("multi-period oversold")  - 字符串写法 (推荐)
+- BUY(multi-period oversold)    - 裸文本写法 (兼容旧版)
+- SELL("overbought signal")
+- HOLD("waiting for signal")

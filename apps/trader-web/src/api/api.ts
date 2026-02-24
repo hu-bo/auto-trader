@@ -2,6 +2,7 @@ import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'ax
 import { Notification } from '@douyinfe/semi-ui-19'
 import { TokenStorage } from '@hquant/casdoor/client'
 import type { ApiResponse } from '@/types'
+import { redirectToCasdoorLogin } from '@/config/casdoor'
 
 // 复用与 CasdoorProvider 相同的 storage 配置读取 token
 const tokenStorage = new TokenStorage({ type: 'localStorage', prefix: 'hquant_casdoor_' })
@@ -45,9 +46,16 @@ api.interceptors.response.use(
   async (error: AxiosError<ApiResponse<unknown>>) => {
     const status = error.response?.status
     const message = error.response?.data?.message || error.message
-
+    console.log(status)
     if (status === 401) {
-      // Token 过期或无效 — casdoor 层会处理 token 刷新/清除
+      // Token 过期或无效，清除本地存储并跳转登录
+      tokenStorage.clear()
+      Notification.warning({ content: '登录已过期，请重新登录', duration: 2 })
+      
+      // 延迟跳转，让通知先显示
+      setTimeout(() => {
+        redirectToCasdoorLogin()
+      }, 300)
     } else if (status === 403) {
       Notification.error({content: '没有权限执行此操作'})
     } else if (status === 404) {

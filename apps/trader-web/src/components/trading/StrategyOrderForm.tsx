@@ -3,22 +3,26 @@ import {
   Form,
   Button,
   Card,
-  Select,
   Toast,
   TagInput,
-  InputNumber,
-  Switch,
 } from '@douyinfe/semi-ui-19'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { strategyApi, strategyOrderApi, exchangeApi } from '@/api'
 import type { RiskConfig } from '@/types'
 
 interface StrategyOrderFormProps {
+  defaultSymbol?: string
+  defaultExchange?: string
   onSuccess?: () => void
 }
 
-export const StrategyOrderForm: React.FC<StrategyOrderFormProps> = ({ onSuccess }) => {
-  const [formApi, setFormApi] = useState<ReturnType<typeof Form.useFormApi> | null>(null)
+export const StrategyOrderForm: React.FC<StrategyOrderFormProps> = ({ 
+  defaultSymbol,
+  defaultExchange,
+  onSuccess 
+}) => {
+  const [formApi, setFormApi] = useState<any>(null)
+  const [symbols, setSymbols] = useState<string[]>(defaultSymbol ? [defaultSymbol] : [])
   const queryClient = useQueryClient()
 
   const { data: strategies } = useQuery({
@@ -31,12 +35,35 @@ export const StrategyOrderForm: React.FC<StrategyOrderFormProps> = ({ onSuccess 
     queryFn: exchangeApi.list,
   })
 
+  // 根据 defaultExchange 查找对应的 exchangeId
+  const defaultExchangeId = React.useMemo(() => {
+    if (!defaultExchange || !exchanges) return undefined
+    const exchange = exchanges.find(
+      (e) => e.exchangeType.toLowerCase() === defaultExchange.toLowerCase()
+    )
+    return exchange?.id
+  }, [defaultExchange, exchanges])
+
+  React.useEffect(() => {
+    if (defaultSymbol) {
+      setSymbols([defaultSymbol])
+      formApi?.setValue('symbols', [defaultSymbol])
+    }
+  }, [defaultSymbol, formApi])
+
+  React.useEffect(() => {
+    if (formApi && defaultExchangeId) {
+      formApi.setValue('exchangeId', defaultExchangeId)
+    }
+  }, [formApi, defaultExchangeId])
+
   const createMutation = useMutation({
     mutationFn: strategyOrderApi.create,
     onSuccess: () => {
       Toast.success('策略订单创建成功')
       queryClient.invalidateQueries({ queryKey: ['strategy-orders'] })
       formApi?.reset()
+      setSymbols([])
       onSuccess?.()
     },
     onError: (error: Error) => {
@@ -64,7 +91,7 @@ export const StrategyOrderForm: React.FC<StrategyOrderFormProps> = ({ onSuccess 
 
   return (
     <Form
-      getFormApi={(api) => setFormApi(api as ReturnType<typeof Form.useFormApi>)}
+      getFormApi={(api) => setFormApi(api)}
       onSubmit={handleSubmit}
       labelPosition="left"
       labelWidth={120}
@@ -95,7 +122,11 @@ export const StrategyOrderForm: React.FC<StrategyOrderFormProps> = ({ onSuccess 
         <TagInput
           placeholder="输入交易对后按回车，如 BTC-USDT"
           style={{ width: '100%' }}
-          onChange={(values) => formApi?.setValue('symbols', values)}
+          value={symbols}
+          onChange={(values) => {
+            setSymbols(values)
+            formApi?.setValue('symbols', values)
+          }}
         />
       </Form.Slot>
 

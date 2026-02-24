@@ -403,10 +403,17 @@ fn parse_action(pair: pest::iterators::Pair<'_, Rule>) -> Result<(Action, Option
     let action = Action::parse(name)
         .ok_or_else(|| StrategyError::InvalidArgs(format!("unknown action: {name}")))?;
     let meta = inner.next().map(|p| {
-        // action_meta -> "(" meta_inner ")"
+        // action_meta -> "(" meta_value ")"
+        // meta_value can be either string or meta_inner
         p.into_inner()
             .next()
-            .map(|x| x.as_str().trim().to_string())
+            .map(|x| {
+                match x.as_rule() {
+                    Rule::string => parse_string(x.as_str()),
+                    Rule::meta_inner => x.as_str().trim().to_string(),
+                    _ => x.as_str().trim().to_string(),
+                }
+            })
             .unwrap_or_default()
     });
     let meta = meta.and_then(|s| if s.is_empty() { None } else { Some(s) });

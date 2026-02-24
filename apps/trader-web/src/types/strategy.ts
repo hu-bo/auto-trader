@@ -51,18 +51,21 @@ export interface RiskConfig {
 // 策略订单
 export interface StrategyOrder {
   id: string
-  userId: string
-  strategyId: string
-  exchangeId: string
+  user_id: string
+  strategy_id: string
+  strategy_name: string
+  exchange_id: string
+  exchange_name: string
+  exchange_type: string
   symbols: string[]
   parameters: Record<string, unknown>
-  riskConfig: RiskConfig
+  risk_config: RiskConfig
   live: boolean
-  isRunning: boolean
-  startedAt: string | null
-  stoppedAt: string | null
-  createdAt: string
-  updatedAt: string
+  is_running: boolean
+  started_at: string | null
+  stopped_at: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface StrategyOrderCreate {

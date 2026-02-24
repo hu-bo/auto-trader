@@ -6,12 +6,20 @@ export class StrategyOrderIdParamDTO {
   id!: number;
 }
 
+export class ListStrategyOrderQueryDTO {
+  @Rule(Joi.number().integer().min(1).default(1))
+  page?: number;
+
+  @Rule(Joi.number().integer().min(1).max(100).default(20))
+  pageSize?: number;
+}
+
 export class CreateStrategyOrderBodyDTO {
   @Rule(Joi.number().integer().positive().required())
-  strategy_id!: number;
+  strategyId!: number;
 
   @Rule(Joi.number().integer().positive().required())
-  exchange_id!: number;
+  exchangeId!: number;
 
   @Rule(Joi.array().items(Joi.string().trim().min(1)).required())
   symbols!: string[];
@@ -20,7 +28,7 @@ export class CreateStrategyOrderBodyDTO {
   parameters?: Record<string, unknown> | null;
 
   @Rule(Joi.object().unknown(true).allow(null).optional())
-  risk_config?: Record<string, unknown> | null;
+  riskConfig?: Record<string, unknown> | null;
 
   @Rule(Joi.boolean().allow(null).optional())
   live?: boolean | null;
@@ -34,7 +42,7 @@ export class UpdateStrategyOrderBodyDTO {
   parameters?: Record<string, unknown> | null;
 
   @Rule(Joi.object().unknown(true).allow(null).optional())
-  risk_config?: Record<string, unknown> | null;
+  riskConfig?: Record<string, unknown> | null;
 
   @Rule(Joi.boolean().allow(null).optional())
   live?: boolean | null;

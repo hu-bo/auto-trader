@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"time"
 
 	exchange "github.com/pkg/exchange-adapter/marketdata"
 )
@@ -54,6 +55,9 @@ type Repository interface {
 	// UpdateSymbolSyncStatus 更新交易对同步状态
 	UpdateSymbolSyncStatus(ctx context.Context, status *SymbolSyncStatus) error
 
+	// GetAllSymbolsSyncStatus 获取所有交易对的同步状态
+	GetAllSymbolsSyncStatus(ctx context.Context, exchangeName, tradeType string) ([]SymbolSyncStatusWithTime, error)
+
 	// InitSchema 初始化数据库 schema
 	InitSchema(ctx context.Context) error
 
@@ -68,4 +72,15 @@ type SymbolSyncStatus struct {
 	TradeType      string `json:"trade_type"`
 	EarliestDataTs int64  `json:"earliest_data_ts"` // 最早有数据的时间戳
 	LatestSyncTs   int64  `json:"latest_sync_ts"`   // 最近一次同步到的时间戳
+}
+
+// SymbolSyncStatusWithTime 交易对同步状态（包含时间字段）
+type SymbolSyncStatusWithTime struct {
+	Exchange       string    `json:"exchange"`
+	Symbol         string    `json:"symbol"`
+	TradeType      string    `json:"trade_type"`
+	EarliestDataTs int64     `json:"earliest_data_ts"` // 最早有数据的时间戳
+	LatestSyncTs   int64     `json:"latest_sync_ts"`   // 最近一次同步到的时间戳
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }

@@ -23,6 +23,12 @@ database:
   database: exchange_info
   ssl_mode: disable
 
+redis:
+  host: "localhost"
+  port: 16000
+  password: ""
+  db: 0
+
 # NATS publisher for market data (optional)
 nats:
   enabled: true

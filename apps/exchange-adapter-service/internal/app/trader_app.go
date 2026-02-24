@@ -97,7 +97,7 @@ func (a *App) Run() error {
 		}
 	}
 
-	httpSrv, err := httpapi.NewServer(a.cfg, a.marketApp.WsSync(), a.marketApp.HistorySync(), a.marketApp.Verify(), a.marketApp.Repo())
+	httpSrv, err := httpapi.NewServer(a.cfg, a.marketApp.WsSync(), a.marketApp.HistorySync(), a.marketApp.Verify(), a.marketApp.TickerSync(), a.marketApp.Repo())
 	if err != nil {
 		return err
 	}

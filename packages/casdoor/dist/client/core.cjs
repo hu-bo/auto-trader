@@ -108,6 +108,18 @@ class CasdoorClient {
     return `${endpoint}/${path}?${params.toString()}&application=${appName}&organization=${orgName}`;
   }
   /**
+   * 获取登录 URL（不跳转）
+   */
+  getLoginUrl() {
+    return this.buildAuthUrl("signin");
+  }
+  /**
+   * 获取注册 URL（不跳转）
+   */
+  getSignupUrl() {
+    return this.buildAuthUrl("signup");
+  }
+  /**
    * 生成随机 state
    */
   generateState() {

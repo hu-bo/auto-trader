@@ -12,6 +12,7 @@ type Config struct {
 	Session  SessionConfig  `mapstructure:"session"`
 	Market   MarketConfig   `mapstructure:"market"`
 	Database DatabaseConfig `mapstructure:"database"`
+	Redis    RedisConfig    `mapstructure:"redis"`
 	NATS     NATSConfig     `mapstructure:"nats"`
 	Log      LogConfig      `mapstructure:"log"`
 	Proxy    ProxyConfig    `mapstructure:"proxy"`
@@ -72,6 +73,17 @@ type DatabaseConfig struct {
 
 func (d DatabaseConfig) IsEnabled() bool {
 	return d.Host != ""
+}
+
+type RedisConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
+}
+
+func (r RedisConfig) IsEnabled() bool {
+	return r.Host != ""
 }
 
 type ProxyConfig struct {
@@ -141,6 +153,11 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("database.port", 5432)
 	v.SetDefault("database.ssl_mode", "disable")
+
+	v.SetDefault("redis.host", "localhost")
+	v.SetDefault("redis.port", 16000)
+	v.SetDefault("redis.password", "")
+	v.SetDefault("redis.db", 0)
 
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.format", "json")

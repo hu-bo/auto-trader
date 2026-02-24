@@ -35,6 +35,11 @@ export class StrategyController {
       isPublic: strategy.isPublic,
       createdAt: strategy.createdAt,
       updatedAt: strategy.updatedAt,
+      creator: strategy.user ? {
+        id: strategy.user.id,
+        username: strategy.user.username,
+        displayname: strategy.user.displayname,
+      } : undefined,
     };
   }
 

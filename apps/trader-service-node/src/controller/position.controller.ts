@@ -1,7 +1,6 @@
 import { Body, Controller, Get, Inject, Param, Post, Query, httpError } from '@midwayjs/core';
 import type { Context } from '@midwayjs/koa';
 import { ExchangeGrpcClient } from '../grpc/exchange-grpc.client.js';
-import { ExchangeTokenService } from '../service/exchange-token.service.js';
 import { apiOk } from '../util/api-response.js';
 import {
   ClosePositionBodyDTO,
@@ -25,40 +24,23 @@ export class PositionController {
   @Inject()
   exchangeGrpc!: ExchangeGrpcClient;
 
-  @Inject()
-  exchangeToken!: ExchangeTokenService;
-
   @Get('/')
   async list(@Query() query: PositionTokenQueryDTO) {
-    const grpcToken = await this.exchangeToken.resolveToken({
-      ctx: this.ctx,
-      exchangeId: query.exchangeId,
-      token: query.token,
+    const resp = await this.exchangeGrpc.getPositions({ 
+      symbol: query.symbol 
     });
-    const resp = await this.exchangeGrpc.getPositions({ token: grpcToken, symbol: query.symbol });
     return apiOk(resp);
   }
 
   @Post('/sync')
   async sync(@Query() query: SyncPositionsQueryDTO) {
-    const grpcToken = await this.exchangeToken.resolveToken({
-      ctx: this.ctx,
-      exchangeId: query.exchangeId,
-      token: query.token,
-    });
-    const resp = await this.exchangeGrpc.syncPositions({ token: grpcToken });
+    const resp = await this.exchangeGrpc.syncPositions();
     return apiOk(resp);
   }
 
   @Post('/:positionId/close')
   async close(@Param() params: PositionIdParamDTO, @Body() body: ClosePositionBodyDTO) {
-    const grpcToken = await this.exchangeToken.resolveToken({
-      ctx: this.ctx,
-      exchangeId: body.exchangeId,
-      token: body.token,
-    });
-
-    const positionsResp = await this.exchangeGrpc.getPositions({ token: grpcToken });
+    const positionsResp = await this.exchangeGrpc.getPositions({});
     const positions: any[] = Array.isArray(positionsResp?.positions) ? positionsResp.positions : [];
 
     const position = positions.find(p => p?.id === params.positionId);
@@ -81,7 +63,6 @@ export class PositionController {
     const orderType = body.orderType ?? 'market';
 
     const resp = await this.exchangeGrpc.placeOrder({
-      token: grpcToken,
       symbol: String(position?.symbol ?? ''),
       tradeType,
       side,

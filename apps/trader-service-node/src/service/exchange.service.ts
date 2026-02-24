@@ -78,7 +78,6 @@ export class ExchangeService {
       apiKeyEncrypted: encryptor.encrypt(params.apiKey),
       apiSecretEncrypted: encryptor.encrypt(params.apiSecret),
       passphraseEncrypted: params.passphrase ? encryptor.encrypt(params.passphrase) : null,
-      grpcTokenEncrypted: null,
       isTestnet: params.isTestnet ?? false,
       isActive: params.isActive ?? true,
     });
@@ -111,30 +110,6 @@ export class ExchangeService {
     const repo = this.requireRepo();
     const exchange = await this.get(userid, exchangeId);
     await repo.remove(exchange);
-  }
-
-  async setGrpcToken(userid: number, exchangeId: number, token: string): Promise<UserExchange> {
-    const repo = this.requireRepo();
-    const encryptor = this.requireEncryptor();
-    const exchange = await this.get(userid, exchangeId);
-    exchange.grpcTokenEncrypted = encryptor.encrypt(token);
-    return await repo.save(exchange);
-  }
-
-  async clearGrpcToken(userid: number, exchangeId: number): Promise<UserExchange> {
-    const repo = this.requireRepo();
-    const exchange = await this.get(userid, exchangeId);
-    exchange.grpcTokenEncrypted = null;
-    return await repo.save(exchange);
-  }
-
-  async getGrpcToken(userid: number, exchangeId: number): Promise<string> {
-    const exchange = await this.get(userid, exchangeId);
-    if (!exchange.grpcTokenEncrypted) {
-      throw new httpError.BadRequestError('Exchange is not initialized (missing grpc token)');
-    }
-    const encryptor = this.requireEncryptor();
-    return encryptor.decrypt(exchange.grpcTokenEncrypted);
   }
 
   async getApiCredentials(userid: number, exchangeId: number): Promise<{

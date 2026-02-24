@@ -71,6 +71,10 @@ export interface UseCasdoorReturn {
   signup: () => void;
   /** 登出 */
   logout: () => void;
+  /** 获取登录 URL（不跳转） */
+  getLoginUrl: () => string;
+  /** 获取注册 URL（不跳转） */
+  getSignupUrl: () => string;
   /** 处理 OAuth 回调 */
   handleCallback: (
     serverExchangeToken: (code: string) => Promise<{ token: TokenResponse; user: CasdoorUser }>
@@ -93,6 +97,8 @@ export function useCasdoor(): UseCasdoorReturn {
   const login = useCallback(() => client.login(), [client]);
   const signup = useCallback(() => client.signup(), [client]);
   const logout = useCallback(() => client.logout(), [client]);
+  const getLoginUrl = useCallback(() => client.getLoginUrl(), [client]);
+  const getSignupUrl = useCallback(() => client.getSignupUrl(), [client]);
 
   const handleCallback = useCallback(
     (serverExchangeToken: (code: string) => Promise<{ token: TokenResponse; user: CasdoorUser }>) =>
@@ -115,6 +121,8 @@ export function useCasdoor(): UseCasdoorReturn {
     login,
     signup,
     logout,
+    getLoginUrl,
+    getSignupUrl,
     handleCallback,
     refreshToken,
   };

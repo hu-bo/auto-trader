@@ -122,12 +122,18 @@ type MiniTicker struct {
 // TickerUpdate 用于 TickerAggregator 的 ticker 输入
 // 用于从 ticker 流聚合成 K线
 type TickerUpdate struct {
-	Symbol    string    `json:"symbol"`      // 交易对: BTC-USDT
-	Exchange  string    `json:"exchange"`    // binance | okx
-	TradeType TradeType `json:"trade_type"`  // spot | futures
-	LastPrice float64   `json:"last_price"`  // 最新成交价格
-	LastSz    float64   `json:"last_sz"`     // 最新成交量 (Binance: Q, OKX: lastSz)
-	Timestamp int64     `json:"timestamp"`   // 事件时间 (ms)
+	Symbol         string    `json:"symbol"`           // 交易对: BTC-USDT
+	Exchange       string    `json:"exchange"`         // binance | okx
+	TradeType      TradeType `json:"trade_type"`       // spot | futures
+	LastPrice      float64   `json:"last_price"`       // 最新成交价格
+	LastSz         float64   `json:"last_sz"`          // 最新成交量 (Binance: Q, OKX: lastSz)
+	PriceChange    float64   `json:"price_change"`     // 24h价格变化
+	PriceChangePct float64   `json:"price_change_pct"` // 24h价格变化百分比
+	High24h        float64   `json:"high_24h"`         // 24h最高价
+	Low24h         float64   `json:"low_24h"`          // 24h最低价
+	Volume24h      float64   `json:"volume_24h"`       // 24h成交量
+	QuoteVolume24h float64   `json:"quote_volume_24h"` // 24h成交额
+	Timestamp      int64     `json:"timestamp"`        // 事件时间 (ms)
 }
 
 // SubscribeRequest 订阅请求

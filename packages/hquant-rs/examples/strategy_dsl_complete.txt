@@ -1,0 +1,116 @@
+# HQuant DSL 完整示例
+# 展示所有支持的函数和语法
+
+# ===== 基础语法 =====
+
+# 变量定义
+LET rsi = RSI(14)
+LET ma_fast = EMA(close, 12)
+LET ma_slow = SMA(close, 26)
+
+# 条件判断
+IF rsi < 30 THEN BUY
+IF rsi > 70 THEN SELL
+
+# 带元数据的动作 (支持字符串和裸文本两种写法)
+IF rsi < 30 THEN BUY("multi-period oversold")
+IF rsi > 70 THEN SELL("overbought signal")
+IF rsi < 25 THEN BUY(extreme oversold)
+
+# 逻辑运算
+IF rsi < 30 AND close > ma_slow THEN BUY
+IF rsi > 70 OR close < ma_fast THEN SELL
+IF NOT (rsi > 50) THEN HOLD
+
+# ===== 技术指标 =====
+
+# 移动平均
+LET sma20 = SMA(close, 20)
+LET ema12 = EMA(close, 12)
+
+# 波动率指标
+LET stddev = STDDEV(close, 20)
+LET boll = BOLL(20, 2.0)
+
+# 动量指标
+LET rsi14 = RSI(14)
+LET macd = MACD(12, 26, 9)
+
+# ===== 多周期引用 =====
+
+# 引用不同周期的数据
+LET close_4h = close@4h
+LET close_1d = close@1d
+LET ma_4h = EMA(close@4h, 20)
+
+# ===== 向量和相似度 =====
+
+# 向量归一化
+LET pattern_minmax = NORMALIZE(close, 30, method="minmax")
+LET pattern_zscore = NORMALIZE(close, 30, method="zscore")
+LET pattern_l2 = NORMALIZE(close, 30, method="l2")
+LET pattern_raw = NORMALIZE(close, 30, method="none")
+
+# 向量存储引用
+LET store = VEC_STORE("bullish_patterns")
+
+# 相似度计算
+LET similarity_cosine = SIMILARITY(VEC_STORE("patterns"), NORMALIZE(close, 30), method="cosine", threshold=0.85)
+LET similarity_euclidean = SIMILARITY(VEC_STORE("patterns"), NORMALIZE(close, 30), method="euclidean", threshold=0.8)
+LET similarity_manhattan = SIMILARITY(VEC_STORE("patterns"), NORMALIZE(close, 30), method="manhattan", threshold=0.75)
+
+# ===== 完整策略示例 =====
+
+# RSI 超买超卖策略
+LET rsi = RSI(14)
+IF rsi < 30 THEN BUY("oversold")
+IF rsi > 70 THEN SELL("overbought")
+
+# MACD 金叉死叉策略
+LET macd = MACD(12, 26, 9)
+IF macd.hist > 0 AND macd.macd > macd.signal THEN BUY("golden cross")
+IF macd.hist < 0 THEN SELL("death cross")
+
+# 均线交叉策略
+LET ma_fast = EMA(close, 12)
+LET ma_slow = EMA(close, 26)
+IF ma_fast > ma_slow THEN BUY("ma crossover up")
+IF ma_fast < ma_slow THEN SELL("ma crossover down")
+
+# 布林带突破策略
+LET boll = BOLL(20, 2.0)
+IF close < boll.lower THEN BUY("bollinger lower break")
+IF close > boll.upper THEN SELL("bollinger upper break")
+
+# 向量相似度模式识别策略
+LET pattern = NORMALIZE(close, 30, method="minmax")
+LET similarity = SIMILARITY(VEC_STORE("bullish_patterns"), pattern, method="cosine", threshold=0.85)
+IF similarity > 0.85 THEN BUY("pattern match")
+
+# 多周期趋势策略
+LET trend_4h = EMA(close@4h, 20)
+LET trend_1d = EMA(close@1d, 20)
+IF close > trend_4h AND close > trend_1d THEN BUY("multi-period uptrend")
+IF close < trend_4h OR close < trend_1d THEN SELL("multi-period downtrend")
+
+# 复合条件策略
+LET rsi = RSI(14)
+LET ma = EMA(close, 20)
+LET boll = BOLL(20, 2.0)
+IF rsi < 30 AND close < boll.lower AND close > ma THEN BUY("composite buy signal")
+IF rsi > 70 OR close > boll.upper THEN SELL("composite sell signal")
+
+# ===== 字段引用 =====
+
+# 支持的字段
+LET o = open
+LET h = high
+LET l = low
+LET c = close
+LET v = volume
+LET bv = buy_volume
+
+# 字段用于指标计算
+LET high_ma = SMA(high, 20)
+LET low_ma = SMA(low, 20)
+LET volume_ma = SMA(volume, 20)

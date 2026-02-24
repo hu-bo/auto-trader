@@ -90,15 +90,17 @@ type Handler struct {
 	wsSyncService      *service.WsSyncService
 	historySyncService *service.HistorySyncService
 	verifyService      *service.VerifyService
+	tickerSyncService  *service.TickerSyncService
 	repo               storage.Repository
 }
 
 // NewHandler 创建 API 处理器
-func NewHandler(wsSyncService *service.WsSyncService, historySyncService *service.HistorySyncService, verifyService *service.VerifyService, repo storage.Repository) *Handler {
+func NewHandler(wsSyncService *service.WsSyncService, historySyncService *service.HistorySyncService, verifyService *service.VerifyService, tickerSyncService *service.TickerSyncService, repo storage.Repository) *Handler {
 	return &Handler{
 		wsSyncService:      wsSyncService,
 		historySyncService: historySyncService,
 		verifyService:      verifyService,
+		tickerSyncService:  tickerSyncService,
 		repo:               repo,
 	}
 }
@@ -700,4 +702,138 @@ func (h *Handler) VerifyCandles(c echo.Context) error {
 	}
 
 	return Success(c, result)
+}
+
+// GetTicker 获取单个交易对的 ticker
+// GET /api/ticker?exchange=binance&symbol=BTC-USDT&trade_type=spot
+func (h *Handler) GetTicker(c echo.Context) error {
+	if h.tickerSyncService == nil {
+		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "ticker service not available")
+	}
+
+	exchangeStr := c.QueryParam("exchange")
+	symbol := c.QueryParam("symbol")
+	tradeType := c.QueryParam("trade_type")
+
+	if exchangeStr == "" || symbol == "" {
+		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbol are required")
+	}
+
+	if tradeType == "" {
+		tradeType = "spot"
+	}
+
+	ticker, err := h.tickerSyncService.GetTicker(c.Request().Context(), exchangeStr, symbol, tradeType)
+	if err != nil {
+		return Error(c, http.StatusNotFound, ErrCodeNotFound, "ticker not found")
+	}
+
+	return Success(c, ticker)
+}
+
+// GetTickers 获取交易所所有交易对的 tickers
+// GET /api/tickers?exchange=binance&trade_type=spot
+func (h *Handler) GetTickers(c echo.Context) error {
+	logAPI.Debug().Msg("GetTickers endpoint called")
+	
+	if h.tickerSyncService == nil {
+		logAPI.Warn().Msg("ticker service not available")
+		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "ticker service not available")
+	}
+
+	exchangeStr := c.QueryParam("exchange")
+	tradeType := c.QueryParam("trade_type")
+
+	logAPI.Debug().
+		Str("exchange", exchangeStr).
+		Str("trade_type", tradeType).
+		Msg("GetTickers params")
+
+	if exchangeStr == "" {
+		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange is required")
+	}
+
+	if tradeType == "" {
+		tradeType = "spot"
+	}
+
+	tickers, err := h.tickerSyncService.GetTickers(c.Request().Context(), exchangeStr, tradeType)
+	if err != nil {
+		logAPI.Error().
+			Err(err).
+			Str("exchange", exchangeStr).
+			Str("trade_type", tradeType).
+			Msg("Failed to get tickers")
+		return Error(c, http.StatusInternalServerError, ErrCodeInternal, err.Error())
+	}
+
+	logAPI.Debug().
+		Str("exchange", exchangeStr).
+		Str("trade_type", tradeType).
+		Int("count", len(tickers)).
+		Msg("GetTickers success")
+
+	return Success(c, map[string]interface{}{
+		"exchange":  exchangeStr,
+		"tradeType": tradeType,
+		"count":     len(tickers),
+		"tickers":   tickers,
+	})
+}
+
+// GetSymbolSyncStatus 获取交易对同步状态
+// GET /api/sync/status?exchange=binance&symbol=BTC-USDT&trade_type=spot
+func (h *Handler) GetSymbolSyncStatus(c echo.Context) error {
+	exchangeStr := c.QueryParam("exchange")
+	symbol := c.QueryParam("symbol")
+	tradeType := c.QueryParam("trade_type")
+
+	if exchangeStr == "" || symbol == "" {
+		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbol are required")
+	}
+
+	if tradeType == "" {
+		tradeType = "spot"
+	}
+
+	if h.repo == nil {
+		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "database not configured")
+	}
+
+	status, err := h.repo.GetSymbolSyncStatus(c.Request().Context(), exchangeStr, symbol, tradeType)
+	if err != nil {
+		return Error(c, http.StatusInternalServerError, ErrCodeInternal, err.Error())
+	}
+
+	if status == nil {
+		return Error(c, http.StatusNotFound, ErrCodeNotFound, "sync status not found")
+	}
+
+	return Success(c, status)
+}
+
+// GetAllSymbolsSyncStatus 获取所有交易对的同步状态
+// GET /api/sync/status/all?exchange=binance&trade_type=spot
+func (h *Handler) GetAllSymbolsSyncStatus(c echo.Context) error {
+	exchangeStr := c.QueryParam("exchange")
+	tradeType := c.QueryParam("trade_type")
+
+	if exchangeStr == "" {
+		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange is required")
+	}
+
+	if h.repo == nil {
+		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "database not configured")
+	}
+
+	statuses, err := h.repo.GetAllSymbolsSyncStatus(c.Request().Context(), exchangeStr, tradeType)
+	if err != nil {
+		return Error(c, http.StatusInternalServerError, ErrCodeInternal, err.Error())
+	}
+
+	return Success(c, map[string]interface{}{
+		"exchange": exchangeStr,
+		"count":    len(statuses),
+		"statuses": statuses,
+	})
 }

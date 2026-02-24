@@ -22,12 +22,14 @@ type MarketApp struct {
 
 	repo   storage.Repository
 	pgRepo *storage.PostgresRepository
+	redis  *storage.RedisClient
 
 	natsPublisher *publisher.Publisher
 
 	wsSync      *service.WsSyncService
 	historySync *service.HistorySyncService
 	verify      *service.VerifyService
+	tickerSync  *service.TickerSyncService
 }
 
 func NewMarketApp(cfg *config.Config) (*MarketApp, error) {
@@ -63,6 +65,20 @@ func (a *MarketApp) Start(ctx context.Context) error {
 		marketLog.Info().Msg("market: database initialized")
 	} else {
 		marketLog.Warn().Msg("market: database not configured, running without persistence")
+	}
+
+	// Redis (optional, for ticker caching).
+	if a.cfg.Redis.IsEnabled() {
+		marketLog.Info().Str("host", a.cfg.Redis.Host).Int("port", a.cfg.Redis.Port).Msg("market: initializing Redis...")
+		redis, err := storage.NewRedisClient(a.cfg.Redis.Host, a.cfg.Redis.Port, a.cfg.Redis.Password, a.cfg.Redis.DB)
+		if err != nil {
+			marketLog.Warn().Err(err).Msg("market: failed to connect to Redis, ticker sync disabled")
+		} else {
+			a.redis = redis
+			marketLog.Info().Msg("market: Redis initialized")
+		}
+	} else {
+		marketLog.Warn().Msg("market: Redis not configured, ticker sync disabled")
 	}
 
 	// NATS publisher (optional).
@@ -138,6 +154,16 @@ func (a *MarketApp) Start(ctx context.Context) error {
 		marketLog.Info().Msg("market: history/verify disabled (no database)")
 	}
 
+	// Ticker sync service (requires Redis).
+	if a.redis != nil {
+		a.tickerSync = service.NewTickerSyncService(a.redis, a.cfg.Proxy.HTTP, a.cfg.Proxy.Socks5)
+		if err := a.tickerSync.Start(ctx); err != nil {
+			marketLog.Error().Err(err).Msg("market: ticker sync start failed")
+		} else {
+			marketLog.Info().Msg("market: ticker sync started")
+		}
+	}
+
 	return nil
 }
 
@@ -146,6 +172,9 @@ func (a *MarketApp) Stop(ctx context.Context) {
 		return
 	}
 
+	if a.tickerSync != nil {
+		a.tickerSync.Stop()
+	}
 	if a.historySync != nil {
 		a.historySync.Stop()
 	}
@@ -155,6 +184,9 @@ func (a *MarketApp) Stop(ctx context.Context) {
 	if a.natsPublisher != nil {
 		_ = a.natsPublisher.Close()
 	}
+	if a.redis != nil {
+		_ = a.redis.Close()
+	}
 	_ = ctx // reserved for future use (e.g., db close deadline)
 	_ = a.closeRepo()
 }
@@ -163,6 +195,7 @@ func (a *MarketApp) Repo() storage.Repository                 { return a.repo }
 func (a *MarketApp) WsSync() *service.WsSyncService           { return a.wsSync }
 func (a *MarketApp) HistorySync() *service.HistorySyncService { return a.historySync }
 func (a *MarketApp) Verify() *service.VerifyService           { return a.verify }
+func (a *MarketApp) TickerSync() *service.TickerSyncService   { return a.tickerSync }
 
 func (a *MarketApp) closeRepo() error {
 	if a.pgRepo != nil {
