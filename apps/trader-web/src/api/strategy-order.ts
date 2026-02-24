@@ -6,9 +6,22 @@ import type {
   StrategyOrderStats,
 } from '@/types'
 
+export interface StrategyOrderListParams {
+  page?: number
+  pageSize?: number
+}
+
+export interface StrategyOrderListResponse {
+  data: StrategyOrder[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 export const strategyOrderApi = {
   // 获取策略订单列表
-  list: () => requestData.get<StrategyOrder[]>('/strategy-order'),
+  list: (params?: StrategyOrderListParams) => 
+    requestData.get<StrategyOrderListResponse>('/strategy-order', { params }),
 
   // 获取策略订单详情
   get: (id: string) => requestData.get<StrategyOrder>(`/strategy-order/${id}`),
