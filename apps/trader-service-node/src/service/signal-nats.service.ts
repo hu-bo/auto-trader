@@ -80,6 +80,7 @@ export class SignalNatsService {
       for await (const msg of sub) {
         try {
           const raw = this.sc.decode(msg.data);
+          console.log(raw);
           const data = JSON.parse(raw);
           callback(data, msg.subject);
         } catch (err) {

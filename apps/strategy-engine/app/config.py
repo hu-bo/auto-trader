@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     upstream_nats_pass: str | None = Field(default=None, alias="UPSTREAM_NATS_PASS")
     upstream_subject_prefix: str = Field(default="exchange", alias="UPSTREAM_SUBJECT_PREFIX")
 
+    # Exchange Adapter Service — REST API for historical candle pre-loading
+    exchange_adapter_url: str = Field(
+        default="http://localhost:9100", alias="EXCHANGE_ADAPTER_URL"
+    )
+    history_preload_days: int = Field(default=3, alias="HISTORY_PRELOAD_DAYS")
+
     grpc_port: int = Field(default=50052, alias="GRPC_PORT")
 
     candle_buffer_size: int = Field(default=1000, alias="CANDLE_BUFFER_SIZE")

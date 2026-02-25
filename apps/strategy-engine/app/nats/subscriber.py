@@ -27,7 +27,6 @@ class CandleSubscriber:
                 sub, ref_count = entry
                 self._subs[subject] = (sub, ref_count + 1)
                 return
-
             sub = await self._nats.subscribe(subject, cb=self._handle_msg)
             self._subs[subject] = (sub, 1)
             logger.info("Subscribed candle subject", subject=subject)

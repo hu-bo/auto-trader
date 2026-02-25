@@ -38,10 +38,10 @@ class DebugResponse(BaseModel):
 @router.post("/debug/evaluate", response_model=DebugResponse)
 async def debug_evaluate(req: DebugRequest) -> DebugResponse:
     """Evaluate a DSL strategy bar-by-bar and return all variable values at each step."""
-    from hquant import PyDslStrategy
+    from hquant import DslStrategy
 
     try:
-        strategy = PyDslStrategy(req.code)
+        strategy = DslStrategy(req.code)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

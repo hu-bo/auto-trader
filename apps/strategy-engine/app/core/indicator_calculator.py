@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+import numpy as np
 from hquant import MultiHQuant, validate_dsl
 
 from app.models import Candle
@@ -59,6 +60,44 @@ class IndicatorCalculator:
     @property
     def periods(self) -> list[str]:
         return list(self._periods)
+
+    def load_history(self, candles: list[Candle]) -> int:
+        """Bulk-load historical candles into the engine without evaluating strategies.
+
+        Args:
+            candles: Historical candles sorted by timestamp ascending.
+
+        Returns:
+            Number of candles loaded.
+        """
+        if not candles:
+            return 0
+
+        n = len(candles)
+        timestamps = np.empty(n, dtype=np.int64)
+        opens = np.empty(n, dtype=np.float64)
+        highs = np.empty(n, dtype=np.float64)
+        lows = np.empty(n, dtype=np.float64)
+        closes = np.empty(n, dtype=np.float64)
+        volumes = np.empty(n, dtype=np.float64)
+        buy_volumes = np.empty(n, dtype=np.float64)
+
+        for i, c in enumerate(candles):
+            timestamps[i] = c.timestamp
+            opens[i] = c.open
+            highs[i] = c.high
+            lows[i] = c.low
+            closes[i] = c.close
+            volumes[i] = c.volume
+            buy_volumes[i] = c.buy_volume
+
+        self._engine.load_history(timestamps, opens, highs, lows, closes, volumes, buy_volumes)
+        self._candles.extend(candles)
+
+        if candles:
+            self._last_timestamp = candles[-1].timestamp
+
+        return n
 
     def on_candle(self, candle: Candle) -> list[dict[str, Any]]:
         bar = candle.to_hquant_bar()

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from hquant_logger import create_logger
 
+from app.core.history_preloader import HistoryPreloader
 from app.core.indicator_calculator import IndicatorCalculator
 from app.core.strategy_executor import StrategyExecutor
 from app.models import (
@@ -61,11 +62,15 @@ class StrategyManager:
         executor: StrategyExecutor,
         candle_buffer_size: int,
         candle_subject_prefix: str,
+        history_preloader: HistoryPreloader | None = None,
+        history_preload_days: int = 3,
     ) -> None:
         self._subscriber = candle_subscriber
         self._executor = executor
         self._buffer_size = candle_buffer_size
         self._subject_prefix = candle_subject_prefix
+        self._preloader = history_preloader
+        self._preload_days = history_preload_days
 
         self._lock = asyncio.Lock()
         self._instances: dict[StrategyKey, StrategyInstance] = {}
@@ -93,6 +98,9 @@ class StrategyManager:
                 capacity=self._buffer_size, strategy_name=req.strategy_name, code=req.code, period=req.period
             ),
         )
+
+        # Pre-load historical data before subscribing to live stream
+        await self._preload_history(instance.calculator, req)
 
         subject = candle_subject(
             self._subject_prefix, req.exchange, req.trade_type, req.symbol, req.period
@@ -141,6 +149,9 @@ class StrategyManager:
             instance.calculator = IndicatorCalculator(
                 capacity=self._buffer_size, strategy_name=req.strategy_name, code=req.code, period=req.period
             )
+
+        # Pre-load historical data for the replacement calculator
+        await self._preload_history(instance.calculator, req)
 
         logger.info("Strategy instance updated", strategy_id=str(req.strategy_id))
         return self._to_info(instance)
@@ -220,6 +231,44 @@ class StrategyManager:
             strategy_count=len(strategies),
         )
         await self._executor.execute(candle, strategies)
+
+    async def _preload_history(
+        self,
+        calculator: IndicatorCalculator,
+        req: CreateStrategyRequest | UpdateStrategyRequest,
+    ) -> None:
+        if not self._preloader:
+            return
+
+        try:
+            candles = await self._preloader.fetch_candles(
+                exchange=req.exchange,
+                symbol=req.symbol,
+                period=req.period,
+                days=self._preload_days,
+            )
+            if candles:
+                count = calculator.load_history(candles)
+                logger.info(
+                    "History pre-loaded",
+                    strategy_id=str(req.strategy_id),
+                    symbol=req.symbol,
+                    period=req.period,
+                    bars_loaded=count,
+                )
+            else:
+                logger.warning(
+                    "No historical candles available for pre-loading",
+                    strategy_id=str(req.strategy_id),
+                    symbol=req.symbol,
+                    period=req.period,
+                )
+        except Exception as exc:
+            logger.warning(
+                "History pre-loading failed (strategy will start cold)",
+                strategy_id=str(req.strategy_id),
+                err=str(exc),
+            )
 
     def _to_info(self, instance: StrategyInstance) -> StrategyInstanceInfo:
         return StrategyInstanceInfo(

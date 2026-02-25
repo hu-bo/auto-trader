@@ -96,7 +96,8 @@ func New(cfg *config.NATSConfig) (*Publisher, error) {
 // PublishCandle 发布 K线更新（批量聚合）
 func (p *Publisher) PublishCandle(candle exchange.NormalizedCandle) {
 	subject := p.candleSubject(candle.Exchange, candle.TradeType, candle.Symbol, candle.Period)
-	// println(subject)
+	// data, _ := sonic.Marshal(candle)
+	// fmt.Println(string(data))
 	p.batchMu.Lock()
 	p.candleBatch[subject] = &candle
 	p.batchMu.Unlock()

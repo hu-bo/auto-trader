@@ -21,6 +21,7 @@ export class DebugController {
       );
       return apiOk(resp.data);
     } catch (error: any) {
+      console.log(error)
       if (axios.isAxiosError(error)) {
         if (error.code === 'ECONNREFUSED') {
           return apiFail('无法连接到 strategy-engine 服务');
