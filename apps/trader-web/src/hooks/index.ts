@@ -7,3 +7,4 @@ export {
   useStrategySocket,
   WS_EVENTS,
 } from './useWebSocket'
+export { useAIGenerate } from './useAIGenerate'

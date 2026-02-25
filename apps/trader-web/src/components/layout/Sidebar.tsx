@@ -11,6 +11,7 @@ import {
   IconList,
   IconUserGroup,
   IconServer,
+  IconCode,
 } from '@douyinfe/semi-icons'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -28,6 +29,7 @@ const menuItems = [
   { itemKey: '/positions', text: '持仓', icon: <IconPulse /> },
   { itemKey: '/orders', text: '订单', icon: <IconList /> },
   { itemKey: '/strategy-orders', text: '策略运行', icon: <IconGridStroked /> },
+  { itemKey: '/strategy-debugger', text: '策略调试', icon: <IconCode /> },
   { itemKey: '/stats', text: '统计', icon: <IconHistogram /> },
   { itemKey: '/exchanges', text: '交易所', icon: <IconServer /> },
   { itemKey: '/settings', text: '设置', icon: <IconSetting /> },

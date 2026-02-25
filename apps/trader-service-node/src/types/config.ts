@@ -28,6 +28,7 @@ export interface ExchangeAdapterConfig {
 
 export interface StrategyEngineConfig {
   grpc: string;
+  http: string;
 }
 
 export interface AppConfig {

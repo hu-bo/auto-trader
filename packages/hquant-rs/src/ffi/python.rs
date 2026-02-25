@@ -646,6 +646,56 @@ impl PyDslStrategy {
         Ok(vec![d.into()])
     }
 
+    /// Feed a bar and return debug info: all variable values + signal.
+    fn debug_evaluate(&mut self, py: Python<'_>, bar: &Bound<'_, PyDict>) -> PyResult<PyObject> {
+        let bar = bar_from_dict(bar)?;
+        self.bars.push(bar);
+        self.graph.on_push(&self.bars);
+
+        let vars = self.strategy.debug_evaluate(&self.bars, &self.graph, Some(&self.store));
+        let signal = self.strategy.evaluate(&self.bars, &self.graph, Some(&self.store));
+
+        let d = PyDict::new_bound(py);
+
+        // variables
+        let var_dict = PyDict::new_bound(py);
+        for (name, value) in vars {
+            if value.is_nan() {
+                var_dict.set_item(name, py.None())?;
+            } else {
+                var_dict.set_item(name, value)?;
+            }
+        }
+        d.set_item("variables", var_dict)?;
+
+        // bar info
+        d.set_item("timestamp", bar.timestamp)?;
+        d.set_item("open", bar.open)?;
+        d.set_item("high", bar.high)?;
+        d.set_item("low", bar.low)?;
+        d.set_item("close", bar.close)?;
+        d.set_item("volume", bar.volume)?;
+
+        // signal info
+        match signal {
+            Some(sig) => {
+                d.set_item("signal", sig.action.as_str())?;
+                d.set_item("meta", sig.meta.unwrap_or_default())?;
+            }
+            None => {
+                d.set_item("signal", py.None())?;
+                d.set_item("meta", py.None())?;
+            }
+        }
+
+        Ok(d.into())
+    }
+
+    /// Return names of all LET-declared variables.
+    fn variable_names(&self) -> Vec<String> {
+        self.strategy.variable_names().iter().map(|s| s.to_string()).collect()
+    }
+
     fn reset(&mut self) {
         self.bars.clear();
         self.graph.reset();

@@ -4,6 +4,7 @@ export * from './strategy'
 export * from './order'
 export * from './position'
 export * from './stats'
+export * from './ai'
 
 // 通用 API 响应类型
 export interface ApiResponse<T> {

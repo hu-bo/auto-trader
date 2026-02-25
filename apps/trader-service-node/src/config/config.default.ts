@@ -52,6 +52,7 @@ export default {
   },
   strategyEngine: {
     grpc: process.env.STRATEGY_ENGINE_GRPC ?? 'localhost:50052',
+    http: process.env.STRATEGY_ENGINE_HTTP ?? 'http://localhost:9002',
   },
   nats: {
     url: process.env.NATS_URL ?? 'nats://152.32.210.32:15001',
@@ -63,5 +64,12 @@ export default {
     url: process.env.SIGNAL_NATS_URL ?? 'nats://localhost:16001',
     user: process.env.SIGNAL_NATS_USER ?? 'strategy_engine',
     pass: process.env.SIGNAL_NATS_PASS ?? '123456',
+  },
+  ai: {
+    baseURL: process.env.AI_BASE_URL ?? 'https://api.openai.com/v1',
+    apiKey: process.env.AI_API_KEY ?? '',
+    model: process.env.AI_MODEL ?? 'gpt-4o',
+    maxTokens: 2048,
+    temperature: 0.3,
   },
 } as MidwayConfig;

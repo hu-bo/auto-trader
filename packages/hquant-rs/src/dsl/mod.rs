@@ -41,6 +41,7 @@ pub struct CompiledStrategy {
     pub id: u32,
     pub name: String,
     rules: Vec<CompiledRule>,
+    debug_vars: Vec<(String, ValueExpr)>,
 }
 
 #[derive(Clone, Debug)]
@@ -229,12 +230,13 @@ pub fn compile_strategy(
     graph: &mut IndicatorGraph,
 ) -> Result<CompiledStrategy, StrategyError> {
     let mut ctx = CompileCtx::single(graph);
-    let rules = compile_rules(source, &mut ctx)?;
+    let (rules, debug_vars) = compile_rules(source, &mut ctx)?;
 
     Ok(CompiledStrategy {
         id,
         name: name.to_string(),
         rules,
+        debug_vars,
     })
 }
 
@@ -246,15 +248,16 @@ pub fn compile_multi_strategy(
     resolver: &mut dyn MultiIndicatorResolver,
 ) -> Result<CompiledStrategy, StrategyError> {
     let mut ctx = CompileCtx::multi(base_period, resolver);
-    let rules = compile_rules(source, &mut ctx)?;
+    let (rules, debug_vars) = compile_rules(source, &mut ctx)?;
     Ok(CompiledStrategy {
         id,
         name: name.to_string(),
         rules,
+        debug_vars,
     })
 }
 
-fn compile_rules(source: &str, ctx: &mut CompileCtx<'_>) -> Result<Vec<CompiledRule>, StrategyError> {
+fn compile_rules(source: &str, ctx: &mut CompileCtx<'_>) -> Result<(Vec<CompiledRule>, Vec<(String, ValueExpr)>), StrategyError> {
     let mut rules = Vec::new();
     for (line_idx, raw) in source.lines().enumerate() {
         let line_no = line_idx + 1;
@@ -337,7 +340,7 @@ fn compile_rules(source: &str, ctx: &mut CompileCtx<'_>) -> Result<Vec<CompiledR
             }
         }
     }
-    Ok(rules)
+    Ok((rules, ctx.vars.iter().map(|(k, v)| (k.clone(), v.clone())).collect()))
 }
 
 impl CompiledStrategy {
@@ -364,6 +367,25 @@ impl CompiledStrategy {
     ) -> Option<Signal> {
         let ctx = SingleEvalContext { bars, graph };
         self.evaluate_with_ctx(&ctx, store)
+    }
+
+    /// Evaluate all debug variables and return their current values.
+    pub fn debug_evaluate(
+        &self,
+        bars: &KlineBuffer,
+        graph: &IndicatorGraph,
+        store: Option<&VectorStore>,
+    ) -> Vec<(String, f64)> {
+        let ctx = SingleEvalContext { bars, graph };
+        self.debug_vars
+            .iter()
+            .map(|(name, expr)| (name.clone(), eval_value(expr, &ctx, store)))
+            .collect()
+    }
+
+    /// Return the names of all LET-declared variables in declaration order.
+    pub fn variable_names(&self) -> Vec<&str> {
+        self.debug_vars.iter().map(|(name, _)| name.as_str()).collect()
     }
 }
 

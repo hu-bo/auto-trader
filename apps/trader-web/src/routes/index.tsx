@@ -14,6 +14,7 @@ const MarketList = lazy(() => import('@/pages/market/MarketList'))
 const Positions = lazy(() => import('@/pages/position/Positions'))
 const Orders = lazy(() => import('@/pages/order/Orders'))
 const StrategyOrders = lazy(() => import('@/pages/order/StrategyOrders'))
+const StrategyDebugger = lazy(() => import('@/pages/strategy/StrategyDebugger'))
 const Overview = lazy(() => import('@/pages/stats/Overview'))
 const ExchangeConfig = lazy(() => import('@/pages/exchange/ExchangeConfig'))
 const Settings = lazy(() => import('@/pages/settings/Settings'))
@@ -97,6 +98,14 @@ export const router = createBrowserRouter([
         element: (
           <LazyPage>
             <StrategyOrders />
+          </LazyPage>
+        ),
+      },
+      {
+        path: 'strategy-debugger',
+        element: (
+          <LazyPage>
+            <StrategyDebugger />
           </LazyPage>
         ),
       },
