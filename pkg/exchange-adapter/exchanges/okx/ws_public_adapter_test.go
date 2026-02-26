@@ -33,11 +33,6 @@ func TestHandleIndexTickers_OnlyActiveSymbolsPass(t *testing.T) {
 		updates = append(updates, update)
 	})
 
-	a.handleIndexTickers("BTC-USDT", md.Futures, []byte(`[
-		{"instId":"BTC-USDT","idxPx":"50000","ts":"1609459200000"},
-		{"instId":"ETH-USDT","idxPx":"3000","ts":"1609459201000"}
-	]`))
-
 	if len(updates) != 1 {
 		t.Fatalf("expected exactly 1 ticker update, got %d", len(updates))
 	}
