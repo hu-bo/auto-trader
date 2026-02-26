@@ -778,8 +778,8 @@ var KLineChartPro = class {
     }
     this.setupChartEvents();
     this.setupDataLoader();
-    this.chart.setSymbol(this.currentSymbol);
     this.chart.setPeriod(this.currentPeriod);
+    this.chart.setSymbol(this.currentSymbol);
   }
   /**
    * v10: Use setDataLoader instead of setLoadDataCallback / applyNewData / updateData.
@@ -792,39 +792,65 @@ var KLineChartPro = class {
     this.chart.setDataLoader({
       getBars: async ({ type, timestamp, symbol, period, callback }) => {
         const extPeriod = self.findPeriod(period) || self.currentPeriod;
-        if (type === "init" || type === "forward") {
-          const now = Date.now();
-          const from = now - self.getPeriodDuration(extPeriod) * 500;
-          try {
+        const duration = self.getPeriodDuration(extPeriod) * 500;
+        const normalizeData = (data) => {
+          const map = /* @__PURE__ */ new Map();
+          data.forEach((item) => {
+            if (typeof item?.timestamp === "number") {
+              map.set(item.timestamp, item);
+            }
+          });
+          return Array.from(map.values()).sort((a, b) => a.timestamp - b.timestamp);
+        };
+        try {
+          if (type === "init") {
+            const to = Date.now();
+            const from = to - duration;
             const data = await self.datafeed.getHistoryKLineData(
               symbol,
               extPeriod,
               from,
-              now
+              to
             );
-            callback(data, data.length > 0);
-          } catch (err) {
-            console.error("Failed to load data:", err);
-            callback([], false);
+            const normalized = normalizeData(data);
+            callback(normalized, { forward: normalized.length > 0, backward: false });
+            return;
           }
-        } else if (type === "backward") {
-          const earliestTimestamp = timestamp ?? Date.now();
-          const duration = self.getPeriodDuration(extPeriod) * 500;
-          const from = earliestTimestamp - duration;
-          try {
+          if (type === "forward") {
+            const boundary = typeof timestamp === "number" ? timestamp : Date.now();
+            const from = boundary - duration;
             const data = await self.datafeed.getHistoryKLineData(
               symbol,
               extPeriod,
               from,
-              earliestTimestamp
+              boundary
             );
-            callback(data, data.length > 0);
-          } catch (err) {
-            console.error("Failed to load more data:", err);
-            callback([], false);
+            const normalized = normalizeData(data).filter((item) => item.timestamp < boundary);
+            callback(normalized, { forward: normalized.length > 0, backward: false });
+            return;
           }
-        } else {
-          callback([], false);
+          if (type === "backward") {
+            const boundary = typeof timestamp === "number" ? timestamp : Date.now();
+            const now = Date.now();
+            const to = Math.min(boundary + duration, now);
+            if (to <= boundary) {
+              callback([], { forward: false, backward: false });
+              return;
+            }
+            const data = await self.datafeed.getHistoryKLineData(
+              symbol,
+              extPeriod,
+              boundary,
+              to
+            );
+            const normalized = normalizeData(data).filter((item) => item.timestamp > boundary);
+            callback(normalized, { forward: false, backward: normalized.length > 0 && to < now });
+            return;
+          }
+          callback([], { forward: false, backward: false });
+        } catch (err) {
+          console.error("Failed to load data:", err);
+          callback([], { forward: false, backward: false });
         }
       },
       subscribeBar: ({ symbol, period, callback }) => {

@@ -30,6 +30,7 @@ class StrategyExecutor:
         self._signal_strategy_prefix = signal_strategy_subject_prefix
 
     async def execute(self, candle: Candle, strategies: list[StrategyInstanceLike]) -> None:
+        print(f"Executing strategies for candle: {candle.exchange} {candle.trade_type} {candle.symbol} {candle.period} @ {candle.timestamp}")
         for strategy in strategies:
             try:
                 signals = strategy.calculator.on_candle(candle)

@@ -2,11 +2,17 @@ import { Rule } from '@midwayjs/validation';
 import Joi from 'joi';
 
 export class BalanceQueryDTO {
+  @Rule(Joi.number().integer().positive().required())
+  exchangeId!: number;
+
   @Rule(Joi.string().trim().min(1).required())
   tradeType!: string;
 }
 
 export class SetLeverageBodyDTO {
+  @Rule(Joi.number().integer().positive().required())
+  exchangeId!: number;
+
   @Rule(Joi.string().trim().min(1).required())
   symbol!: string;
 

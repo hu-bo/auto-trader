@@ -126,6 +126,7 @@ class TradingDatafeed implements Datafeed {
     _to: number
   ): Promise<KLineData[]> {
     try {
+      console.log(`[KLine] Fetching history for ${symbol.ticker} ${periodToString(period)} from ${new Date(_from).toISOString()} to ${new Date(_to).toISOString()}`)
       const periodStr = periodToString(period)
       const data = await marketApi.getCandles({
         exchange: this.exchange,
@@ -135,15 +136,18 @@ class TradingDatafeed implements Datafeed {
         start_time: _from,
         end_time: _to,
       })
+
       if (!Array.isArray(data)) return []
-      return data.map((c) => ({
-        timestamp: c.timestamp,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-        volume: c.volume,
-      }))
+      return data
+        .map((c) => ({
+          timestamp: c.timestamp,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume,
+        }))
+        .sort((a, b) => a.timestamp - b.timestamp)
     } catch (err) {
       console.error('[KLine] Failed to fetch history:', err)
       return []

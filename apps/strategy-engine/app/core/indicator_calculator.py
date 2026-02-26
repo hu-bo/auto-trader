@@ -110,4 +110,5 @@ class IndicatorCalculator:
             self._last_timestamp = candle.timestamp
 
         signals = self._engine.poll_signals()
+        print(f"Signals from engine: {signals}")
         return list(signals)

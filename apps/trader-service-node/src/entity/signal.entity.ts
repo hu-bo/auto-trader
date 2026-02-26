@@ -1,4 +1,5 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Strategy } from './strategy.entity.js';
 
 @Entity('signals')
 @Index(['strategyId'])
@@ -6,20 +7,17 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 @Index(['exchange'])
 @Index(['timestamp'])
 export class Signal {
-  @PrimaryGeneratedColumn('uuid', { name: 'signal_id' })
+  @PrimaryGeneratedColumn({ name: 'signal_id', type: 'bigint' })
   signalId!: string;
 
   @Column({ name: 'strategy_id', type: 'varchar', length: 64 })
   strategyId!: string;
-
-  @Column({ name: 'strategy_name', type: 'varchar', length: 64 })
-  strategyName!: string;
+  
+  @ManyToOne(() => Strategy, { createForeignKeyConstraints: false })
+  strategy!: Strategy;
 
   @Column({ type: 'varchar', length: 32 })
   exchange!: string;
-
-  @Column({ name: 'trade_type', type: 'varchar', length: 16 })
-  tradeType!: string;
 
   @Column({ type: 'varchar', length: 64 })
   symbol!: string;

@@ -190,6 +190,7 @@ export class ExchangeGrpcClient {
   }
 
   async getOrders(params: {
+    token?: string;
     symbol?: string;
     status?: string;
     limit?: number;
@@ -197,7 +198,7 @@ export class ExchangeGrpcClient {
   }): Promise<any> {
     const client = this.getClient();
     const req: any = {
-      token: this.getToken(),
+      token: params.token ?? this.getToken(),
     };
     if (params.symbol) req.symbol = params.symbol;
     if (params.status) req.status = mapOrderStatus(params.status);
@@ -206,19 +207,20 @@ export class ExchangeGrpcClient {
     return await this.unary(cb => client.getOrders(req, cb));
   }
 
-  async getOrder(params: { orderId: string }): Promise<any> {
+  async getOrder(params: { token?: string; orderId: string }): Promise<any> {
     const client = this.getClient();
-    const req = { token: this.getToken(), order_id: params.orderId };
+    const req = { token: params.token ?? this.getToken(), order_id: params.orderId };
     return await this.unary(cb => client.getOrder(req, cb));
   }
 
-  async cancelOrder(params: { orderId: string }): Promise<any> {
+  async cancelOrder(params: { token?: string; orderId: string }): Promise<any> {
     const client = this.getClient();
-    const req = { token: this.getToken(), order_id: params.orderId };
+    const req = { token: params.token ?? this.getToken(), order_id: params.orderId };
     return await this.unary(cb => client.cancelOrder(req, cb));
   }
 
   async placeOrder(params: {
+    token?: string;
     symbol: string;
     tradeType: string;
     side: string;
@@ -232,7 +234,7 @@ export class ExchangeGrpcClient {
   }): Promise<any> {
     const client = this.getClient();
     const req: any = {
-      token: this.getToken(),
+      token: params.token ?? this.getToken(),
       symbol: params.symbol,
       trade_type: mapTradeType(params.tradeType),
       side: mapOrderSide(params.side),
@@ -247,26 +249,27 @@ export class ExchangeGrpcClient {
     return await this.unary(cb => client.placeOrder(req, cb));
   }
 
-  async getPositions(params: { symbol?: string }): Promise<any> {
+  async getPositions(params: { token?: string; symbol?: string }): Promise<any> {
     const client = this.getClient();
-    const req: any = { token: this.getToken() };
+    const req: any = { token: params.token ?? this.getToken() };
     if (params.symbol) req.symbol = params.symbol;
     return await this.unary(cb => client.getPositions(req, cb));
   }
 
-  async syncPositions(): Promise<any> {
+  async syncPositions(params?: { token?: string }): Promise<any> {
     const client = this.getClient();
-    const req = { token: this.getToken() };
+    const req = { token: params?.token ?? this.getToken() };
     return await this.unary(cb => client.syncPositions(req, cb));
   }
 
-  async getBalance(params: { tradeType: string }): Promise<any> {
+  async getBalance(params: { token?: string; tradeType: string }): Promise<any> {
     const client = this.getClient();
-    const req = { token: this.getToken(), trade_type: mapTradeType(params.tradeType) };
+    const req = { token: params.token ?? this.getToken(), trade_type: mapTradeType(params.tradeType) };
     return await this.unary(cb => client.getBalance(req, cb));
   }
 
   async setLeverage(params: {
+    token?: string;
     symbol: string;
     leverage: number;
     tradeType: string;
@@ -274,7 +277,7 @@ export class ExchangeGrpcClient {
   }): Promise<any> {
     const client = this.getClient();
     const req: any = {
-      token: this.getToken(),
+      token: params.token ?? this.getToken(),
       symbol: params.symbol,
       leverage: params.leverage,
       trade_type: mapTradeType(params.tradeType),

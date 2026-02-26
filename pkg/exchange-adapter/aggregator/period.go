@@ -160,15 +160,10 @@ func (a *SinglePeriodAggregator) PushKline(kline md.Kline) *AggResult {
 
 	// 检查这个源 K线是否首次出现
 	isFirstKline := !data.processedKlines[kline.Timestamp]
+	isPeriodFirstKline := isFirstKline && len(data.processedKlines) == 0
 
 	if isFirstKline {
 		// 该源 K线首次出现
-		if len(data.processedKlines) == 0 {
-			// 周期内第一个源 K线，设置 Open
-			data.Open = kline.Open
-			data.High = kline.High
-			data.Low = kline.Low
-		}
 		data.processedKlines[kline.Timestamp] = true
 		// 首次出现，累加 BuyVolume（仅 Binance，OKX 通过 trade 累加）
 		if kline.BuyVolume > 0 {
@@ -176,14 +171,25 @@ func (a *SinglePeriodAggregator) PushKline(kline md.Kline) *AggResult {
 		}
 	}
 
-	// 每次更新都处理 High/Low/Close（可能变化）
-	if kline.High > data.High {
-		data.High = kline.High
-	}
-	if data.Low == 0 || kline.Low < data.Low {
-		data.Low = kline.Low
-	}
-	data.Close = kline.Close
+	// 每次更新都处理 OHLC（可能变化）
+	mergeOHLCV(
+		&data.Open,
+		&data.High,
+		&data.Low,
+		&data.Close,
+		&data.Volume,
+		&data.BuyVolume,
+		kline.Open,
+		kline.High,
+		kline.Low,
+		kline.Close,
+		kline.Volume,
+		kline.BuyVolume,
+		mergeOHLCVOptions{
+			UpdateOpen:  isPeriodFirstKline,
+			UpdateClose: true,
+		},
+	)
 
 	// Volume 处理：存储每个源 K线的最新 Volume，聚合时累加
 	data.UpdateVolume(kline.Timestamp, kline.Volume)

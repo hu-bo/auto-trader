@@ -108,9 +108,10 @@ export class KLineChartPro {
     this.setupChartEvents()
     this.setupDataLoader()
 
-    // Set initial symbol and period to trigger data loading via setDataLoader
-    this.chart.setSymbol(this.currentSymbol)
+    // Set period first, then symbol.
+    // klinecharts resets and triggers init loading on each call; this order avoids duplicate initial fetch.
     this.chart.setPeriod(this.currentPeriod)
+    this.chart.setSymbol(this.currentSymbol)
   }
 
   /**
@@ -127,36 +128,65 @@ export class KLineChartPro {
       getBars: async ({ type, timestamp, symbol, period, callback }) => {
         // Map klinecharts v10 Period back to our extended Period (with text)
         const extPeriod = self.findPeriod(period) || self.currentPeriod
+        const duration = self.getPeriodDuration(extPeriod) * 500
 
-        if (type === 'init' || type === 'forward') {
-          // Initial load or forward load
-          const now = Date.now()
-          const from = now - self.getPeriodDuration(extPeriod) * 500
-          try {
+        const normalizeData = (data: KLineData[]): KLineData[] => {
+          const map = new Map<number, KLineData>()
+          data.forEach((item) => {
+            if (typeof item?.timestamp === 'number') {
+              map.set(item.timestamp, item)
+            }
+          })
+          return Array.from(map.values()).sort((a, b) => a.timestamp - b.timestamp)
+        }
+
+        try {
+          if (type === 'init') {
+            const to = Date.now()
+            const from = to - duration
             const data = await self.datafeed.getHistoryKLineData(
-              symbol as SymbolInfo, extPeriod, from, now
+              symbol as SymbolInfo, extPeriod, from, to
             )
-            callback(data, data.length > 0)
-          } catch (err) {
-            console.error('Failed to load data:', err)
-            callback([], false)
+            const normalized = normalizeData(data)
+            callback(normalized, { forward: normalized.length > 0, backward: false })
+            return
           }
-        } else if (type === 'backward') {
-          // Scrolled to the left edge — load older data
-          const earliestTimestamp = timestamp ?? Date.now()
-          const duration = self.getPeriodDuration(extPeriod) * 500
-          const from = earliestTimestamp - duration
-          try {
+
+          if (type === 'forward') {
+            // klinecharts v10: forward = prepend older bars on the left side.
+            const boundary = typeof timestamp === 'number' ? timestamp : Date.now()
+            const from = boundary - duration
             const data = await self.datafeed.getHistoryKLineData(
-              symbol as SymbolInfo, extPeriod, from, earliestTimestamp
+              symbol as SymbolInfo, extPeriod, from, boundary
             )
-            callback(data, data.length > 0)
-          } catch (err) {
-            console.error('Failed to load more data:', err)
-            callback([], false)
+            const normalized = normalizeData(data).filter((item) => item.timestamp < boundary)
+            callback(normalized, { forward: normalized.length > 0, backward: false })
+            return
           }
-        } else {
-          callback([], false)
+
+          if (type === 'backward') {
+            // klinecharts v10: backward = append newer bars on the right side.
+            const boundary = typeof timestamp === 'number' ? timestamp : Date.now()
+            const now = Date.now()
+            const to = Math.min(boundary + duration, now)
+
+            if (to <= boundary) {
+              callback([], { forward: false, backward: false })
+              return
+            }
+
+            const data = await self.datafeed.getHistoryKLineData(
+              symbol as SymbolInfo, extPeriod, boundary, to
+            )
+            const normalized = normalizeData(data).filter((item) => item.timestamp > boundary)
+            callback(normalized, { forward: false, backward: normalized.length > 0 && to < now })
+            return
+          }
+
+          callback([], { forward: false, backward: false })
+        } catch (err) {
+          console.error('Failed to load data:', err)
+          callback([], { forward: false, backward: false })
         }
       },
 

@@ -81,10 +81,9 @@ export const marketApi = {
     requestData.get<CandleData>('/market/candle/current', { ...params }),
 
   getSymbols: (query: {exchange: string, tradeType: string }) =>
-    requestData.get<SymbolData[]>('/market/symbols', { exchange: query.exchange, trade_type: query.tradeType || 'spot' })
+    requestData.get<{ symbols: SymbolData[] }>('/market/symbols', { exchange: query.exchange, trade_type: query.tradeType || 'spot' })
       .then(res => {
-        console.log(res)
-        return res.symbols || []
+        return res
       }),
 
   getSymbolsDetailed: (params: GetSymbolsParams) =>

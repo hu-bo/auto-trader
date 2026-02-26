@@ -7,15 +7,22 @@ export class PositionIdParamDTO {
 }
 
 export class PositionTokenQueryDTO {
+  @Rule(Joi.number().integer().positive().required())
+  exchangeId!: number;
+
   @Rule(Joi.string().trim().min(1).optional())
   symbol?: string;
 }
 
-export class SyncPositionsQueryDTO {
-  // No parameters needed
+export class SyncPositionsBodyDTO {
+  @Rule(Joi.number().integer().positive().required())
+  exchangeId!: number;
 }
 
 export class ClosePositionBodyDTO {
+  @Rule(Joi.number().integer().positive().required())
+  exchangeId!: number;
+
   @Rule(Joi.string().trim().min(1).allow(null).optional())
   orderType?: string | null;
 

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"exchange-adapter-service/internal/utils"
 
 	"github.com/labstack/echo/v4"
+	"github.com/pkg/exchange-adapter/aggregator"
 	exchange "github.com/pkg/exchange-adapter/marketdata"
 	"github.com/pkg/logger"
 )
@@ -228,9 +230,42 @@ func (h *Handler) GetCandles(c echo.Context) error {
 		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "database not configured")
 	}
 
-	candles, err := h.repo.GetCandles(c.Request().Context(), exchangeStr, symbol, period, startTime, endTime, limit)
-	if err != nil {
-		return Error(c, http.StatusInternalServerError, ErrCodeInternal, err.Error())
+	var (
+		candles []exchange.NormalizedCandle
+		err     error
+	)
+
+	requestedPeriod := exchange.Period(period)
+	if requestedPeriod == exchange.Period4h {
+		sourcePeriod := exchange.Period15m
+		ratio := int(requestedPeriod.IntervalMs() / sourcePeriod.IntervalMs())
+		sourceLimit := 0
+		if limit > 0 {
+			sourceLimit = limit*ratio + ratio
+		}
+		sourceStart := requestedPeriod.RoundToInterval(startTime)
+		sourceEnd := requestedPeriod.NextInterval(endTime) - sourcePeriod.IntervalMs()
+
+		if sourceEnd < sourceStart {
+			sourceEnd = endTime
+		}
+
+		sourceCandles, fetchErr := h.repo.GetCandles(c.Request().Context(), exchangeStr, symbol, string(sourcePeriod), sourceStart, sourceEnd, sourceLimit)
+		if fetchErr != nil {
+			return Error(c, http.StatusInternalServerError, ErrCodeInternal, fetchErr.Error())
+		}
+
+		aggregated, aggErr := aggregator.AggregateCandlesByPeriod(sourceCandles, sourcePeriod, requestedPeriod)
+		if aggErr != nil {
+			return Error(c, http.StatusInternalServerError, ErrCodeInternal, aggErr.Error())
+		}
+
+		candles = filterCandlesByRangeAndLimit(aggregated, startTime, endTime, limit)
+	} else {
+		candles, err = h.repo.GetCandles(c.Request().Context(), exchangeStr, symbol, period, startTime, endTime, limit)
+		if err != nil {
+			return Error(c, http.StatusInternalServerError, ErrCodeInternal, err.Error())
+		}
 	}
 
 	// 列式存储格式 (Column-Oriented)
@@ -244,6 +279,25 @@ func (h *Handler) GetCandles(c echo.Context) error {
 	}
 
 	return Success(c, candles)
+}
+
+func filterCandlesByRangeAndLimit(candles []exchange.NormalizedCandle, startTime, endTime int64, limit int) []exchange.NormalizedCandle {
+	filtered := make([]exchange.NormalizedCandle, 0, len(candles))
+	for _, candle := range candles {
+		if candle.Timestamp >= startTime && candle.Timestamp <= endTime {
+			filtered = append(filtered, candle)
+		}
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].Timestamp > filtered[j].Timestamp
+	})
+
+	if limit > 0 && len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+
+	return filtered
 }
 
 // GetCurrentCandle 获取当前K线
@@ -735,7 +789,7 @@ func (h *Handler) GetTicker(c echo.Context) error {
 // GET /api/tickers?exchange=binance&trade_type=spot
 func (h *Handler) GetTickers(c echo.Context) error {
 	logAPI.Debug().Msg("GetTickers endpoint called")
-	
+
 	if h.tickerSyncService == nil {
 		logAPI.Warn().Msg("ticker service not available")
 		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "ticker service not available")

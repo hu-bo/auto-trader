@@ -20,9 +20,7 @@ export const positionApi = {
 
   // 同步持仓
   sync: (exchangeId: string) =>
-    requestData.post<PositionListResponse>('/positions/sync', null, {
-      params: { exchangeId },
-    } as never),
+    requestData.post<PositionListResponse>('/positions/sync', { exchangeId }),
 
   // 平仓
   close: (positionId: string, params: ClosePositionParams) =>

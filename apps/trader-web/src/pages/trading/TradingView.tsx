@@ -66,11 +66,6 @@ const TradingView: React.FC = () => {
                   <OrderTable symbol={urlSymbol || tradingSymbol} showActions={false} />
                 </div>
               </TabPane>
-              <TabPane tab="所有持仓" itemKey="positions">
-                <div style={{ padding: 16 }}>
-                  <PositionCard />
-                </div>
-              </TabPane>
             </Tabs>
           </Card>
         </Col>

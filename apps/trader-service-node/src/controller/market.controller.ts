@@ -3,7 +3,7 @@ import axios from 'axios';
 import { apiFail, apiOk } from '../util/api-response.js';
 import { ExchangeAdapterConfig } from '../types/config.js';
 
-const baseUrl =  'http://exchange-sync.8and1.cn';
+const baseUrl = process.env.NODE_ENV === 'local' ? 'http://127.0.0.1:9100' : 'http://exchange-sync.8and1.cn';
 
 @Controller('/api/v1/market')
 export class MarketController {

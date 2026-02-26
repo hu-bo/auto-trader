@@ -10,6 +10,7 @@ from hquant_logger import create_logger
 from app.api.v1.health import router as health_router
 from app.api.v1.router import router as v1_router
 from app.config import get_settings
+from app.core.history_preloader import HistoryPreloader
 from app.core.strategy_executor import StrategyExecutor
 from app.core.strategy_manager import StrategyManager
 from app.grpc.server import GrpcServer
@@ -58,6 +59,9 @@ def create_app() -> FastAPI:
         # Subscribe candles from upstream NATS
         subscriber = CandleSubscriber(upstream_nats, on_candle)
 
+        # History preloader for exchange-adapter-service
+        preloader = HistoryPreloader(settings.exchange_adapter_url)
+
         # Publish signals to local NATS
         executor = StrategyExecutor(
             nats_client=signal_nats,
@@ -69,6 +73,8 @@ def create_app() -> FastAPI:
             executor=executor,
             candle_buffer_size=settings.candle_buffer_size,
             candle_subject_prefix=settings.upstream_subject_prefix,
+            history_preloader=preloader,
+            history_preload_days=settings.history_preload_days,
         )
 
         # --- gRPC server ---------------------------------------------------
