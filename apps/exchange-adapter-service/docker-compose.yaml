@@ -3,7 +3,7 @@ version: '3.8'
 services:
   nats:
     image: nats:latest
-    container_name: exchange-sync-nats
+    container_name: exchange-adapter-nats
     ports:
       - "15002:4222"
     command: [ "-js", "--user=exchange_sync", "--pass=123456" ]

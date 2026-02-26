@@ -114,5 +114,5 @@ steps:
         - docker-compose up -d --force-recreate nats exchange-adapter-service
         - sleep 2
         - docker logs exchange-adapter-service
-        - docker logs exchange-sync-nats
+        - docker logs exchange-adapter-nats
 
