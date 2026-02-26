@@ -15,7 +15,7 @@ import type { User } from './user.entity.js';
 @Index(['userid'])
 export class Strategy {
   @PrimaryGeneratedColumn({ type: 'int' })
-    id!: number;
+  id!: number;
 
   @Column({ name: 'userid', type: 'int' })
   userid!: number;

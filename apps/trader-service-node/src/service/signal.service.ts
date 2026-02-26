@@ -122,10 +122,9 @@ export class SignalService {
   private async handleSignalMessage(data: SignalMessage) {
     try {
       const signal = this.signalRepository.create({
+        signalId: data.signal_id,
         strategyId: data.strategy_id,
-        strategyName: data.strategy_name,
         exchange: data.exchange,
-        tradeType: data.trade_type,
         symbol: data.symbol,
         period: data.period,
         action: data.action,
