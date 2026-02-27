@@ -253,8 +253,8 @@ func (r *PostgresRepository) GetCandles(ctx context.Context, exchangeName, symbo
 
 	var allCandles []exchange.NormalizedCandle
 
-	// 按年份倒序查询 (最新数据优先)
-	for i := len(years) - 1; i >= 0; i-- {
+	// 按年份正序查询 (旧数据优先)
+	for i := 0; i < len(years); i++ {
 		year := years[i]
 		tableName := r.partition.GetTableNameByYear(year)
 
@@ -269,7 +269,7 @@ func (r *PostgresRepository) GetCandles(ctx context.Context, exchangeName, symbo
 			FROM %s
 			WHERE exchange = $1 AND symbol = $2 AND period = $3
 			  AND timestamp >= $4 AND timestamp <= $5
-			ORDER BY timestamp DESC
+			ORDER BY timestamp ASC
 			LIMIT $6
 		`, tableName)
 
@@ -298,9 +298,9 @@ func (r *PostgresRepository) GetCandles(ctx context.Context, exchangeName, symbo
 		rows.Close()
 	}
 
-	// 按时间戳降序排序
+	// 按时间戳升序排序
 	sort.Slice(allCandles, func(i, j int) bool {
-		return allCandles[i].Timestamp > allCandles[j].Timestamp
+		return allCandles[i].Timestamp < allCandles[j].Timestamp
 	})
 
 	// 截取 limit

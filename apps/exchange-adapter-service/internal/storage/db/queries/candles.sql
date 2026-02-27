@@ -21,7 +21,7 @@ SELECT symbol, exchange, trade_type, period, timestamp,
 FROM normalized_candles
 WHERE exchange = $1 AND symbol = $2 AND period = $3
   AND timestamp >= $4 AND timestamp <= $5
-ORDER BY timestamp DESC
+ORDER BY timestamp ASC
 LIMIT $6;
 
 -- name: GetLatestCandle :one
