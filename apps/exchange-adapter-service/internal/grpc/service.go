@@ -116,6 +116,31 @@ func (s *ExchangeService) ValidateToken(ctx context.Context, req *exchangepb.Val
 	if !ok {
 		return &exchangepb.ValidateTokenResponse{Valid: false, Exchange: exchangepb.Exchange_EXCHANGE_UNSPECIFIED}, nil
 	}
+
+	// Verify the API key is actually usable by calling a lightweight authenticated endpoint.
+	adapter, err := s.manager.TradeAdapter(ctx, req.Token, cfg)
+	if err != nil {
+		svcLog.Warn().Err(err).Str("token", req.Token).Msg("ValidateToken: failed to create adapter")
+		return &exchangepb.ValidateTokenResponse{
+			Valid:    false,
+			Exchange: contract.CoreExchangeToProto(cfg.Exchange),
+			Error:    contract.Error("ADAPTER_ERROR", err.Error()),
+		}, nil
+	}
+	res := adapter.GetBalance(ctx, core.TradeTypeFutures)
+	if !res.Ok {
+		svcLog.Warn().
+			Str("token", req.Token).
+			Str("error_code", res.Error.Code).
+			Str("error_msg", res.Error.Message).
+			Msg("ValidateToken: API key verification failed")
+		return &exchangepb.ValidateTokenResponse{
+			Valid:    false,
+			Exchange: contract.CoreExchangeToProto(cfg.Exchange),
+			Error:    contract.Error(res.Error.Code, res.Error.Message),
+		}, nil
+	}
+
 	return &exchangepb.ValidateTokenResponse{Valid: true, Exchange: contract.CoreExchangeToProto(cfg.Exchange)}, nil
 }
 
@@ -727,6 +752,368 @@ func (s *ExchangeService) SubscribeOrders(req *exchangepb.SubscribeOrdersRequest
 			}
 		}
 	}
+}
+
+// ============================================================================
+// Strategy Order Handlers
+// ============================================================================
+
+func (s *ExchangeService) PlaceStrategyOrder(ctx context.Context, req *exchangepb.PlaceStrategyOrderRequest) (*exchangepb.PlaceStrategyOrderResponse, error) {
+	if req == nil {
+		return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, "request is nil")}, nil
+	}
+
+	cfg, err := s.store.Get(req.Token)
+	if err != nil {
+		return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error(sessionErrorCode(err), err.Error())}, nil
+	}
+
+	tradeType, err := contract.ProtoTradeTypeToCoreRequired(req.TradeType)
+	if err != nil {
+		return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, err.Error())}, nil
+	}
+	side, err := contract.ProtoOrderSideToCoreRequired(req.Side)
+	if err != nil {
+		return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, err.Error())}, nil
+	}
+	strategyType, err := contract.ProtoStrategyOrderTypeToCoreRequired(req.StrategyType)
+	if err != nil {
+		return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, err.Error())}, nil
+	}
+	if req.Symbol == "" {
+		return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, "symbol is required")}, nil
+	}
+	if !(req.Quantity > 0) {
+		return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, "quantity must be > 0")}, nil
+	}
+	if !(req.TriggerPrice > 0) {
+		return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, "trigger_price must be > 0")}, nil
+	}
+
+	var posSide *core.PositionSide
+	if req.PositionSide != nil {
+		ps, err := contract.ProtoPositionSideToCore(req.GetPositionSide())
+		if err != nil {
+			return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, err.Error())}, nil
+		}
+		posSide = ps
+	}
+
+	var triggerPriceType *core.StrategyTriggerPriceType
+	if req.TriggerPriceType != nil {
+		triggerPriceType = contract.ProtoStrategyTriggerPriceTypeToCore(req.GetTriggerPriceType())
+	}
+
+	var orderPrice *float64
+	if req.OrderPrice != nil {
+		op := req.GetOrderPrice()
+		orderPrice = &op
+	}
+
+	reduceOnly := false
+	if req.ReduceOnly != nil {
+		reduceOnly = req.GetReduceOnly()
+	}
+
+	clientAlgoID := ""
+	if req.ClientAlgoId != nil {
+		clientAlgoID = req.GetClientAlgoId()
+	}
+
+	var callbackRatio *float64
+	if req.CallbackRatio != nil {
+		cr := req.GetCallbackRatio()
+		callbackRatio = &cr
+	}
+
+	var activationPrice *float64
+	if req.ActivationPrice != nil {
+		ap := req.GetActivationPrice()
+		activationPrice = &ap
+	}
+
+	adapter, err := s.manager.TradeAdapter(ctx, req.Token, cfg)
+	if err != nil {
+		return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error("ADAPTER_ERROR", err.Error())}, nil
+	}
+
+	var attachedOrders []core.StrategyAttachedOrder
+	if req.SlTriggerPrice != nil || req.TpTriggerPrice != nil {
+		attached := core.StrategyAttachedOrder{}
+		if req.SlTriggerPrice != nil {
+			slp := req.GetSlTriggerPrice()
+			attached.SLTriggerPrice = &slp
+		}
+		if req.TpTriggerPrice != nil {
+			tpp := req.GetTpTriggerPrice()
+			attached.TPTriggerPrice = &tpp
+		}
+		attachedOrders = []core.StrategyAttachedOrder{attached}
+	}
+
+	res := adapter.PlaceStrategyOrder(ctx, core.StrategyOrderParams{
+		Symbol:           req.Symbol,
+		TradeType:        tradeType,
+		Side:             side,
+		StrategyType:     strategyType,
+		Quantity:         req.Quantity,
+		PositionSide:     posSide,
+		TriggerPrice:     req.TriggerPrice,
+		TriggerPriceType: triggerPriceType,
+		OrderPrice:       orderPrice,
+		ReduceOnly:       reduceOnly,
+		ClientAlgoID:     clientAlgoID,
+		CallbackRatio:    callbackRatio,
+		ActivationPrice:  activationPrice,
+		AttachedOrders:   attachedOrders,
+	})
+	if !res.Ok {
+		return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error(res.Error.Code, res.Error.Message)}, nil
+	}
+
+	return &exchangepb.PlaceStrategyOrderResponse{Success: true, Order: contract.CoreStrategyOrderToProto(res.Data)}, nil
+}
+
+func (s *ExchangeService) PlaceStrategyOrders(ctx context.Context, req *exchangepb.PlaceStrategyOrdersRequest) (*exchangepb.PlaceStrategyOrdersResponse, error) {
+	if req == nil || req.Token == "" {
+		return nil, status.Error(codes.InvalidArgument, "token is required")
+	}
+	if len(req.Orders) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "orders is required")
+	}
+
+	cfg, err := s.store.Get(req.Token)
+	if err != nil {
+		return nil, status.Error(codes.Unauthenticated, "invalid token")
+	}
+
+	adapter, err := s.manager.TradeAdapter(ctx, req.Token, cfg)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	paramsList := make([]core.StrategyOrderParams, 0, len(req.Orders))
+	for _, oreq := range req.Orders {
+		if oreq == nil {
+			paramsList = append(paramsList, core.StrategyOrderParams{})
+			continue
+		}
+
+		tt := contract.ProtoTradeTypeToCoreOptional(oreq.TradeType)
+		side := core.OrderSide("")
+		if oreq.Side == exchangepb.OrderSide_ORDER_SIDE_BUY {
+			side = core.OrderSideBuy
+		} else if oreq.Side == exchangepb.OrderSide_ORDER_SIDE_SELL {
+			side = core.OrderSideSell
+		}
+
+		st := core.StrategyOrderType("")
+		switch oreq.StrategyType {
+		case exchangepb.StrategyOrderType_STRATEGY_ORDER_TYPE_STOP_LOSS:
+			st = core.StrategyOrderTypeStopLoss
+		case exchangepb.StrategyOrderType_STRATEGY_ORDER_TYPE_TAKE_PROFIT:
+			st = core.StrategyOrderTypeTakeProfit
+		case exchangepb.StrategyOrderType_STRATEGY_ORDER_TYPE_TRIGGER:
+			st = core.StrategyOrderTypeTrigger
+		case exchangepb.StrategyOrderType_STRATEGY_ORDER_TYPE_TRAILING_STOP:
+			st = core.StrategyOrderTypeTrailingStop
+		}
+
+		var posSide *core.PositionSide
+		if oreq.PositionSide != nil {
+			ps, err := contract.ProtoPositionSideToCore(oreq.GetPositionSide())
+			if err == nil {
+				posSide = ps
+			}
+		}
+
+		var triggerPriceType *core.StrategyTriggerPriceType
+		if oreq.TriggerPriceType != nil {
+			triggerPriceType = contract.ProtoStrategyTriggerPriceTypeToCore(oreq.GetTriggerPriceType())
+		}
+
+		var orderPrice *float64
+		if oreq.OrderPrice != nil {
+			op := oreq.GetOrderPrice()
+			orderPrice = &op
+		}
+
+		reduceOnly := false
+		if oreq.ReduceOnly != nil {
+			reduceOnly = oreq.GetReduceOnly()
+		}
+
+		clientAlgoID := ""
+		if oreq.ClientAlgoId != nil {
+			clientAlgoID = oreq.GetClientAlgoId()
+		}
+
+		var attached []core.StrategyAttachedOrder
+		if oreq.SlTriggerPrice != nil || oreq.TpTriggerPrice != nil {
+			ao := core.StrategyAttachedOrder{}
+			if oreq.SlTriggerPrice != nil {
+				slp := oreq.GetSlTriggerPrice()
+				ao.SLTriggerPrice = &slp
+			}
+			if oreq.TpTriggerPrice != nil {
+				tpp := oreq.GetTpTriggerPrice()
+				ao.TPTriggerPrice = &tpp
+			}
+			attached = []core.StrategyAttachedOrder{ao}
+		}
+
+		paramsList = append(paramsList, core.StrategyOrderParams{
+			Symbol:           oreq.Symbol,
+			TradeType:        tt,
+			Side:             side,
+			StrategyType:     st,
+			Quantity:         oreq.Quantity,
+			PositionSide:     posSide,
+			TriggerPrice:     oreq.TriggerPrice,
+			TriggerPriceType: triggerPriceType,
+			OrderPrice:       orderPrice,
+			ReduceOnly:       reduceOnly,
+			ClientAlgoID:     clientAlgoID,
+			AttachedOrders:   attached,
+		})
+	}
+
+	batch := adapter.PlaceStrategyOrders(ctx, paramsList)
+	results := make([]*exchangepb.PlaceStrategyOrderResponse, 0, len(batch))
+
+	successCount := 0
+	failedCount := 0
+	for _, r := range batch {
+		if r.Ok {
+			successCount++
+			results = append(results, &exchangepb.PlaceStrategyOrderResponse{
+				Success: true,
+				Order:   contract.CoreStrategyOrderToProto(r.Data),
+			})
+		} else {
+			failedCount++
+			code := core.ErrorPlaceOrder
+			msg := "unknown error"
+			if r.Error != nil {
+				code = r.Error.Code
+				msg = r.Error.Message
+			}
+			results = append(results, &exchangepb.PlaceStrategyOrderResponse{
+				Success: false,
+				Error:   contract.Error(code, msg),
+			})
+		}
+	}
+
+	return &exchangepb.PlaceStrategyOrdersResponse{
+		SuccessCount: int32(successCount),
+		FailedCount:  int32(failedCount),
+		Results:      results,
+	}, nil
+}
+
+func (s *ExchangeService) CancelStrategyOrder(ctx context.Context, req *exchangepb.CancelStrategyOrderRequest) (*exchangepb.CancelStrategyOrderResponse, error) {
+	if req == nil {
+		return &exchangepb.CancelStrategyOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, "request is nil")}, nil
+	}
+	if req.Token == "" || req.AlgoId == "" || req.Symbol == "" {
+		return &exchangepb.CancelStrategyOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, "token, symbol, and algo_id are required")}, nil
+	}
+
+	cfg, err := s.store.Get(req.Token)
+	if err != nil {
+		return &exchangepb.CancelStrategyOrderResponse{Success: false, Error: contract.Error(sessionErrorCode(err), err.Error())}, nil
+	}
+
+	tradeType, err := contract.ProtoTradeTypeToCoreRequired(req.TradeType)
+	if err != nil {
+		return &exchangepb.CancelStrategyOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, err.Error())}, nil
+	}
+
+	adapter, err := s.manager.TradeAdapter(ctx, req.Token, cfg)
+	if err != nil {
+		return &exchangepb.CancelStrategyOrderResponse{Success: false, Error: contract.Error("ADAPTER_ERROR", err.Error())}, nil
+	}
+
+	res := adapter.CancelStrategyOrder(ctx, req.Symbol, req.AlgoId, tradeType)
+	if !res.Ok {
+		return &exchangepb.CancelStrategyOrderResponse{Success: false, Error: contract.Error(res.Error.Code, res.Error.Message)}, nil
+	}
+
+	return &exchangepb.CancelStrategyOrderResponse{Success: true, Order: contract.CoreStrategyOrderToProto(res.Data)}, nil
+}
+
+func (s *ExchangeService) GetStrategyOrder(ctx context.Context, req *exchangepb.GetStrategyOrderRequest) (*exchangepb.GetStrategyOrderResponse, error) {
+	if req == nil {
+		return &exchangepb.GetStrategyOrderResponse{Error: contract.Error(core.ErrorInvalidParams, "request is nil")}, nil
+	}
+	if req.Token == "" || req.AlgoId == "" {
+		return &exchangepb.GetStrategyOrderResponse{Error: contract.Error(core.ErrorInvalidParams, "token and algo_id are required")}, nil
+	}
+
+	cfg, err := s.store.Get(req.Token)
+	if err != nil {
+		return &exchangepb.GetStrategyOrderResponse{Error: contract.Error(sessionErrorCode(err), err.Error())}, nil
+	}
+
+	tradeType, err := contract.ProtoTradeTypeToCoreRequired(req.TradeType)
+	if err != nil {
+		return &exchangepb.GetStrategyOrderResponse{Error: contract.Error(core.ErrorInvalidParams, err.Error())}, nil
+	}
+
+	adapter, err := s.manager.TradeAdapter(ctx, req.Token, cfg)
+	if err != nil {
+		return &exchangepb.GetStrategyOrderResponse{Error: contract.Error("ADAPTER_ERROR", err.Error())}, nil
+	}
+
+	res := adapter.GetStrategyOrder(ctx, req.AlgoId, tradeType)
+	if !res.Ok {
+		return &exchangepb.GetStrategyOrderResponse{Error: contract.Error(res.Error.Code, res.Error.Message)}, nil
+	}
+
+	return &exchangepb.GetStrategyOrderResponse{Order: contract.CoreStrategyOrderToProto(res.Data)}, nil
+}
+
+func (s *ExchangeService) GetOpenStrategyOrders(ctx context.Context, req *exchangepb.GetOpenStrategyOrdersRequest) (*exchangepb.GetOpenStrategyOrdersResponse, error) {
+	if req == nil || req.Token == "" {
+		return nil, status.Error(codes.InvalidArgument, "token is required")
+	}
+
+	cfg, err := s.store.Get(req.Token)
+	if err != nil {
+		return nil, status.Error(codes.Unauthenticated, "invalid token")
+	}
+
+	adapter, err := s.manager.TradeAdapter(ctx, req.Token, cfg)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	var symbolPtr *string
+	if req.Symbol != nil && req.GetSymbol() != "" {
+		sym := req.GetSymbol()
+		symbolPtr = &sym
+	}
+
+	var tradeTypePtr *core.TradeType
+	if req.TradeType != nil {
+		tt := contract.ProtoTradeTypeToCoreOptional(req.GetTradeType())
+		if tt != "" {
+			tradeTypePtr = &tt
+		}
+	}
+
+	res := adapter.GetOpenStrategyOrders(ctx, symbolPtr, tradeTypePtr)
+	if !res.Ok {
+		return &exchangepb.GetOpenStrategyOrdersResponse{Error: contract.Error(res.Error.Code, res.Error.Message)}, nil
+	}
+
+	out := make([]*exchangepb.StrategyOrder, 0, len(res.Data))
+	for _, o := range res.Data {
+		out = append(out, contract.CoreStrategyOrderToProto(o))
+	}
+
+	return &exchangepb.GetOpenStrategyOrdersResponse{Orders: out}, nil
 }
 
 func findOrderByAnyID(orders []core.Order, anyID string) (core.Order, bool) {

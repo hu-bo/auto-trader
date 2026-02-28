@@ -35,14 +35,19 @@ func NewTradeAdapter(opts TradeAdapterOptions) *TradeAdapter {
 		demonet = *opts.Options.Demonet
 	}
 
+	proxy := ""
+	if opts.Options != nil {
+		proxy = opts.Options.HTTPSProxy
+	}
+
 	public := opts.PublicAdapter
 	if public == nil {
 		public = NewPublicAdapter(opts.Options)
 	}
 
-	spot := binanceapi.NewMainClient(binanceapi.MainClientOptions{APIKey: opts.APIKey, APISecret: opts.APISecret, Testnet: demonet})
-	futures := binanceapi.NewUSDMClient(binanceapi.USDMClientOptions{APIKey: opts.APIKey, APISecret: opts.APISecret, Testnet: demonet})
-	delivery := binanceapi.NewCOINMClient(binanceapi.COINMClientOptions{APIKey: opts.APIKey, APISecret: opts.APISecret, Testnet: demonet})
+	spot := binanceapi.NewMainClient(binanceapi.MainClientOptions{APIKey: opts.APIKey, APISecret: opts.APISecret, Testnet: demonet, Proxy: proxy})
+	futures := binanceapi.NewUSDMClient(binanceapi.USDMClientOptions{APIKey: opts.APIKey, APISecret: opts.APISecret, Testnet: demonet, Proxy: proxy})
+	delivery := binanceapi.NewCOINMClient(binanceapi.COINMClientOptions{APIKey: opts.APIKey, APISecret: opts.APISecret, Testnet: demonet, Proxy: proxy})
 
 	a := &TradeAdapter{
 		public:   public,
@@ -498,18 +503,169 @@ func (a *TradeAdapter) SetLeverage(ctx context.Context, symbol string, leverage 
 	}
 }
 
-// Strategy orders are not implemented yet in the Go adapter.
-func (a *TradeAdapter) PlaceStrategyOrder(_ context.Context, _ core.StrategyOrderParams) core.Result[core.StrategyOrder] {
-	return core.Err[core.StrategyOrder](core.ErrorInfo{Code: core.ErrorPlaceStrategyOrder, Message: "Binance strategy orders not implemented in Go adapter yet"})
+// ============================================================================//
+// Strategy / Algo Orders
+// ============================================================================//
+
+func (a *TradeAdapter) PlaceStrategyOrder(ctx context.Context, params core.StrategyOrderParams) core.Result[core.StrategyOrder] {
+	if params.TradeType != core.TradeTypeFutures {
+		return core.Err[core.StrategyOrder](core.ErrorInfo{
+			Code:    core.ErrorInvalidTradeType,
+			Message: "Binance algo orders are only supported for futures",
+		})
+	}
+
+	rawSymbol := unifiedToRawSymbol(params.Symbol, params.TradeType)
+	hasOrderPrice := params.OrderPrice != nil && *params.OrderPrice > 0
+
+	algoCondType, err := strategyOrderTypeToBinance(params.StrategyType, hasOrderPrice)
+	if err != nil {
+		return core.Err[core.StrategyOrder](core.ErrorInfo{
+			Code:    core.ErrorInvalidStrategyOrderType,
+			Message: err.Error(),
+		})
+	}
+
+	req := btypes.NewAlgoOrderParams{
+		AlgoType:     btypes.AlgoOrderTypeConditional,
+		Symbol:       rawSymbol,
+		Side:         sideToBinance(params.Side),
+		Type:         algoCondType,
+		Quantity:     strconv.FormatFloat(params.Quantity, 'f', -1, 64),
+		TriggerPrice: strconv.FormatFloat(params.TriggerPrice, 'f', -1, 64),
+		WorkingType:  triggerPriceTypeToBinance(params.TriggerPriceType),
+	}
+
+	if params.PositionSide != nil {
+		req.PositionSide = positionSideToBinance(*params.PositionSide)
+	}
+	if params.ReduceOnly {
+		req.ReduceOnly = "true"
+	}
+	if params.ClientAlgoID != "" {
+		req.ClientAlgoID = params.ClientAlgoID
+	}
+
+	// Limit price for STOP / TAKE_PROFIT types.
+	if hasOrderPrice {
+		req.Price = strconv.FormatFloat(*params.OrderPrice, 'f', -1, 64)
+		req.TimeInForce = btypes.TimeInForceGTC
+	}
+
+	// Trailing stop specific fields.
+	if params.StrategyType == core.StrategyOrderTypeTrailingStop {
+		if params.CallbackRatio != nil {
+			req.CallbackRate = strconv.FormatFloat(*params.CallbackRatio, 'f', -1, 64)
+		}
+		if params.ActivationPrice != nil {
+			req.ActivationPrice = strconv.FormatFloat(*params.ActivationPrice, 'f', -1, 64)
+		}
+	}
+
+	resp, apiErr := a.futures.SubmitNewAlgoOrder(ctx, req)
+	if apiErr != nil {
+		return core.Err[core.StrategyOrder](core.ErrorInfo{
+			Code:    core.ErrorPlaceStrategyOrder,
+			Message: apiErr.Error(),
+			Raw:     apiErr,
+		})
+	}
+
+	return core.Ok(transformAlgoOrder(*resp, params.TradeType))
 }
-func (a *TradeAdapter) CancelStrategyOrder(_ context.Context, _ string, _ string, _ core.TradeType) core.Result[core.StrategyOrder] {
-	return core.Err[core.StrategyOrder](core.ErrorInfo{Code: core.ErrorCancelStrategyOrder, Message: "Binance strategy orders not implemented in Go adapter yet"})
+
+func (a *TradeAdapter) CancelStrategyOrder(ctx context.Context, symbol string, algoID string, tradeType core.TradeType) core.Result[core.StrategyOrder] {
+	if tradeType != core.TradeTypeFutures {
+		return core.Err[core.StrategyOrder](core.ErrorInfo{
+			Code:    core.ErrorInvalidTradeType,
+			Message: "Binance algo orders are only supported for futures",
+		})
+	}
+
+	id, err := strconv.ParseInt(algoID, 10, 64)
+	if err != nil {
+		return core.Err[core.StrategyOrder](core.ErrorInfo{
+			Code:    core.ErrorInvalidParams,
+			Message: "invalid algoId: " + algoID,
+			Raw:     err,
+		})
+	}
+
+	_, apiErr := a.futures.CancelAlgoOrder(ctx, btypes.CancelAlgoOrderParams{AlgoID: id})
+	if apiErr != nil {
+		return core.Err[core.StrategyOrder](core.ErrorInfo{
+			Code:    core.ErrorCancelStrategyOrder,
+			Message: apiErr.Error(),
+			Raw:     apiErr,
+		})
+	}
+
+	// Fetch the updated order state after cancellation.
+	return a.GetStrategyOrder(ctx, algoID, tradeType)
 }
-func (a *TradeAdapter) GetStrategyOrder(_ context.Context, _ string, _ core.TradeType) core.Result[core.StrategyOrder] {
-	return core.Err[core.StrategyOrder](core.ErrorInfo{Code: core.ErrorGetStrategyOrder, Message: "Binance strategy orders not implemented in Go adapter yet"})
+
+func (a *TradeAdapter) GetStrategyOrder(ctx context.Context, algoID string, tradeType core.TradeType) core.Result[core.StrategyOrder] {
+	if tradeType != core.TradeTypeFutures {
+		return core.Err[core.StrategyOrder](core.ErrorInfo{
+			Code:    core.ErrorInvalidTradeType,
+			Message: "Binance algo orders are only supported for futures",
+		})
+	}
+
+	id, err := strconv.ParseInt(algoID, 10, 64)
+	if err != nil {
+		return core.Err[core.StrategyOrder](core.ErrorInfo{
+			Code:    core.ErrorInvalidParams,
+			Message: "invalid algoId: " + algoID,
+			Raw:     err,
+		})
+	}
+
+	resp, apiErr := a.futures.GetAlgoOrder(ctx, btypes.QueryAlgoOrderParams{AlgoID: id})
+	if apiErr != nil {
+		return core.Err[core.StrategyOrder](core.ErrorInfo{
+			Code:    core.ErrorGetStrategyOrder,
+			Message: apiErr.Error(),
+			Raw:     apiErr,
+		})
+	}
+
+	return core.Ok(transformQueryAlgoOrder(*resp, tradeType))
 }
-func (a *TradeAdapter) GetOpenStrategyOrders(_ context.Context, _ *string, _ *core.TradeType) core.Result[[]core.StrategyOrder] {
-	return core.Err[[]core.StrategyOrder](core.ErrorInfo{Code: core.ErrorGetOpenStrategyOrders, Message: "Binance strategy orders not implemented in Go adapter yet"})
+
+func (a *TradeAdapter) GetOpenStrategyOrders(ctx context.Context, symbol *string, tradeType *core.TradeType) core.Result[[]core.StrategyOrder] {
+	// Default to futures if no trade type specified; algo orders only exist in futures.
+	tt := core.TradeTypeFutures
+	if tradeType != nil {
+		tt = *tradeType
+	}
+
+	if tt != core.TradeTypeFutures {
+		return core.Err[[]core.StrategyOrder](core.ErrorInfo{
+			Code:    core.ErrorInvalidTradeType,
+			Message: "Binance algo orders are only supported for futures",
+		})
+	}
+
+	params := &btypes.QueryOpenAlgoOrdersParams{}
+	if symbol != nil && *symbol != "" {
+		params.Symbol = unifiedToRawSymbol(*symbol, tt)
+	}
+
+	resp, apiErr := a.futures.GetOpenAlgoOrders(ctx, params)
+	if apiErr != nil {
+		return core.Err[[]core.StrategyOrder](core.ErrorInfo{
+			Code:    core.ErrorGetOpenStrategyOrders,
+			Message: apiErr.Error(),
+			Raw:     apiErr,
+		})
+	}
+
+	out := make([]core.StrategyOrder, 0, len(resp))
+	for _, o := range resp {
+		out = append(out, transformAlgoOrder(o, tt))
+	}
+	return core.Ok(out)
 }
 
 // ============================================================================//

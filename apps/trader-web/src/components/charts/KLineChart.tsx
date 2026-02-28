@@ -126,7 +126,6 @@ class TradingDatafeed implements Datafeed {
     _to: number
   ): Promise<KLineData[]> {
     try {
-      console.log(`[KLine] Fetching history for ${symbol.ticker} ${periodToString(period)} from ${new Date(_from).toISOString()} to ${new Date(_to).toISOString()}`)
       const periodStr = periodToString(period)
       const data = await marketApi.getCandles({
         exchange: this.exchange,

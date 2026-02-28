@@ -47,6 +47,13 @@ service ExchangeService {
 
   // 订单更新流
   rpc SubscribeOrders(SubscribeOrdersRequest) returns (stream OrderUpdate);
+
+  // 策略订单（条件单）
+  rpc PlaceStrategyOrder(PlaceStrategyOrderRequest) returns (PlaceStrategyOrderResponse);
+  rpc PlaceStrategyOrders(PlaceStrategyOrdersRequest) returns (PlaceStrategyOrdersResponse);
+  rpc CancelStrategyOrder(CancelStrategyOrderRequest) returns (CancelStrategyOrderResponse);
+  rpc GetStrategyOrder(GetStrategyOrderRequest) returns (GetStrategyOrderResponse);
+  rpc GetOpenStrategyOrders(GetOpenStrategyOrdersRequest) returns (GetOpenStrategyOrdersResponse);
 }
 
 // ============================================================================
@@ -127,6 +134,7 @@ message ValidateTokenRequest {
 message ValidateTokenResponse {
   bool valid = 1;
   Exchange exchange = 2;
+  Error error = 3;
 }
 
 message InvalidateTokenRequest {
@@ -322,6 +330,127 @@ message SetLeverageRequest {
 message SetLeverageResponse {
   bool success = 1;
   Error error = 2;
+}
+
+// ============================================================================
+// Strategy Orders (Algo / Conditional)
+// ============================================================================
+
+enum StrategyOrderType {
+  STRATEGY_ORDER_TYPE_UNSPECIFIED = 0;
+  STRATEGY_ORDER_TYPE_STOP_LOSS = 1;
+  STRATEGY_ORDER_TYPE_TAKE_PROFIT = 2;
+  STRATEGY_ORDER_TYPE_TRIGGER = 3;
+  STRATEGY_ORDER_TYPE_TRAILING_STOP = 4;
+}
+
+enum StrategyTriggerPriceType {
+  STRATEGY_TRIGGER_PRICE_TYPE_UNSPECIFIED = 0;
+  STRATEGY_TRIGGER_PRICE_TYPE_LAST = 1;
+  STRATEGY_TRIGGER_PRICE_TYPE_MARK = 2;
+  STRATEGY_TRIGGER_PRICE_TYPE_INDEX = 3;
+}
+
+enum StrategyOrderStatus {
+  STRATEGY_ORDER_STATUS_UNSPECIFIED = 0;
+  STRATEGY_ORDER_STATUS_LIVE = 1;
+  STRATEGY_ORDER_STATUS_EFFECTIVE = 2;
+  STRATEGY_ORDER_STATUS_CANCELED = 3;
+  STRATEGY_ORDER_STATUS_FAILED = 4;
+  STRATEGY_ORDER_STATUS_PARTIALLY_EFFECTIVE = 5;
+}
+
+message PlaceStrategyOrderRequest {
+  string token = 1;
+  string symbol = 2;
+  TradeType trade_type = 3;
+  OrderSide side = 4;
+  StrategyOrderType strategy_type = 5;
+  double quantity = 6;
+  double trigger_price = 7;
+  optional PositionSide position_side = 8;
+  optional StrategyTriggerPriceType trigger_price_type = 9;
+  optional double order_price = 10;
+  optional bool reduce_only = 11;
+  optional string client_algo_id = 12;
+  optional double callback_ratio = 13;
+  optional double activation_price = 14;
+  optional double sl_trigger_price = 15;
+  optional double tp_trigger_price = 16;
+}
+
+message PlaceStrategyOrderResponse {
+  bool success = 1;
+  StrategyOrder order = 2;
+  Error error = 3;
+}
+
+message PlaceStrategyOrdersRequest {
+  string token = 1;
+  repeated PlaceStrategyOrderRequest orders = 2;
+}
+
+message PlaceStrategyOrdersResponse {
+  int32 success_count = 1;
+  int32 failed_count = 2;
+  repeated PlaceStrategyOrderResponse results = 3;
+}
+
+message CancelStrategyOrderRequest {
+  string token = 1;
+  string symbol = 2;
+  string algo_id = 3;
+  TradeType trade_type = 4;
+}
+
+message CancelStrategyOrderResponse {
+  bool success = 1;
+  StrategyOrder order = 2;
+  Error error = 3;
+}
+
+message GetStrategyOrderRequest {
+  string token = 1;
+  string algo_id = 2;
+  TradeType trade_type = 3;
+}
+
+message GetStrategyOrderResponse {
+  StrategyOrder order = 1;
+  Error error = 2;
+}
+
+message GetOpenStrategyOrdersRequest {
+  string token = 1;
+  optional string symbol = 2;
+  optional TradeType trade_type = 3;
+}
+
+message GetOpenStrategyOrdersResponse {
+  repeated StrategyOrder orders = 1;
+  Error error = 2;
+}
+
+message StrategyOrder {
+  string algo_id = 1;
+  string client_algo_id = 2;
+  string symbol = 3;
+  TradeType trade_type = 4;
+  OrderSide side = 5;
+  PositionSide position_side = 6;
+  StrategyOrderType strategy_type = 7;
+  StrategyOrderStatus status = 8;
+  string trigger_price = 9;
+  string trigger_price_type = 10;
+  string order_price = 11;
+  string quantity = 12;
+  string tp_trigger_price = 13;
+  string tp_order_price = 14;
+  string sl_trigger_price = 15;
+  string sl_order_price = 16;
+  int64 created_at = 17;
+  int64 updated_at = 18;
+  int64 triggered_at = 19;
 }
 
 // ============================================================================

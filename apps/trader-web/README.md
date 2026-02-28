@@ -30,3 +30,4 @@ pnpm --filter trader-web build
 ## 文档
 
 详细技术文档见 [docs/TECHNICAL.md](docs/TECHNICAL.md)。
+

@@ -785,6 +785,27 @@ func (h *Handler) GetTicker(c echo.Context) error {
 	return Success(c, ticker)
 }
 
+// GetTickerPriceMap 返回 symbol -> lastPrice 的干净映射
+// GET /api/tickers/price-map?exchange=binance&trade_type=futures
+func (h *Handler) GetTickerPriceMap(c echo.Context) error {
+	if h.tickerSyncService == nil {
+		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "ticker service not available")
+	}
+
+	exchangeStr := c.QueryParam("exchange")
+	tradeType := c.QueryParam("trade_type")
+
+	if exchangeStr == "" {
+		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange is required")
+	}
+	if tradeType == "" {
+		tradeType = "spot"
+	}
+
+	priceMap := h.tickerSyncService.GetTickerPriceMap(exchangeStr, tradeType)
+	return Success(c, priceMap)
+}
+
 // GetTickers 获取交易所所有交易对的 tickers
 // GET /api/tickers?exchange=binance&trade_type=spot
 func (h *Handler) GetTickers(c echo.Context) error {

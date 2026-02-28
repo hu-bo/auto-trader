@@ -142,6 +142,7 @@ func (s *Server) setupRoutes() {
 	// Ticker 相关
 	api.GET("/ticker", s.handler.GetTicker)
 	api.GET("/tickers", s.handler.GetTickers)
+	api.GET("/tickers/price-map", s.handler.GetTickerPriceMap)
 }
 
 // Start 启动服务器

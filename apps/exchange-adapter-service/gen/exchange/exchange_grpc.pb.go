@@ -19,20 +19,25 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ExchangeService_InitAccount_FullMethodName     = "/exchange.ExchangeService/InitAccount"
-	ExchangeService_ValidateToken_FullMethodName   = "/exchange.ExchangeService/ValidateToken"
-	ExchangeService_InvalidateToken_FullMethodName = "/exchange.ExchangeService/InvalidateToken"
-	ExchangeService_PlaceOrder_FullMethodName      = "/exchange.ExchangeService/PlaceOrder"
-	ExchangeService_PlaceOrders_FullMethodName     = "/exchange.ExchangeService/PlaceOrders"
-	ExchangeService_CancelOrder_FullMethodName     = "/exchange.ExchangeService/CancelOrder"
-	ExchangeService_GetOrder_FullMethodName        = "/exchange.ExchangeService/GetOrder"
-	ExchangeService_GetOrders_FullMethodName       = "/exchange.ExchangeService/GetOrders"
-	ExchangeService_GetPositions_FullMethodName    = "/exchange.ExchangeService/GetPositions"
-	ExchangeService_SyncPositions_FullMethodName   = "/exchange.ExchangeService/SyncPositions"
-	ExchangeService_GetBalance_FullMethodName      = "/exchange.ExchangeService/GetBalance"
-	ExchangeService_GetPrice_FullMethodName        = "/exchange.ExchangeService/GetPrice"
-	ExchangeService_SetLeverage_FullMethodName     = "/exchange.ExchangeService/SetLeverage"
-	ExchangeService_SubscribeOrders_FullMethodName = "/exchange.ExchangeService/SubscribeOrders"
+	ExchangeService_InitAccount_FullMethodName           = "/exchange.ExchangeService/InitAccount"
+	ExchangeService_ValidateToken_FullMethodName         = "/exchange.ExchangeService/ValidateToken"
+	ExchangeService_InvalidateToken_FullMethodName       = "/exchange.ExchangeService/InvalidateToken"
+	ExchangeService_PlaceOrder_FullMethodName            = "/exchange.ExchangeService/PlaceOrder"
+	ExchangeService_PlaceOrders_FullMethodName           = "/exchange.ExchangeService/PlaceOrders"
+	ExchangeService_CancelOrder_FullMethodName           = "/exchange.ExchangeService/CancelOrder"
+	ExchangeService_GetOrder_FullMethodName              = "/exchange.ExchangeService/GetOrder"
+	ExchangeService_GetOrders_FullMethodName             = "/exchange.ExchangeService/GetOrders"
+	ExchangeService_GetPositions_FullMethodName          = "/exchange.ExchangeService/GetPositions"
+	ExchangeService_SyncPositions_FullMethodName         = "/exchange.ExchangeService/SyncPositions"
+	ExchangeService_GetBalance_FullMethodName            = "/exchange.ExchangeService/GetBalance"
+	ExchangeService_GetPrice_FullMethodName              = "/exchange.ExchangeService/GetPrice"
+	ExchangeService_SetLeverage_FullMethodName           = "/exchange.ExchangeService/SetLeverage"
+	ExchangeService_SubscribeOrders_FullMethodName       = "/exchange.ExchangeService/SubscribeOrders"
+	ExchangeService_PlaceStrategyOrder_FullMethodName    = "/exchange.ExchangeService/PlaceStrategyOrder"
+	ExchangeService_PlaceStrategyOrders_FullMethodName   = "/exchange.ExchangeService/PlaceStrategyOrders"
+	ExchangeService_CancelStrategyOrder_FullMethodName   = "/exchange.ExchangeService/CancelStrategyOrder"
+	ExchangeService_GetStrategyOrder_FullMethodName      = "/exchange.ExchangeService/GetStrategyOrder"
+	ExchangeService_GetOpenStrategyOrders_FullMethodName = "/exchange.ExchangeService/GetOpenStrategyOrders"
 )
 
 // ExchangeServiceClient is the client API for ExchangeService service.
@@ -69,6 +74,12 @@ type ExchangeServiceClient interface {
 	SetLeverage(ctx context.Context, in *SetLeverageRequest, opts ...grpc.CallOption) (*SetLeverageResponse, error)
 	// 订单更新流
 	SubscribeOrders(ctx context.Context, in *SubscribeOrdersRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OrderUpdate], error)
+	// 策略订单（条件单）
+	PlaceStrategyOrder(ctx context.Context, in *PlaceStrategyOrderRequest, opts ...grpc.CallOption) (*PlaceStrategyOrderResponse, error)
+	PlaceStrategyOrders(ctx context.Context, in *PlaceStrategyOrdersRequest, opts ...grpc.CallOption) (*PlaceStrategyOrdersResponse, error)
+	CancelStrategyOrder(ctx context.Context, in *CancelStrategyOrderRequest, opts ...grpc.CallOption) (*CancelStrategyOrderResponse, error)
+	GetStrategyOrder(ctx context.Context, in *GetStrategyOrderRequest, opts ...grpc.CallOption) (*GetStrategyOrderResponse, error)
+	GetOpenStrategyOrders(ctx context.Context, in *GetOpenStrategyOrdersRequest, opts ...grpc.CallOption) (*GetOpenStrategyOrdersResponse, error)
 }
 
 type exchangeServiceClient struct {
@@ -228,6 +239,56 @@ func (c *exchangeServiceClient) SubscribeOrders(ctx context.Context, in *Subscri
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ExchangeService_SubscribeOrdersClient = grpc.ServerStreamingClient[OrderUpdate]
 
+func (c *exchangeServiceClient) PlaceStrategyOrder(ctx context.Context, in *PlaceStrategyOrderRequest, opts ...grpc.CallOption) (*PlaceStrategyOrderResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PlaceStrategyOrderResponse)
+	err := c.cc.Invoke(ctx, ExchangeService_PlaceStrategyOrder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *exchangeServiceClient) PlaceStrategyOrders(ctx context.Context, in *PlaceStrategyOrdersRequest, opts ...grpc.CallOption) (*PlaceStrategyOrdersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PlaceStrategyOrdersResponse)
+	err := c.cc.Invoke(ctx, ExchangeService_PlaceStrategyOrders_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *exchangeServiceClient) CancelStrategyOrder(ctx context.Context, in *CancelStrategyOrderRequest, opts ...grpc.CallOption) (*CancelStrategyOrderResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CancelStrategyOrderResponse)
+	err := c.cc.Invoke(ctx, ExchangeService_CancelStrategyOrder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *exchangeServiceClient) GetStrategyOrder(ctx context.Context, in *GetStrategyOrderRequest, opts ...grpc.CallOption) (*GetStrategyOrderResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetStrategyOrderResponse)
+	err := c.cc.Invoke(ctx, ExchangeService_GetStrategyOrder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *exchangeServiceClient) GetOpenStrategyOrders(ctx context.Context, in *GetOpenStrategyOrdersRequest, opts ...grpc.CallOption) (*GetOpenStrategyOrdersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetOpenStrategyOrdersResponse)
+	err := c.cc.Invoke(ctx, ExchangeService_GetOpenStrategyOrders_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ExchangeServiceServer is the server API for ExchangeService service.
 // All implementations must embed UnimplementedExchangeServiceServer
 // for forward compatibility.
@@ -262,6 +323,12 @@ type ExchangeServiceServer interface {
 	SetLeverage(context.Context, *SetLeverageRequest) (*SetLeverageResponse, error)
 	// 订单更新流
 	SubscribeOrders(*SubscribeOrdersRequest, grpc.ServerStreamingServer[OrderUpdate]) error
+	// 策略订单（条件单）
+	PlaceStrategyOrder(context.Context, *PlaceStrategyOrderRequest) (*PlaceStrategyOrderResponse, error)
+	PlaceStrategyOrders(context.Context, *PlaceStrategyOrdersRequest) (*PlaceStrategyOrdersResponse, error)
+	CancelStrategyOrder(context.Context, *CancelStrategyOrderRequest) (*CancelStrategyOrderResponse, error)
+	GetStrategyOrder(context.Context, *GetStrategyOrderRequest) (*GetStrategyOrderResponse, error)
+	GetOpenStrategyOrders(context.Context, *GetOpenStrategyOrdersRequest) (*GetOpenStrategyOrdersResponse, error)
 	mustEmbedUnimplementedExchangeServiceServer()
 }
 
@@ -313,6 +380,21 @@ func (UnimplementedExchangeServiceServer) SetLeverage(context.Context, *SetLever
 }
 func (UnimplementedExchangeServiceServer) SubscribeOrders(*SubscribeOrdersRequest, grpc.ServerStreamingServer[OrderUpdate]) error {
 	return status.Errorf(codes.Unimplemented, "method SubscribeOrders not implemented")
+}
+func (UnimplementedExchangeServiceServer) PlaceStrategyOrder(context.Context, *PlaceStrategyOrderRequest) (*PlaceStrategyOrderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PlaceStrategyOrder not implemented")
+}
+func (UnimplementedExchangeServiceServer) PlaceStrategyOrders(context.Context, *PlaceStrategyOrdersRequest) (*PlaceStrategyOrdersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PlaceStrategyOrders not implemented")
+}
+func (UnimplementedExchangeServiceServer) CancelStrategyOrder(context.Context, *CancelStrategyOrderRequest) (*CancelStrategyOrderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CancelStrategyOrder not implemented")
+}
+func (UnimplementedExchangeServiceServer) GetStrategyOrder(context.Context, *GetStrategyOrderRequest) (*GetStrategyOrderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetStrategyOrder not implemented")
+}
+func (UnimplementedExchangeServiceServer) GetOpenStrategyOrders(context.Context, *GetOpenStrategyOrdersRequest) (*GetOpenStrategyOrdersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetOpenStrategyOrders not implemented")
 }
 func (UnimplementedExchangeServiceServer) mustEmbedUnimplementedExchangeServiceServer() {}
 func (UnimplementedExchangeServiceServer) testEmbeddedByValue()                         {}
@@ -580,6 +662,96 @@ func _ExchangeService_SubscribeOrders_Handler(srv interface{}, stream grpc.Serve
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ExchangeService_SubscribeOrdersServer = grpc.ServerStreamingServer[OrderUpdate]
 
+func _ExchangeService_PlaceStrategyOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PlaceStrategyOrderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ExchangeServiceServer).PlaceStrategyOrder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ExchangeService_PlaceStrategyOrder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ExchangeServiceServer).PlaceStrategyOrder(ctx, req.(*PlaceStrategyOrderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ExchangeService_PlaceStrategyOrders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PlaceStrategyOrdersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ExchangeServiceServer).PlaceStrategyOrders(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ExchangeService_PlaceStrategyOrders_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ExchangeServiceServer).PlaceStrategyOrders(ctx, req.(*PlaceStrategyOrdersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ExchangeService_CancelStrategyOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelStrategyOrderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ExchangeServiceServer).CancelStrategyOrder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ExchangeService_CancelStrategyOrder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ExchangeServiceServer).CancelStrategyOrder(ctx, req.(*CancelStrategyOrderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ExchangeService_GetStrategyOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetStrategyOrderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ExchangeServiceServer).GetStrategyOrder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ExchangeService_GetStrategyOrder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ExchangeServiceServer).GetStrategyOrder(ctx, req.(*GetStrategyOrderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ExchangeService_GetOpenStrategyOrders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOpenStrategyOrdersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ExchangeServiceServer).GetOpenStrategyOrders(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ExchangeService_GetOpenStrategyOrders_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ExchangeServiceServer).GetOpenStrategyOrders(ctx, req.(*GetOpenStrategyOrdersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ExchangeService_ServiceDesc is the grpc.ServiceDesc for ExchangeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -638,6 +810,26 @@ var ExchangeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetLeverage",
 			Handler:    _ExchangeService_SetLeverage_Handler,
+		},
+		{
+			MethodName: "PlaceStrategyOrder",
+			Handler:    _ExchangeService_PlaceStrategyOrder_Handler,
+		},
+		{
+			MethodName: "PlaceStrategyOrders",
+			Handler:    _ExchangeService_PlaceStrategyOrders_Handler,
+		},
+		{
+			MethodName: "CancelStrategyOrder",
+			Handler:    _ExchangeService_CancelStrategyOrder_Handler,
+		},
+		{
+			MethodName: "GetStrategyOrder",
+			Handler:    _ExchangeService_GetStrategyOrder_Handler,
+		},
+		{
+			MethodName: "GetOpenStrategyOrders",
+			Handler:    _ExchangeService_GetOpenStrategyOrders_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

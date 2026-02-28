@@ -281,6 +281,118 @@ func CorePositionToProto(p core.Position, tradeType core.TradeType) *exchangepb.
 	}
 }
 
+// ============================================================================
+// Strategy Order Mappers
+// ============================================================================
+
+func ProtoStrategyOrderTypeToCoreRequired(t exchangepb.StrategyOrderType) (core.StrategyOrderType, error) {
+	switch t {
+	case exchangepb.StrategyOrderType_STRATEGY_ORDER_TYPE_STOP_LOSS:
+		return core.StrategyOrderTypeStopLoss, nil
+	case exchangepb.StrategyOrderType_STRATEGY_ORDER_TYPE_TAKE_PROFIT:
+		return core.StrategyOrderTypeTakeProfit, nil
+	case exchangepb.StrategyOrderType_STRATEGY_ORDER_TYPE_TRIGGER:
+		return core.StrategyOrderTypeTrigger, nil
+	case exchangepb.StrategyOrderType_STRATEGY_ORDER_TYPE_TRAILING_STOP:
+		return core.StrategyOrderTypeTrailingStop, nil
+	default:
+		return "", fmt.Errorf("strategy_type is required")
+	}
+}
+
+func CoreStrategyOrderTypeToProto(t core.StrategyOrderType) exchangepb.StrategyOrderType {
+	switch t {
+	case core.StrategyOrderTypeStopLoss:
+		return exchangepb.StrategyOrderType_STRATEGY_ORDER_TYPE_STOP_LOSS
+	case core.StrategyOrderTypeTakeProfit:
+		return exchangepb.StrategyOrderType_STRATEGY_ORDER_TYPE_TAKE_PROFIT
+	case core.StrategyOrderTypeTrigger:
+		return exchangepb.StrategyOrderType_STRATEGY_ORDER_TYPE_TRIGGER
+	case core.StrategyOrderTypeTrailingStop:
+		return exchangepb.StrategyOrderType_STRATEGY_ORDER_TYPE_TRAILING_STOP
+	default:
+		return exchangepb.StrategyOrderType_STRATEGY_ORDER_TYPE_UNSPECIFIED
+	}
+}
+
+func ProtoStrategyTriggerPriceTypeToCore(t exchangepb.StrategyTriggerPriceType) *core.StrategyTriggerPriceType {
+	switch t {
+	case exchangepb.StrategyTriggerPriceType_STRATEGY_TRIGGER_PRICE_TYPE_LAST:
+		v := core.TriggerPriceTypeLast
+		return &v
+	case exchangepb.StrategyTriggerPriceType_STRATEGY_TRIGGER_PRICE_TYPE_MARK:
+		v := core.TriggerPriceTypeMark
+		return &v
+	case exchangepb.StrategyTriggerPriceType_STRATEGY_TRIGGER_PRICE_TYPE_INDEX:
+		v := core.TriggerPriceTypeIndex
+		return &v
+	default:
+		return nil
+	}
+}
+
+func CoreStrategyTriggerPriceTypeToProto(t *core.StrategyTriggerPriceType) exchangepb.StrategyTriggerPriceType {
+	if t == nil {
+		return exchangepb.StrategyTriggerPriceType_STRATEGY_TRIGGER_PRICE_TYPE_UNSPECIFIED
+	}
+	switch *t {
+	case core.TriggerPriceTypeLast:
+		return exchangepb.StrategyTriggerPriceType_STRATEGY_TRIGGER_PRICE_TYPE_LAST
+	case core.TriggerPriceTypeMark:
+		return exchangepb.StrategyTriggerPriceType_STRATEGY_TRIGGER_PRICE_TYPE_MARK
+	case core.TriggerPriceTypeIndex:
+		return exchangepb.StrategyTriggerPriceType_STRATEGY_TRIGGER_PRICE_TYPE_INDEX
+	default:
+		return exchangepb.StrategyTriggerPriceType_STRATEGY_TRIGGER_PRICE_TYPE_UNSPECIFIED
+	}
+}
+
+func CoreStrategyOrderStatusToProto(s core.StrategyOrderStatus) exchangepb.StrategyOrderStatus {
+	switch s {
+	case core.StrategyOrderStatusLive:
+		return exchangepb.StrategyOrderStatus_STRATEGY_ORDER_STATUS_LIVE
+	case core.StrategyOrderStatusEffective:
+		return exchangepb.StrategyOrderStatus_STRATEGY_ORDER_STATUS_EFFECTIVE
+	case core.StrategyOrderStatusCanceled:
+		return exchangepb.StrategyOrderStatus_STRATEGY_ORDER_STATUS_CANCELED
+	case core.StrategyOrderStatusFailed:
+		return exchangepb.StrategyOrderStatus_STRATEGY_ORDER_STATUS_FAILED
+	case core.StrategyOrderStatusPartiallyEffective:
+		return exchangepb.StrategyOrderStatus_STRATEGY_ORDER_STATUS_PARTIALLY_EFFECTIVE
+	default:
+		return exchangepb.StrategyOrderStatus_STRATEGY_ORDER_STATUS_UNSPECIFIED
+	}
+}
+
+func CoreStrategyOrderToProto(o core.StrategyOrder) *exchangepb.StrategyOrder {
+	triggerPriceType := ""
+	if o.TriggerPriceType != nil {
+		triggerPriceType = string(*o.TriggerPriceType)
+	}
+
+	return &exchangepb.StrategyOrder{
+		AlgoId:           o.AlgoID,
+		ClientAlgoId:     o.ClientAlgoID,
+		Symbol:           o.Symbol,
+		TradeType:        CoreTradeTypeToProto(o.TradeType),
+		Side:             CoreOrderSideToProto(o.Side),
+		PositionSide:     CorePositionSideToProto(o.PositionSide),
+		StrategyType:     CoreStrategyOrderTypeToProto(o.StrategyType),
+		Status:           CoreStrategyOrderStatusToProto(o.Status),
+		TriggerPrice:     o.TriggerPrice,
+		TriggerPriceType: triggerPriceType,
+		OrderPrice:       o.OrderPrice,
+		Quantity:         o.Quantity,
+		TpTriggerPrice:   o.TPTriggerPrice,
+		TpOrderPrice:     o.TPOrderPrice,
+		SlTriggerPrice:   o.SLTriggerPrice,
+		SlOrderPrice:     o.SLOrderPrice,
+		CreatedAt:        toMillis(o.CreateTime),
+		UpdatedAt:        toMillis(o.UpdateTime),
+		TriggeredAt:      toMillis(o.TriggerTime),
+	}
+}
+
 func toMillis(t *time.Time) int64 {
 	if t == nil {
 		return 0

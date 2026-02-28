@@ -279,6 +279,21 @@ func (s *TickerSyncService) GetTicker(ctx context.Context, exchange, symbol, tra
 	return &ticker, nil
 }
 
+// GetTickerPriceMap 返回 symbol -> lastPrice 的映射
+func (s *TickerSyncService) GetTickerPriceMap(exchange, tradeType string) map[string]float64 {
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+
+	prefix := fmt.Sprintf("ticker:%s:%s:", exchange, tradeType)
+	priceMap := make(map[string]float64)
+	for key, ticker := range s.tickerCache {
+		if len(key) >= len(prefix) && key[:len(prefix)] == prefix {
+			priceMap[ticker.Symbol] = ticker.LastPrice
+		}
+	}
+	return priceMap
+}
+
 func (s *TickerSyncService) GetTickers(ctx context.Context, exchange, tradeType string) ([]TickerData, error) {
 	// Try cache first
 	s.cacheMu.RLock()

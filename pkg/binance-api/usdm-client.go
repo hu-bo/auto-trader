@@ -317,6 +317,36 @@ func (c *USDMClient) CloseFuturesUserDataListenKey(ctx context.Context) error {
 	return c.Delete(ctx, "/fapi/v1/listenKey", nil, false, nil)
 }
 
+// Algo Order Endpoints
+
+// SubmitNewAlgoOrder submits a new algo order (POST /fapi/v1/algoOrder).
+func (c *USDMClient) SubmitNewAlgoOrder(ctx context.Context, params types.NewAlgoOrderParams) (*types.AlgoOrderResponse, error) {
+	var result types.AlgoOrderResponse
+	err := c.Post(ctx, "/fapi/v1/algoOrder", params, true, &result)
+	return &result, err
+}
+
+// CancelAlgoOrder cancels an algo order (DELETE /fapi/v1/algoOrder).
+func (c *USDMClient) CancelAlgoOrder(ctx context.Context, params types.CancelAlgoOrderParams) (*types.CancelAlgoOrderResponse, error) {
+	var result types.CancelAlgoOrderResponse
+	err := c.Delete(ctx, "/fapi/v1/algoOrder", params, true, &result)
+	return &result, err
+}
+
+// GetAlgoOrder returns an algo order's details (GET /fapi/v1/algoOrder).
+func (c *USDMClient) GetAlgoOrder(ctx context.Context, params types.QueryAlgoOrderParams) (*types.QueryAlgoOrderResponse, error) {
+	var result types.QueryAlgoOrderResponse
+	err := c.Get(ctx, "/fapi/v1/algoOrder", params, true, &result)
+	return &result, err
+}
+
+// GetOpenAlgoOrders returns all open algo orders (GET /fapi/v1/openAlgoOrders).
+func (c *USDMClient) GetOpenAlgoOrders(ctx context.Context, params *types.QueryOpenAlgoOrdersParams) ([]types.AlgoOrderResponse, error) {
+	var result []types.AlgoOrderResponse
+	err := c.Get(ctx, "/fapi/v1/openAlgoOrders", params, true, &result)
+	return result, err
+}
+
 // Commission Rate
 
 // GetCommissionRate returns commission rate.

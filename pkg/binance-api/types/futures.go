@@ -445,7 +445,7 @@ type FuturesAccountBalance struct {
 	AvailableBalance   string `json:"availableBalance"`
 	MaxWithdrawAmount  string `json:"maxWithdrawAmount"`
 	MarginAvailable    bool   `json:"marginAvailable"`
-	UpdateTime         string `json:"updateTime"`
+	UpdateTime         int64  `json:"updateTime"`
 }
 
 // FuturesAccountInformation represents futures account information.
@@ -580,6 +580,116 @@ type UserCommissionRate struct {
 	Symbol              string `json:"symbol"`
 	MakerCommissionRate string `json:"makerCommissionRate"`
 	TakerCommissionRate string `json:"takerCommissionRate"`
+}
+
+// ============================================================================//
+// Algo Order Types (Futures Algo Service - /fapi/v1/algoOrder)
+// ============================================================================//
+
+// AlgoOrderType represents algo order type (always CONDITIONAL for futures).
+type AlgoOrderType string
+
+const AlgoOrderTypeConditional AlgoOrderType = "CONDITIONAL"
+
+// AlgoConditionalOrderType represents the specific algo order subtype.
+type AlgoConditionalOrderType string
+
+const (
+	AlgoOrderStopMarket         AlgoConditionalOrderType = "STOP_MARKET"
+	AlgoOrderTakeProfitMarket   AlgoConditionalOrderType = "TAKE_PROFIT_MARKET"
+	AlgoOrderStop               AlgoConditionalOrderType = "STOP"
+	AlgoOrderTakeProfit         AlgoConditionalOrderType = "TAKE_PROFIT"
+	AlgoOrderTrailingStopMarket AlgoConditionalOrderType = "TRAILING_STOP_MARKET"
+)
+
+// AlgoOrderStatus represents algo order status.
+type AlgoOrderStatus string
+
+const (
+	AlgoStatusNew        AlgoOrderStatus = "NEW"
+	AlgoStatusCanceled   AlgoOrderStatus = "CANCELED"
+	AlgoStatusTriggering AlgoOrderStatus = "TRIGGERING"
+	AlgoStatusTriggered  AlgoOrderStatus = "TRIGGERED"
+	AlgoStatusFinished   AlgoOrderStatus = "FINISHED"
+	AlgoStatusRejected   AlgoOrderStatus = "REJECTED"
+	AlgoStatusExpired    AlgoOrderStatus = "EXPIRED"
+)
+
+// NewAlgoOrderParams represents parameters for POST /fapi/v1/algoOrder.
+type NewAlgoOrderParams struct {
+	AlgoType        AlgoOrderType            `json:"algoType"`
+	Symbol          string                   `json:"symbol"`
+	Side            OrderSide                `json:"side"`
+	PositionSide    PositionSide             `json:"positionSide,omitempty"`
+	Type            AlgoConditionalOrderType `json:"type"`
+	TimeInForce     OrderTimeInForce         `json:"timeInForce,omitempty"`
+	Quantity        string                   `json:"quantity,omitempty"`
+	Price           string                   `json:"price,omitempty"`
+	TriggerPrice    string                   `json:"triggerPrice,omitempty"`
+	WorkingType     WorkingType              `json:"workingType,omitempty"`
+	ClosePosition   string                   `json:"closePosition,omitempty"`
+	PriceProtect    string                   `json:"priceProtect,omitempty"`
+	ReduceOnly      string                   `json:"reduceOnly,omitempty"`
+	ActivationPrice string                   `json:"activationPrice,omitempty"`
+	CallbackRate    string                   `json:"callbackRate,omitempty"`
+	ClientAlgoID    string                   `json:"clientAlgoId,omitempty"`
+}
+
+// AlgoOrderResponse represents response from POST /fapi/v1/algoOrder and GET /fapi/v1/openAlgoOrders.
+type AlgoOrderResponse struct {
+	AlgoID        int64                    `json:"algoId"`
+	ClientAlgoID  string                   `json:"clientAlgoId"`
+	AlgoType      AlgoOrderType            `json:"algoType"`
+	OrderType     AlgoConditionalOrderType `json:"orderType"`
+	Symbol        string                   `json:"symbol"`
+	Side          OrderSide                `json:"side"`
+	PositionSide  PositionSide             `json:"positionSide"`
+	TimeInForce   OrderTimeInForce         `json:"timeInForce"`
+	Quantity      string                   `json:"quantity"`
+	AlgoStatus    AlgoOrderStatus          `json:"algoStatus"`
+	TriggerPrice  string                   `json:"triggerPrice"`
+	Price         string                   `json:"price"`
+	ReduceOnly    bool                     `json:"reduceOnly"`
+	ActivatePrice string                   `json:"activatePrice"`
+	CallbackRate  string                   `json:"callbackRate"`
+	WorkingType   WorkingType              `json:"workingType"`
+	CreateTime    int64                    `json:"createTime"`
+	UpdateTime    int64                    `json:"updateTime"`
+	TriggerTime   int64                    `json:"triggerTime"`
+}
+
+// CancelAlgoOrderParams represents parameters for DELETE /fapi/v1/algoOrder.
+type CancelAlgoOrderParams struct {
+	AlgoID       int64  `json:"algoId,omitempty"`
+	ClientAlgoID string `json:"clientAlgoId,omitempty"`
+}
+
+// CancelAlgoOrderResponse represents response from DELETE /fapi/v1/algoOrder.
+type CancelAlgoOrderResponse struct {
+	AlgoID       int64  `json:"algoId"`
+	ClientAlgoID string `json:"clientAlgoId"`
+	Code         string `json:"code"`
+	Msg          string `json:"msg"`
+}
+
+// QueryAlgoOrderParams represents parameters for GET /fapi/v1/algoOrder.
+type QueryAlgoOrderParams struct {
+	AlgoID       int64  `json:"algoId,omitempty"`
+	ClientAlgoID string `json:"clientAlgoId,omitempty"`
+}
+
+// QueryAlgoOrderResponse represents response from GET /fapi/v1/algoOrder.
+type QueryAlgoOrderResponse struct {
+	AlgoOrderResponse
+	ActualOrderID string `json:"actualOrderId"`
+	ActualPrice   string `json:"actualPrice"`
+}
+
+// QueryOpenAlgoOrdersParams represents parameters for GET /fapi/v1/openAlgoOrders.
+type QueryOpenAlgoOrdersParams struct {
+	AlgoType AlgoOrderType `json:"algoType,omitempty"`
+	Symbol   string        `json:"symbol,omitempty"`
+	AlgoID   int64         `json:"algoId,omitempty"`
 }
 
 // ChangeStats24hr represents 24hr change statistics.

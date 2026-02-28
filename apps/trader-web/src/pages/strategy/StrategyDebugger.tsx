@@ -68,12 +68,12 @@ const StrategyDebugger: React.FC = () => {
   const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Load symbols
-  const { data: symbols } = useQuery({
+  const { data } = useQuery({
     queryKey: ['symbols', exchange, tradeType],
     queryFn: () => marketApi.getSymbols({ exchange, tradeType }),
   })
 
-  const symbolOptions = (symbols ?? []).map((s: { symbol: string }) => ({
+  const symbolOptions = (data?.symbols ?? []).map((s: { symbol: string }) => ({
     value: s.symbol,
     label: s.symbol,
   }))
@@ -315,7 +315,7 @@ const StrategyDebugger: React.FC = () => {
             {step ? (
               <Descriptions
                 data={[
-                  { key: '时间', value: formatDateTime(step.timestamp * 1000) },
+                  { key: '时间', value: formatDateTime(step.timestamp) },
                   { key: 'Open', value: formatPrice(step.bar.open) },
                   { key: 'High', value: formatPrice(step.bar.high) },
                   { key: 'Low', value: formatPrice(step.bar.low) },
