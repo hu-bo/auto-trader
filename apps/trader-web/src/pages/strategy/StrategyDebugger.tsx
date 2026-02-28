@@ -56,7 +56,7 @@ const StrategyDebugger: React.FC = () => {
   // Data source selector
   const [exchange, setExchange] = useState('binance')
   const [tradeType] = useState('spot')
-  const [symbol, setSymbol] = useState('BTC-USDT')
+  const [symbol, setSymbol] = useState('ETH-USDT')
   const [period, setPeriod] = useState('15m')
   const [limit, setLimit] = useState(200)
 

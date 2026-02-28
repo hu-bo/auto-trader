@@ -18,6 +18,8 @@ type GrpcOrderStatus =
   | 'ORDER_STATUS_CANCELED'
   | 'ORDER_STATUS_REJECTED'
   | 'ORDER_STATUS_EXPIRED';
+type GrpcStrategyOrderType = 'STRATEGY_ORDER_TYPE_STOP_LOSS' | 'STRATEGY_ORDER_TYPE_TAKE_PROFIT' | 'STRATEGY_ORDER_TYPE_TRIGGER' | 'STRATEGY_ORDER_TYPE_TRAILING_STOP';
+type GrpcStrategyTriggerPriceType = 'STRATEGY_TRIGGER_PRICE_TYPE_LAST' | 'STRATEGY_TRIGGER_PRICE_TYPE_MARK' | 'STRATEGY_TRIGGER_PRICE_TYPE_INDEX';
 
 function mapTradeType(input: string): GrpcTradeType {
   const v = input.trim().toUpperCase();
@@ -68,6 +70,23 @@ function mapOrderStatus(input: string): GrpcOrderStatus {
   throw new httpError.BadRequestError(`Invalid status: ${input}`);
 }
 
+function mapStrategyOrderType(input: string): GrpcStrategyOrderType {
+  const v = input.trim().toLowerCase();
+  if (v === 'stop-loss' || v === 'stop_loss') return 'STRATEGY_ORDER_TYPE_STOP_LOSS';
+  if (v === 'take-profit' || v === 'take_profit') return 'STRATEGY_ORDER_TYPE_TAKE_PROFIT';
+  if (v === 'trigger') return 'STRATEGY_ORDER_TYPE_TRIGGER';
+  if (v === 'trailing-stop' || v === 'trailing_stop') return 'STRATEGY_ORDER_TYPE_TRAILING_STOP';
+  throw new httpError.BadRequestError(`Invalid strategy_type: ${input}`);
+}
+
+function mapStrategyTriggerPriceType(input: string): GrpcStrategyTriggerPriceType {
+  const v = input.trim().toLowerCase();
+  if (v === 'last') return 'STRATEGY_TRIGGER_PRICE_TYPE_LAST';
+  if (v === 'mark') return 'STRATEGY_TRIGGER_PRICE_TYPE_MARK';
+  if (v === 'index') return 'STRATEGY_TRIGGER_PRICE_TYPE_INDEX';
+  throw new httpError.BadRequestError(`Invalid trigger_price_type: ${input}`);
+}
+
 function mapGrpcError(err: grpc.ServiceError): Error {
   const message = err.details || err.message || 'gRPC request failed';
   switch (err.code) {
@@ -98,6 +117,11 @@ type ExchangeServiceClient = {
   syncPositions: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
   getBalance: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
   setLeverage: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
+  placeStrategyOrder: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
+  placeStrategyOrders: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
+  cancelStrategyOrder: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
+  getStrategyOrder: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
+  getOpenStrategyOrders: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
 };
 
 @Provide()
@@ -284,5 +308,129 @@ export class ExchangeGrpcClient {
     };
     if (params.positionSide != null) req.position_side = mapPositionSide(params.positionSide);
     return await this.unary(cb => client.setLeverage(req, cb));
+  }
+
+  async placeStrategyOrder(params: {
+    token?: string;
+    symbol: string;
+    tradeType: string;
+    side: string;
+    strategyType: string;
+    quantity: number;
+    triggerPrice: number;
+    positionSide?: string | null;
+    triggerPriceType?: string | null;
+    orderPrice?: number | null;
+    reduceOnly?: boolean | null;
+    clientAlgoId?: string | null;
+    callbackRatio?: number | null;
+    activationPrice?: number | null;
+    slTriggerPrice?: number | null;
+    tpTriggerPrice?: number | null;
+  }): Promise<any> {
+    const client = this.getClient();
+    const req: any = {
+      token: params.token ?? this.getToken(),
+      symbol: params.symbol,
+      trade_type: mapTradeType(params.tradeType),
+      side: mapOrderSide(params.side),
+      strategy_type: mapStrategyOrderType(params.strategyType),
+      quantity: params.quantity,
+      trigger_price: params.triggerPrice,
+    };
+    if (params.positionSide != null) req.position_side = mapPositionSide(params.positionSide);
+    if (params.triggerPriceType != null) req.trigger_price_type = mapStrategyTriggerPriceType(params.triggerPriceType);
+    if (params.orderPrice != null) req.order_price = params.orderPrice;
+    if (params.reduceOnly != null) req.reduce_only = params.reduceOnly;
+    if (params.clientAlgoId != null) req.client_algo_id = params.clientAlgoId;
+    if (params.callbackRatio != null) req.callback_ratio = params.callbackRatio;
+    if (params.activationPrice != null) req.activation_price = params.activationPrice;
+    if (params.slTriggerPrice != null) req.sl_trigger_price = params.slTriggerPrice;
+    if (params.tpTriggerPrice != null) req.tp_trigger_price = params.tpTriggerPrice;
+    return await this.unary(cb => client.placeStrategyOrder(req, cb));
+  }
+
+  async placeStrategyOrders(params: {
+    token?: string;
+    orders: Array<{
+      symbol: string;
+      tradeType: string;
+      side: string;
+      strategyType: string;
+      quantity: number;
+      triggerPrice: number;
+      positionSide?: string | null;
+      triggerPriceType?: string | null;
+      orderPrice?: number | null;
+      reduceOnly?: boolean | null;
+      clientAlgoId?: string | null;
+      slTriggerPrice?: number | null;
+      tpTriggerPrice?: number | null;
+    }>;
+  }): Promise<any> {
+    const client = this.getClient();
+    const token = params.token ?? this.getToken();
+    const orders = params.orders.map(o => {
+      const req: any = {
+        token,
+        symbol: o.symbol,
+        trade_type: mapTradeType(o.tradeType),
+        side: mapOrderSide(o.side),
+        strategy_type: mapStrategyOrderType(o.strategyType),
+        quantity: o.quantity,
+        trigger_price: o.triggerPrice,
+      };
+      if (o.positionSide != null) req.position_side = mapPositionSide(o.positionSide);
+      if (o.triggerPriceType != null) req.trigger_price_type = mapStrategyTriggerPriceType(o.triggerPriceType);
+      if (o.orderPrice != null) req.order_price = o.orderPrice;
+      if (o.reduceOnly != null) req.reduce_only = o.reduceOnly;
+      if (o.clientAlgoId != null) req.client_algo_id = o.clientAlgoId;
+      if (o.slTriggerPrice != null) req.sl_trigger_price = o.slTriggerPrice;
+      if (o.tpTriggerPrice != null) req.tp_trigger_price = o.tpTriggerPrice;
+      return req;
+    });
+    return await this.unary(cb => client.placeStrategyOrders({ token, orders }, cb));
+  }
+
+  async cancelStrategyOrder(params: {
+    token?: string;
+    symbol: string;
+    algoId: string;
+    tradeType: string;
+  }): Promise<any> {
+    const client = this.getClient();
+    const req = {
+      token: params.token ?? this.getToken(),
+      symbol: params.symbol,
+      algo_id: params.algoId,
+      trade_type: mapTradeType(params.tradeType),
+    };
+    return await this.unary(cb => client.cancelStrategyOrder(req, cb));
+  }
+
+  async getStrategyOrder(params: {
+    token?: string;
+    algoId: string;
+    tradeType: string;
+  }): Promise<any> {
+    const client = this.getClient();
+    const req = {
+      token: params.token ?? this.getToken(),
+      algo_id: params.algoId,
+      trade_type: mapTradeType(params.tradeType),
+    };
+    return await this.unary(cb => client.getStrategyOrder(req, cb));
+  }
+
+  async getOpenStrategyOrders(params: {
+    token?: string;
+    symbol?: string;
+    tradeType?: string;
+  }): Promise<any> {
+    const client = this.getClient();
+    const req: any = { token: params.token ?? this.getToken() };
+    if (params.symbol) req.symbol = params.symbol;
+    if (params.tradeType) req.trade_type = mapTradeType(params.tradeType);
+    return await this.unary(cb => client.getOpenStrategyOrders(req, cb));
   }
 }

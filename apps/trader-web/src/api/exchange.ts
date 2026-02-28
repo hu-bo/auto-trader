@@ -9,7 +9,7 @@ export const exchangeApi = {
   create: (data: ExchangeCreate) => requestData.post<Exchange>('/exchanges', data),
 
   // 更新交易所
-  update: (id: string, data: ExchangeUpdate) =>
+  update: ({ id, ...data }: ExchangeUpdate) =>
     requestData.put<Exchange>(`/exchanges/${id}`, data),
 
   // 删除交易所

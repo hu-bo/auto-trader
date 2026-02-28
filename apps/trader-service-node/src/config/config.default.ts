@@ -47,8 +47,9 @@ export default {
     },
   },
   exchangeAdapter: {
-    grpc: 'localhost:50051',
-    apiKey: ''
+    grpc: 'localhost:9101',
+    apiKey: '',
+    http: 'http://127.0.0.1:9100',
   },
   strategyEngine: {
     grpc: process.env.STRATEGY_ENGINE_GRPC ?? 'localhost:50052',

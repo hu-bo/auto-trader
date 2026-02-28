@@ -8,7 +8,6 @@ import {
   Toast,
   Tag,
   Empty,
-  Popconfirm,
   Typography,
 } from '@douyinfe/semi-ui-19'
 import type { FormApi } from '@douyinfe/semi-ui-19/lib/es/form'
@@ -16,7 +15,7 @@ import { IconPlus, IconLink, IconDelete } from '@douyinfe/semi-icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { exchangeApi } from '@/api'
 import { formatDateTime } from '@/utils/format'
-import type { Exchange, ExchangeType } from '@/types'
+import type { Exchange, ExchangeCreate, ExchangeType } from '@/types'
 
 const { Title } = Typography
 
@@ -51,8 +50,7 @@ const ExchangeConfig: React.FC = () => {
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof exchangeApi.update>[1] }) =>
-      exchangeApi.update(id, data),
+    mutationFn: exchangeApi.update,
     onSuccess: () => {
       Toast.success('交易所更新成功')
       queryClient.invalidateQueries({ queryKey: ['exchanges'] })
@@ -78,10 +76,10 @@ const ExchangeConfig: React.FC = () => {
   const testMutation = useMutation({
     mutationFn: exchangeApi.test,
     onSuccess: (data) => {
-      if (data.success) {
+      if (data.valid) {
         Toast.success('连接测试成功')
       } else {
-        Toast.error(data.message || '连接测试失败')
+        Toast.error(data.error ? JSON.stringify(data.error, null, 2) : '连接测试失败')
       }
     },
     onError: (error: Error) => {
@@ -89,28 +87,12 @@ const ExchangeConfig: React.FC = () => {
     },
   })
 
-  const handleSubmit = (values: Record<string, unknown>) => {
+  const handleSubmit = (values: ExchangeCreate) => {
     if (editingExchange) {
-      updateMutation.mutate({
-        id: editingExchange.id,
-        data: {
-          name: values.name as string,
-          apiKey: values.apiKey as string,
-          apiSecret: values.apiSecret as string,
-          passphrase: values.passphrase as string,
-          isTestnet: values.isTestnet as boolean,
-          isActive: values.isActive as boolean,
-        },
-      })
+      const { exchangeType, ...rest } = values
+      updateMutation.mutate({ id: editingExchange.id, ...rest })
     } else {
-      createMutation.mutate({
-        exchangeType: values.exchangeType as ExchangeType,
-        name: values.name as string,
-        apiKey: values.apiKey as string,
-        apiSecret: values.apiSecret as string,
-        passphrase: values.passphrase as string,
-        isTestnet: values.isTestnet as boolean,
-      })
+      createMutation.mutate(values)
     }
   }
 
@@ -145,15 +127,15 @@ const ExchangeConfig: React.FC = () => {
         </Tag>
       ),
     },
-    {
-      title: 'API 状态',
-      dataIndex: 'hasGrpcToken',
-      render: (has: boolean) => (
-        <Tag color={has ? 'green' : 'red'}>
-          {has ? '已连接' : '未连接'}
-        </Tag>
-      ),
-    },
+    // {
+    //   title: 'API 状态',
+    //   dataIndex: 'hasGrpcToken',
+    //   render: (has: boolean) => (
+    //     <Tag color={has ? 'green' : 'red'}>
+    //       {has ? '已连接' : '未连接'}
+    //     </Tag>
+    //   ),
+    // },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
@@ -181,14 +163,20 @@ const ExchangeConfig: React.FC = () => {
           >
             编辑
           </Button>
-          <Popconfirm
-            title="确定要删除此交易所配置吗？"
-            onConfirm={() => deleteMutation.mutate(record.id)}
+          <Button
+            size="small"
+            type="danger"
+            icon={<IconDelete />}
+            onClick={() =>
+              Modal.confirm({
+                title: '确认删除',
+                content: '确定要删除此交易所配置吗？',
+                onOk: () => deleteMutation.mutate(record.id),
+              })
+            }
           >
-            <Button size="small" type="danger" icon={<IconDelete />}>
-              删除
-            </Button>
-          </Popconfirm>
+            删除
+          </Button>
         </div>
       ),
     },
@@ -240,6 +228,7 @@ const ExchangeConfig: React.FC = () => {
         width={500}
       >
         <Form
+          key={editingExchange?.id ?? 'create'}
           getFormApi={(api) => (formApiRef.current = api)}
           onSubmit={handleSubmit}
           labelPosition="left"
@@ -249,13 +238,16 @@ const ExchangeConfig: React.FC = () => {
               ? {
                   name: editingExchange.name,
                   exchangeType: editingExchange.exchangeType,
+                  apiKey: editingExchange.apiKey ?? '',
+                  apiSecret: editingExchange.apiSecret ?? '',
+                  passphrase: editingExchange.passphrase ?? '',
                   isTestnet: editingExchange.isTestnet,
                   isActive: editingExchange.isActive,
                 }
               : {
                   isTestnet: false,
                   isActive: true,
-                }
+                } as ExchangeCreate
           }
         >
           {!editingExchange && (
@@ -280,7 +272,7 @@ const ExchangeConfig: React.FC = () => {
             field="apiKey"
             label="API Key"
             placeholder="输入 API Key"
-            rules={[{ required: !editingExchange, message: '请输入 API Key' }]}
+            rules={[{ required: true, message: '请输入 API Key' }]}
             style={{ width: '100%' }}
           />
 
@@ -289,7 +281,7 @@ const ExchangeConfig: React.FC = () => {
             label="API Secret"
             placeholder="输入 API Secret"
             mode="password"
-            rules={[{ required: !editingExchange, message: '请输入 API Secret' }]}
+            rules={[{ required: true, message: '请输入 API Secret' }]}
             style={{ width: '100%' }}
           />
 

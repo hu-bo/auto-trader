@@ -20,6 +20,7 @@ services:
       - nats
     ports:
       - "9100:9100"
+      - "9101:9101"
     restart: always
     volumes:
       - ./:/app

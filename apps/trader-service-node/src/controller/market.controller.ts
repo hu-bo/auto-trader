@@ -1,14 +1,17 @@
-import { Controller, Get, Query, Config } from '@midwayjs/core';
+import { Controller, Config, Get, Query } from '@midwayjs/core';
 import axios from 'axios';
 import { apiFail, apiOk } from '../util/api-response.js';
-import { ExchangeAdapterConfig } from '../types/config.js';
-
-const baseUrl = process.env.NODE_ENV === 'local' ? 'http://127.0.0.1:9100' : 'http://exchange-sync.8and1.cn';
+import { exchangeSync } from '../common/exchange-sync.js';
+import type { ExchangeAdapterConfig } from '../types/config.js';
 
 @Controller('/api/v1/market')
 export class MarketController {
   @Config('exchangeAdapter')
-   exchangeAdapter!: ExchangeAdapterConfig;
+  exchangeAdapter!: ExchangeAdapterConfig;
+
+  private async ensureSync() {
+    await exchangeSync.init(this.exchangeAdapter);
+  }
 
   /**
    * 代理获取历史 K 线数据 (从 exchange-sync 服务)
@@ -25,30 +28,24 @@ export class MarketController {
     @Query('column') column?: string,
   ) {
     try {
-      const resp = await axios.get(`${baseUrl}/api/candles`, {
-        params: {
-          exchange: exchange || 'binance',
-          symbol: symbol || 'BTC-USDT',
-          trade_type: tradeType,
-          period,
-          limit,
-          start_time: startTime,
-          end_time: endTime,
-          column,
-        },
-        headers: {
-          'X-API-Key': this.exchangeAdapter.apiKey
-        },
-        timeout: 10000,
+      await this.ensureSync();
+      const json = await exchangeSync.getCandles({
+        exchange: exchange || 'binance',
+        symbol: symbol || 'BTC-USDT',
+        tradeType,
+        period,
+        limit,
+        startTime,
+        endTime,
+        column,
       });
-      const json = resp.data;
       if (json.code != 0) {
         return apiFail(json.message)
       }
       return apiOk(json.data);
     } catch (error: any) {
-      return apiFail(axios.isAxiosError(error) && error.code === 'ECONNREFUSED' 
-        ? '无法连接到 exchange-sync 服务' 
+      return apiFail(axios.isAxiosError(error) && error.code === 'ECONNREFUSED'
+        ? '无法连接到 exchange-sync 服务'
         : error.message || '获取 K 线数据失败');
     }
   }
@@ -64,23 +61,17 @@ export class MarketController {
     @Query('period') period?: string,
   ) {
     try {
-      const resp = await axios.get(`${baseUrl}/api/candle/current`, {
-        params: {
-          exchange: exchange || 'binance',
-          symbol: symbol || 'BTC-USDT',
-          trade_type: tradeType,
-          period,
-        },
-        headers: {
-          "X-API-Key": this.exchangeAdapter.apiKey
-        },
-        timeout: 10000,
+      await this.ensureSync();
+      const json = await exchangeSync.getCurrentCandle({
+        exchange: exchange || 'binance',
+        symbol: symbol || 'BTC-USDT',
+        tradeType,
+        period,
       });
-      const json = resp.data;
       return apiOk(json.data);
     } catch (error: any) {
-      return apiFail(axios.isAxiosError(error) && error.code === 'ECONNREFUSED' 
-        ? '无法连接到 exchange-sync 服务' 
+      return apiFail(axios.isAxiosError(error) && error.code === 'ECONNREFUSED'
+        ? '无法连接到 exchange-sync 服务'
         : error.message || '获取当前 K 线失败');
     }
   }
@@ -97,27 +88,21 @@ export class MarketController {
     @Query('order') order?: string,
   ) {
     try {
-      const resp = await axios.get(`${baseUrl}/api/symbols`, {
-        params: {
-          exchange: exchange || 'binance',
-          trade_type: tradeType,
-          symbol,
-          orderBy,
-          order,
-        },
-        headers: {
-          'X-API-Key': this.exchangeAdapter.apiKey,
-        },
-        timeout: 10000,
+      await this.ensureSync();
+      const json = await exchangeSync.getSymbols({
+        exchange: exchange || 'binance',
+        tradeType,
+        symbol,
+        orderBy,
+        order,
       });
-      const json = resp.data;
       if (json.code != 0) {
         return apiFail(json.message);
       }
       return apiOk(json.data);
     } catch (error: any) {
-      return apiFail(axios.isAxiosError(error) && error.code === 'ECONNREFUSED' 
-        ? '无法连接到 exchange-sync 服务' 
+      return apiFail(axios.isAxiosError(error) && error.code === 'ECONNREFUSED'
+        ? '无法连接到 exchange-sync 服务'
         : error.message || '获取交易对列表失败');
     }
   }
@@ -132,25 +117,9 @@ export class MarketController {
     @Query('trade_type') tradeType?: string,
   ) {
     try {
-      const url = `${baseUrl}/api/tickers`;
-      console.log('Requesting:', url, { exchange: exchange || 'binance', trade_type: tradeType });
-      
-      const resp = await axios.get(url, {
-        params: {
-          exchange: exchange || 'binance',
-          trade_type: tradeType,
-        },
-        headers: {
-          'X-API-Key': this.exchangeAdapter.apiKey,
-        },
-        timeout: 10000, // 10秒超时
-      });
-      
-      const json = resp.data;
-      if (json.code != 0) {
-        return apiFail(json.message);
-      }
-      return apiOk(json.data);
+      await this.ensureSync();
+      const data = await exchangeSync.getTickers(exchange || 'binance', tradeType);
+      return apiOk(data);
     } catch (error: any) {
       return apiFail(error.message || '获取 tickers 失败');
     }

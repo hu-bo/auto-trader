@@ -54,12 +54,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const { user, logout } = useAuth()
   const { theme, toggleTheme, selectedExchange, setSelectedExchange } = useAppStore()
 
-  const handleExchangeChange = (value: string | number | any[] | Record<string, any> | undefined) => {
-    const exchange = exchanges?.find((e) => e.id === value)
-    if (exchange) {
-      setSelectedExchange(exchange)
-    }
-  }
+  // const handleExchangeChange = (value: string | number | any[] | Record<string, any> | undefined) => {
+  //   const exchange = exchanges?.find((e) => e.id === value)
+  //   if (exchange) {
+  //     setSelectedExchange(exchange)
+  //   }
+  // }
 
   const userMenu = (
     <Dropdown.Menu>
@@ -92,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         />
 
         {/* 交易所选择器 */}
-        <Select
+        {/* <Select
           value={selectedExchange?.id}
           onChange={handleExchangeChange}
           placeholder="选择交易所"
@@ -109,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               </div>
             ),
           }))}
-        />
+        /> */}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>

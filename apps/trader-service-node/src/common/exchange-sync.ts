@@ -1,0 +1,181 @@
+import axios from 'axios';
+
+export interface SymbolPrecision {
+  pricePrecision: number;
+  quantityPrecision: number;
+  tickSize: string;
+  stepSize: string;
+}
+
+/** cache key: `${exchange}:${tradeType}:${symbol}` */
+type PrecisionMap = Map<string, SymbolPrecision>;
+
+const REFRESH_INTERVAL = 24 * 60 * 60 * 1000; // 24h
+
+class ExchangeSync {
+  private baseUrl = '';
+  private apiKey = '';
+  private precisionCache: PrecisionMap = new Map();
+  private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private initPromise: Promise<void> | null = null;
+
+  private get headers() {
+    return this.apiKey ? { 'X-API-Key': this.apiKey } : {};
+  }
+
+  // ────────── lifecycle ──────────
+
+  /**
+   * 幂等初始化，多次调用只执行一次
+   */
+  init(config: { http: string; apiKey: string }): Promise<void> {
+    if (!this.initPromise) {
+      this.initPromise = this.doInit(config);
+    }
+    return this.initPromise;
+  }
+
+  private async doInit(config: { http: string; apiKey: string }) {
+    this.baseUrl = config.http;
+    this.apiKey = config.apiKey;
+    await this.loadAllPrecision();
+    this.refreshTimer = setInterval(() => {
+      this.loadAllPrecision().catch(err =>
+        console.error('[ExchangeSync] precision refresh failed:', err)
+      );
+    }, REFRESH_INTERVAL);
+    console.log('[ExchangeSync] precision cache initialized, count=%d', this.precisionCache.size);
+  }
+
+  destroy() {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+  }
+
+  // ────────── precision ──────────
+
+  private async loadAllPrecision() {
+    const exchanges = ['binance', 'okx'];
+    const tradeTypes = ['spot', 'futures'];
+    const next: PrecisionMap = new Map();
+
+    for (const exchange of exchanges) {
+      for (const tradeType of tradeTypes) {
+        try {
+          const resp = await axios.get(`${this.baseUrl}/api/symbols`, {
+            params: { exchange, trade_type: tradeType },
+            headers: this.headers,
+            timeout: 15000,
+          });
+          const symbols: any[] = resp.data?.data?.symbols ?? [];
+          for (const s of symbols) {
+            next.set(`${exchange}:${tradeType}:${s.symbol}`, {
+              pricePrecision: s.pricePrecision ?? 0,
+              quantityPrecision: s.quantityPrecision ?? 0,
+              tickSize: s.tickSize ?? '',
+              stepSize: s.stepSize ?? '',
+            });
+          }
+        } catch (err) {
+          console.warn('[ExchangeSync] load precision %s/%s failed:', exchange, tradeType, err);
+        }
+      }
+    }
+
+    if (next.size > 0) {
+      this.precisionCache = next;
+    }
+  }
+
+  getSymbolPrecision(exchange: string, tradeType: string, symbol: string): SymbolPrecision | undefined {
+    return this.precisionCache.get(`${exchange}:${tradeType}:${symbol}`);
+  }
+
+  /** 按精度向下截断价格 */
+  truncatePrice(value: number, exchange: string, tradeType: string, symbol: string): number {
+    const p = this.getSymbolPrecision(exchange, tradeType, symbol);
+    if (!p) return value;
+    const factor = 10 ** p.pricePrecision;
+    return Math.floor(value * factor) / factor;
+  }
+
+  /** 按精度向下截断数量 */
+  truncateQuantity(value: number, exchange: string, tradeType: string, symbol: string): number {
+    const p = this.getSymbolPrecision(exchange, tradeType, symbol);
+    if (!p) return value;
+    const factor = 10 ** p.quantityPrecision;
+    return Math.floor(value * factor) / factor;
+  }
+
+  // ────────── HTTP proxies ──────────
+
+  async getTickerPriceMap(exchange: string, tradeType: string): Promise<Map<string, number>> {
+    const resp = await axios.get(`${this.baseUrl}/api/tickers/price-map`, {
+      params: { exchange, trade_type: tradeType },
+      headers: this.headers,
+      timeout: 5000,
+    });
+    const data: Record<string, number> = resp.data?.data ?? {};
+    return new Map(Object.entries(data));
+  }
+
+  async getTickers(exchange: string, tradeType?: string) {
+    const resp = await axios.get(`${this.baseUrl}/api/tickers`, {
+      params: { exchange, trade_type: tradeType },
+      headers: this.headers,
+      timeout: 10000,
+    });
+    return resp.data?.data;
+  }
+
+  async getCandles(params: {
+    exchange: string; symbol: string; tradeType?: string;
+    period?: string; limit?: string; startTime?: string;
+    endTime?: string; column?: string;
+  }) {
+    const resp = await axios.get(`${this.baseUrl}/api/candles`, {
+      params: {
+        exchange: params.exchange, symbol: params.symbol,
+        trade_type: params.tradeType, period: params.period,
+        limit: params.limit, start_time: params.startTime,
+        end_time: params.endTime, column: params.column,
+      },
+      headers: this.headers,
+      timeout: 10000,
+    });
+    return resp.data;
+  }
+
+  async getCurrentCandle(params: {
+    exchange: string; symbol: string; tradeType?: string; period?: string;
+  }) {
+    const resp = await axios.get(`${this.baseUrl}/api/candle/current`, {
+      params: {
+        exchange: params.exchange, symbol: params.symbol,
+        trade_type: params.tradeType, period: params.period,
+      },
+      headers: this.headers,
+      timeout: 10000,
+    });
+    return resp.data;
+  }
+
+  async getSymbols(params: {
+    exchange: string; tradeType?: string; symbol?: string;
+    orderBy?: string; order?: string;
+  }) {
+    const resp = await axios.get(`${this.baseUrl}/api/symbols`, {
+      params: {
+        exchange: params.exchange, trade_type: params.tradeType,
+        symbol: params.symbol, orderBy: params.orderBy, order: params.order,
+      },
+      headers: this.headers,
+      timeout: 10000,
+    });
+    return resp.data;
+  }
+}
+
+export const exchangeSync = new ExchangeSync();

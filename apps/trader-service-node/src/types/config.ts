@@ -24,6 +24,7 @@ export interface EncryptionConfig {
 export interface ExchangeAdapterConfig {
   apiKey: string;
   grpc: string;
+  http: string;
 }
 
 export interface StrategyEngineConfig {

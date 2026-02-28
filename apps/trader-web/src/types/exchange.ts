@@ -5,35 +5,30 @@ export interface Exchange {
   userId: string
   exchangeType: ExchangeType
   name: string
+  apiKey?: string
+  apiSecret?: string
+  passphrase?: string
   isTestnet: boolean
   isActive: boolean
   createdAt: string
   updatedAt: string
 }
 
-export interface ExchangeCreate {
-  exchangeType: ExchangeType
-  name: string
-  apiKey: string
-  apiSecret: string
-  passphrase?: string
-  isTestnet?: boolean
-  isActive?: boolean
-}
+export type ExchangeCreate =
+  Pick<Exchange, 'exchangeType' | 'name'> &
+  Required<Pick<Exchange, 'apiKey' | 'apiSecret'>> &
+  Partial<Pick<Exchange, 'passphrase' | 'isTestnet' | 'isActive'>>
 
-export interface ExchangeUpdate {
-  name?: string
-  apiKey?: string
-  apiSecret?: string
-  passphrase?: string
-  isTestnet?: boolean
-  isActive?: boolean
-}
+export type ExchangeUpdate =
+  Pick<Exchange, 'id'> &
+  Partial<Pick<Exchange, 'name' | 'apiKey' | 'apiSecret' | 'passphrase' | 'isTestnet' | 'isActive'>>
 
 export interface ExchangeTestResult {
-  success: boolean
-  message: string
-  balance?: Record<string, number>
+  initialized: boolean
+  exchange: string
+  token: string
+  valid: boolean
+  error?: { code: string; message: string }
 }
 
 // 交易类型

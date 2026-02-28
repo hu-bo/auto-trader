@@ -25,10 +25,16 @@ export class ExchangeController {
     return user.id;
   }
 
-  private toExchangeRead(exchange: any) {
+  private toExchangeRead(
+    exchange: any,
+    creds?: { apiKey: string; apiSecret: string; passphrase: string | null }
+  ) {
     return {
       id: exchange.id,
       userId: exchange.userid,
+      apiKey: creds?.apiKey ?? undefined,
+      apiSecret: creds?.apiSecret ?? undefined,
+      passphrase: creds?.passphrase ?? undefined,
       exchangeType: exchange.exchangeType,
       name: exchange.name,
       isTestnet: exchange.isTestnet,
@@ -42,7 +48,13 @@ export class ExchangeController {
   async list() {
     const userid = await this.getUserid();
     const exchanges = await this.exchangeService.listForUser(userid);
-    return apiOk(exchanges.map(x => this.toExchangeRead(x)));
+    const results = await Promise.all(
+      exchanges.map(async (x) => {
+        const creds = await this.exchangeService.getApiCredentials(userid, x.id);
+        return this.toExchangeRead(x, creds);
+      })
+    );
+    return apiOk(results);
   }
 
   @Post('/')
@@ -62,7 +74,8 @@ export class ExchangeController {
     });
 
     // Token 由上游服务生成和管理，不再在此处初始化
-    return apiOk(this.toExchangeRead(exchange));
+    const creds = await this.exchangeService.getApiCredentials(userid, exchange.id);
+    return apiOk(this.toExchangeRead(exchange, creds));
   }
 
   @Put('/:id')
@@ -79,7 +92,8 @@ export class ExchangeController {
       isTestnet: body?.isTestnet ?? undefined,
       isActive: body?.isActive ?? undefined,
     });
-    return apiOk(this.toExchangeRead(exchange));
+    const creds = await this.exchangeService.getApiCredentials(userid, exchange.id);
+    return apiOk(this.toExchangeRead(exchange, creds));
   }
 
   @Del('/:id')
@@ -106,16 +120,18 @@ export class ExchangeController {
     });
 
     if (!initResp?.success || !initResp?.token) {
-      const msg = initResp?.error?.message || 'InitAccount failed';
+      const msg = initResp?.error || 'InitAccount failed';
       throw new httpError.BadGatewayError(msg);
     }
 
-    // 验证 token
+    // 验证 token（同时验证 API Key 是否可用）
     const validateResp = await this.exchangeGrpc.validateToken({ token: initResp.token });
-    return apiOk({ 
-      ...validateResp, 
-      token: initResp.token, // 返回 token 供前端使用
-      initialized: true 
+    return apiOk({
+      valid: validateResp.valid,
+      exchange: validateResp.exchange,
+      token: initResp.token,
+      initialized: true,
+      error: validateResp.error || undefined,
     });
   }
 }
