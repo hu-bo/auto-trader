@@ -111,8 +111,9 @@ steps:
         - tar xzf $APP_NAME.tar.gz -C /data/app/$APP_NAME
         - cd /data/app/$APP_NAME
         - ls -la
-        - docker-compose up -d --force-recreate nats exchange-adapter-service
+        - docker-compose up -d --no-recreate nats redis
+        - docker-compose up -d --force-recreate --no-deps exchange-adapter-service
         - sleep 2
         - docker logs exchange-adapter-service
-        - docker logs exchange-adapter-nats
+        # - docker logs exchange-adapter-nats
 

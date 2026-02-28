@@ -12,7 +12,23 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-
+    networks:
+      - shared_network
+  redis:
+    image: redis:7-alpine
+    container_name: exchange-adapter-redis
+    restart: unless-stopped
+    ports:
+      - "16000:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - shared_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   exchange-adapter-service:
     image: alpine:3.19
     container_name: exchange-adapter-service
@@ -31,6 +47,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
+volumes:
+  redis_data:
 
 networks:
   shared_network:
