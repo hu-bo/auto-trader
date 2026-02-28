@@ -137,8 +137,8 @@ func Load(configPaths ...string) (*Config, error) {
 }
 
 func setDefaults(v *viper.Viper) {
-	v.SetDefault("server.grpc_port", 9001)
-	v.SetDefault("server.http_port", 9002)
+	v.SetDefault("server.grpc_port", 9101)
+	v.SetDefault("server.http_port", 9100)
 	v.SetDefault("server.api_key", "")
 	v.SetDefault("server.rate_limit_rps", 100)
 
