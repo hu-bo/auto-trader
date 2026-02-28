@@ -11,4 +11,5 @@ type AccountConfig struct {
 	Name        string // optional label (logs/debug)
 	HTTPProxy   string // optional HTTP proxy for REST API
 	Socks5Proxy string // optional SOCKS5 proxy for WebSocket
+	AccountID   string // DB exchangeId, used as NATS routing key
 }

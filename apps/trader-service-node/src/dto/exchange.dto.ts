@@ -33,6 +33,9 @@ export class UpdateExchangeBodyDTO {
   @Rule(Joi.string().allow('', null).optional())
   name?: string | null;
 
+  @Rule(Joi.string().trim().min(1).required())
+  exchangeType!: string;
+  
   @Rule(Joi.string().allow('', null).optional())
   apiKey?: string | null;
 

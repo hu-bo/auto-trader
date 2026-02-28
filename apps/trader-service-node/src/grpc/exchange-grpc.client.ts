@@ -188,6 +188,7 @@ export class ExchangeGrpcClient {
     passphrase?: string | null;
     demonet?: boolean;
     name?: string | null;
+    accountId?: string | null;
   }): Promise<any> {
     const client = this.getClient();
     const req: any = {
@@ -198,6 +199,7 @@ export class ExchangeGrpcClient {
     };
     if (params.passphrase != null) req.passphrase = params.passphrase;
     if (params.name != null) req.name = params.name;
+    if (params.accountId != null) req.account_id = params.accountId;
     return await this.unary(cb => client.initAccount(req, cb));
   }
 

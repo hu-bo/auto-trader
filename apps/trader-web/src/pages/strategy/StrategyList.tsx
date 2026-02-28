@@ -1,5 +1,4 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
   Card,
   Table,
@@ -14,6 +13,7 @@ import {
 import { IconPlus, IconPlay, IconStop, IconDelete } from '@douyinfe/semi-icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { strategyApi, strategyOrderApi } from '@/api'
+import { useNavigateKeepParams } from '@/hooks'
 import { StrategyOrderForm } from '@/components/trading/StrategyOrderForm'
 import { formatDateTime } from '@/utils/format'
 import type { Strategy, StrategyOrder } from '@/types'
@@ -21,7 +21,7 @@ import type { Strategy, StrategyOrder } from '@/types'
 const { Title } = Typography
 
 const StrategyList: React.FC = () => {
-  const navigate = useNavigate()
+  const navigate = useNavigateKeepParams()
   const queryClient = useQueryClient()
   const [bindModalVisible, setBindModalVisible] = useState(false)
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(null)

@@ -1,15 +1,16 @@
 import React, { useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { Card, Row, Col, Tabs, TabPane } from '@douyinfe/semi-ui-19'
 import { KLineChart } from '@/components/charts/KLineChart'
 import { OrderForm } from '@/components/trading/OrderForm'
 import { OrderTable } from '@/components/trading/OrderTable'
 import { PositionCard } from '@/components/trading/PositionCard'
 import { useAppStore } from '@/stores/appStore'
+import { useNavigateKeepParams } from '@/hooks'
 
 const TradingView: React.FC = () => {
   const { symbol: urlSymbol } = useParams<{ symbol: string }>()
-  const navigate = useNavigate()
+  const navigate = useNavigateKeepParams()
   const { tradingSymbol, tradingInterval, setTradingSymbol, setTradingInterval } = useAppStore()
 
   // URL param → store 同步

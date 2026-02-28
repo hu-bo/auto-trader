@@ -1,11 +1,14 @@
-import { Body, Config, Controller, Get, Inject, Param, Post, Query, httpError } from '@midwayjs/core';
+import { Body, Config, Controller, Get, Inject, Logger, Param, Post, Query, httpError } from '@midwayjs/core';
+import type { ILogger } from '@midwayjs/core';
 import type { Context } from '@midwayjs/koa';
 import { ExchangeGrpcClient } from '../grpc/exchange-grpc.client.js';
 import { ExchangeService } from '../service/exchange.service.js';
 import { OrderService } from '../service/order.service.js';
+import { OrderUpdateService } from '../service/order-update.service.js';
 import { UserService } from '../service/user.service.js';
 import { exchangeSync } from '../common/exchange-sync.js';
 import { apiOk } from '../util/api-response.js';
+import { OrderStatus } from '../entity/order.entity.js';
 import { CancelOrderBodyDTO, ListOrdersQueryDTO, OrderIdParamDTO, OrderTokenQueryDTO, PlaceOrderBodyDTO } from '../dto/order.dto.js';
 import { PlaceBatchStrategyOrderBodyDTO, CheckDuplicatesBodyDTO } from '../dto/batch-order.dto.js';
 import type { ExchangeAdapterConfig } from '../types/config.js';
@@ -27,6 +30,12 @@ export class OrderController {
   @Inject()
   orderService!: OrderService;
 
+  @Inject()
+  orderUpdateService!: OrderUpdateService;
+
+  @Logger()
+  logger!: ILogger;
+
   @Config('exchangeAdapter')
   exchangeAdapterConfig!: ExchangeAdapterConfig;
 
@@ -34,7 +43,6 @@ export class OrderController {
     const user = await this.userService.getOrCreateCurrentUser(this.ctx.state.user);
     const exchange = await this.exchangeService.get(user.id, exchangeId);
     const creds = await this.exchangeService.getApiCredentials(user.id, exchangeId);
-    console.log(creds)
     const initResp = await this.exchangeGrpc.initAccount({
       exchangeType: exchange.exchangeType,
       apiKey: creds.apiKey,
@@ -42,6 +50,7 @@ export class OrderController {
       passphrase: creds.passphrase,
       demonet: exchange.isTestnet,
       name: exchange.name,
+      accountId: exchangeId.toString(),
     });
 
     if (!initResp?.success || !initResp?.token) {
@@ -155,6 +164,38 @@ export class OrderController {
     // 5. Place via gRPC
     const token = await this.getTokenForExchange(body.exchangeId);
     const resp = await this.exchangeGrpc.placeStrategyOrders({ token, orders });
+
+    // 6. Persist successful orders to DB (best-effort, don't fail the response)
+    try {
+      const results: any[] = resp?.results || [];
+      const orderRecords: Array<Record<string, unknown>> = [];
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (!r?.success || !r?.order) continue;
+        orderRecords.push({
+          userid: user.id,
+          exchangeId: body.exchangeId,
+          source: 'manual',
+          exchangeOrderId: r.order.algo_id,
+          symbol: r.order.symbol,
+          tradeType: body.tradeType,
+          side: orders[i].side,
+          orderType: 'stop_market',
+          status: OrderStatus.NEW,
+          quantity: String(orders[i].quantity),
+          price: String(orders[i].triggerPrice),
+          positionSide: orders[i].positionSide,
+          reduceOnly: orders[i].reduceOnly,
+        });
+      }
+      if (orderRecords.length > 0) {
+        await this.orderService.createBatch(orderRecords);
+        this.orderUpdateService.subscribeForExchange(body.exchangeId);
+      }
+    } catch (err) {
+      this.logger.error('[BatchStrategy] Failed to persist orders to DB: %s', err);
+    }
+
     return apiOk(resp);
   }
 

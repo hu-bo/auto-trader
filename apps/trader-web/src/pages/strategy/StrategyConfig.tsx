@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import {
   Card,
   Form,
@@ -12,13 +12,14 @@ import {
 } from '@douyinfe/semi-ui-19'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { strategyApi } from '@/api'
+import { useNavigateKeepParams } from '@/hooks'
 import type { StrategyTag, StrategyStatus } from '@/types'
 
 const { Title } = Typography
 
 const StrategyConfig: React.FC = () => {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
+  const navigate = useNavigateKeepParams()
   const queryClient = useQueryClient()
   const isEdit = !!id
 

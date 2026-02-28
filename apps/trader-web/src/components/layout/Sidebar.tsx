@@ -1,5 +1,5 @@
 import React from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { Layout, Nav } from '@douyinfe/semi-ui-19'
 import {
   IconHome,
@@ -15,6 +15,7 @@ import {
   IconCopyStroked,
 } from '@douyinfe/semi-icons'
 import { useAuthStore } from '@/stores/authStore'
+import { useNavigateKeepParams } from '@/hooks'
 
 const { Sider } = Layout
 
@@ -41,7 +42,7 @@ const adminMenuItems = [
 ]
 
 export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {
-  const navigate = useNavigate()
+  const navigate = useNavigateKeepParams()
   const location = useLocation()
   const { user } = useAuthStore()
 

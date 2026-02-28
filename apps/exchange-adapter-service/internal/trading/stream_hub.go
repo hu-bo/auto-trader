@@ -26,6 +26,22 @@ type OrderUpdate struct {
 	UpdateTime     int64
 }
 
+type StrategyOrderUpdate struct {
+	Symbol       string
+	TradeType    core.TradeType
+	AlgoID       string
+	ClientAlgoID string
+	Side         core.OrderSide
+	PositionSide *core.PositionSide
+	StrategyType core.StrategyOrderType
+	Status       core.StrategyOrderStatus
+	TriggerPrice string
+	OrderPrice   string
+	Quantity     string
+	TriggerTime  *int64
+	UpdateTime   int64
+}
+
 type streamKey struct {
 	token     string
 	tradeType core.TradeType

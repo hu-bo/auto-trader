@@ -71,6 +71,11 @@ func (s *ExchangeService) InitAccount(ctx context.Context, req *exchangepb.InitA
 		name = req.GetName()
 	}
 
+	accountID := ""
+	if req.AccountId != nil {
+		accountID = req.GetAccountId()
+	}
+
 	cfg := session.AccountConfig{
 		Exchange:    ex,
 		APIKey:      req.ApiKey,
@@ -80,6 +85,7 @@ func (s *ExchangeService) InitAccount(ctx context.Context, req *exchangepb.InitA
 		Name:        name,
 		HTTPProxy:   "",
 		Socks5Proxy: "",
+		AccountID:   accountID,
 	}
 	if s.cfg != nil {
 		cfg.HTTPProxy = s.cfg.Proxy.HTTP
@@ -102,8 +108,17 @@ func (s *ExchangeService) InitAccount(ctx context.Context, req *exchangepb.InitA
 	svcLog.Info().
 		Str("exchange", string(ex)).
 		Str("name", name).
+		Str("account_id", accountID).
 		Bool("demonet", req.Demonet).
 		Msg("account initialized")
+
+	// Auto-subscribe WS user data stream when accountID is provided,
+	// so NATS order updates start flowing immediately.
+	if accountID != "" {
+		go func() {
+			_ = s.manager.EnsureWsSubscribed(context.Background(), token, cfg, core.TradeTypeFutures)
+		}()
+	}
 
 	return &exchangepb.InitAccountResponse{Success: true, Token: token}, nil
 }

@@ -189,6 +189,73 @@ func (p *Publisher) orderBookSubject(exchangeName, tradeType, symbol string) str
 	return fmt.Sprintf("%s.orderbook.%s.%s.%s", p.cfg.SubjectPrefix, exchangeName, tradeType, symbol)
 }
 
+// ============================================================================
+// Order Update Publishing (immediate, not batched)
+// ============================================================================
+
+// OrderUpdateMessage represents a regular order update sent via NATS.
+type OrderUpdateMessage struct {
+	OrderID        string `json:"orderId"`
+	ClientOrderID  string `json:"clientOrderId,omitempty"`
+	Symbol         string `json:"symbol"`
+	TradeType      string `json:"tradeType"`
+	Side           string `json:"side"`
+	PositionSide   string `json:"positionSide,omitempty"`
+	OrderType      string `json:"orderType"`
+	Status         string `json:"status"`
+	Price          string `json:"price,omitempty"`
+	Quantity       string `json:"quantity"`
+	FilledQuantity string `json:"filledQuantity"`
+	AvgPrice       string `json:"avgPrice,omitempty"`
+	Fee            string `json:"fee,omitempty"`
+	FeeAsset       string `json:"feeAsset,omitempty"`
+	ReduceOnly     bool   `json:"reduceOnly"`
+	UpdateTime     int64  `json:"updateTime"`
+}
+
+// StrategyOrderUpdateMessage represents a strategy/algo order update sent via NATS.
+type StrategyOrderUpdateMessage struct {
+	AlgoID       string `json:"algoId"`
+	ClientAlgoID string `json:"clientAlgoId,omitempty"`
+	Symbol       string `json:"symbol"`
+	TradeType    string `json:"tradeType"`
+	Side         string `json:"side"`
+	PositionSide string `json:"positionSide,omitempty"`
+	StrategyType string `json:"strategyType"`
+	Status       string `json:"status"`
+	TriggerPrice string `json:"triggerPrice,omitempty"`
+	OrderPrice   string `json:"orderPrice,omitempty"`
+	Quantity     string `json:"quantity"`
+	TriggerTime  *int64 `json:"triggerTime,omitempty"`
+	UpdateTime   int64  `json:"updateTime"`
+}
+
+// PublishOrderUpdate publishes an order update immediately (not batched).
+func (p *Publisher) PublishOrderUpdate(accountID string, msg OrderUpdateMessage) {
+	subject := fmt.Sprintf("%s.order_update.%s", p.cfg.SubjectPrefix, accountID)
+	data, err := sonic.Marshal(msg)
+	if err != nil {
+		log.Error().Err(err).Str("subject", subject).Msg("Failed to marshal order update")
+		return
+	}
+	if err := p.conn.Publish(subject, data); err != nil {
+		log.Error().Err(err).Str("subject", subject).Msg("Failed to publish order update")
+	}
+}
+
+// PublishStrategyOrderUpdate publishes a strategy order update immediately (not batched).
+func (p *Publisher) PublishStrategyOrderUpdate(accountID string, msg StrategyOrderUpdateMessage) {
+	subject := fmt.Sprintf("%s.strategy_order_update.%s", p.cfg.SubjectPrefix, accountID)
+	data, err := sonic.Marshal(msg)
+	if err != nil {
+		log.Error().Err(err).Str("subject", subject).Msg("Failed to marshal strategy order update")
+		return
+	}
+	if err := p.conn.Publish(subject, data); err != nil {
+		log.Error().Err(err).Str("subject", subject).Msg("Failed to publish strategy order update")
+	}
+}
+
 // Close 关闭发布器
 func (p *Publisher) Close() error {
 	p.cancel()

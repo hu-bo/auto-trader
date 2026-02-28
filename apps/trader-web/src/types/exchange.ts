@@ -1,4 +1,4 @@
-export type ExchangeType = 'BINANCE' | 'OKX' | 'BYBIT' | 'BITGET' | 'GATE'
+export type ExchangeType = 'binance' | 'okx' | 'bybit' | 'bitget' | 'gate'
 
 export interface Exchange {
   id: string
@@ -21,7 +21,7 @@ export type ExchangeCreate =
 
 export type ExchangeUpdate =
   Pick<Exchange, 'id'> &
-  Partial<Pick<Exchange, 'name' | 'apiKey' | 'apiSecret' | 'passphrase' | 'isTestnet' | 'isActive'>>
+  Partial<Pick<Exchange, 'name' | 'exchangeType' | 'apiKey' | 'apiSecret' | 'passphrase' | 'isTestnet' | 'isActive'>>
 
 export interface ExchangeTestResult {
   initialized: boolean

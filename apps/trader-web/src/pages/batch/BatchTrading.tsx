@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
   Table,
   Select,
@@ -12,22 +11,22 @@ import {
   Card,
   Typography,
   Empty,
+  Tag,
 } from '@douyinfe/semi-ui-19'
 import type { ColumnProps } from '@douyinfe/semi-ui-19/lib/es/table/interface'
 import { useQuery } from '@tanstack/react-query'
 import { marketApi, TickerData } from '@/api/market'
 import { batchOrderApi } from '@/api/batch-order'
 import { useAppStore } from '@/stores/appStore'
+import { useNavigateKeepParams } from '@/hooks'
 import { formatPrice, formatNumber, getPnlColor } from '@/utils/format'
 
 type FilterMode = 'gainers' | 'losers'
 
 const BatchTrading: React.FC = () => {
-  const navigate = useNavigate()
+  const navigate = useNavigateKeepParams()
   const { selectedExchange } = useAppStore()
-  const [exchange, setExchange] = useState(
-    selectedExchange?.exchangeType?.toLowerCase() || 'binance'
-  )
+  const exchange = selectedExchange?.exchangeType?.toLowerCase() || 'binance'
   const [tradeType, setTradeType] = useState<'futures' | 'spot'>('futures')
   const [filterMode, setFilterMode] = useState<FilterMode>('gainers')
   const [topN, setTopN] = useState(20)
@@ -211,18 +210,7 @@ const BatchTrading: React.FC = () => {
             bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
           >
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-              <Select
-                value={exchange}
-                onChange={(v) => {
-                  setExchange(v as string)
-                  setSelectedRowKeys([])
-                }}
-                style={{ width: 110 }}
-                size="small"
-              >
-                <Select.Option value="binance">Binance</Select.Option>
-                <Select.Option value="okx">OKX</Select.Option>
-              </Select>
+              <Tag size="large" color="blue">{exchange.toUpperCase()}</Tag>
               <Select
                 value={tradeType}
                 onChange={(v) => {

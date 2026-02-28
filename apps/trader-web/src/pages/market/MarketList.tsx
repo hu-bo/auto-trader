@@ -7,12 +7,14 @@ import {
   Empty,
   Modal,
   Spin,
+  Tag,
 } from '@douyinfe/semi-ui-19'
 import { IconSearch } from '@douyinfe/semi-icons'
 import { useQuery } from '@tanstack/react-query'
 import { SymbolCard } from '@/components/market/SymbolCard'
 import { StrategyOrderForm } from '@/components/trading/StrategyOrderForm'
 import { marketApi } from '@/api'
+import { useAppStore } from '@/stores/appStore'
 import type { TickerData } from '@/api/market'
 
 const { Title } = Typography
@@ -20,7 +22,8 @@ const { Title } = Typography
 type SortType = 'default' | 'volume_desc' | 'volume_asc' | 'change_desc' | 'change_asc'
 
 const MarketList: React.FC = () => {
-  const [exchange, setExchange] = useState('binance')
+  const { selectedExchange } = useAppStore()
+  const exchange = selectedExchange?.exchangeType?.toLowerCase() || 'binance'
   const [tradeType, setTradeType] = useState('spot')
   const [searchText, setSearchText] = useState('')
   const [sortType, setSortType] = useState<SortType>('volume_desc')
@@ -80,14 +83,7 @@ const MarketList: React.FC = () => {
       >
         <Title heading={4}>行情列表</Title>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <Select
-            value={exchange}
-            onChange={(value) => setExchange(value as string)}
-            style={{ width: 120 }}
-          >
-            <Select.Option value="binance">Binance</Select.Option>
-            <Select.Option value="okx">OKX</Select.Option>
-          </Select>
+          <Tag size="large" color="blue">{exchange.toUpperCase()}</Tag>
           <Select
             value={tradeType}
             onChange={(value) => setTradeType(value as string)}

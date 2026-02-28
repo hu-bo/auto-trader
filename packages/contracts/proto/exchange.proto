@@ -119,6 +119,7 @@ message InitAccountRequest {
   optional string passphrase = 4;  // OKX only
   bool demonet = 5;
   optional string name = 6;
+  optional string account_id = 7;  // DB exchangeId, used as NATS routing key
 }
 
 message InitAccountResponse {

@@ -58,4 +58,22 @@ export class OrderService {
     }
     return order;
   }
+
+  async createBatch(orders: Partial<Order>[]): Promise<Order[]> {
+    const repo = this.requireRepo();
+    const entities = orders.map(o => repo.create(o));
+    return await repo.save(entities);
+  }
+
+  async updateByExchangeOrderId(
+    exchangeOrderId: string,
+    exchangeId: number,
+    updates: Partial<Pick<Order, 'status' | 'filledQty' | 'avgPrice' | 'fee' | 'feeAsset' | 'filledAt'>>
+  ): Promise<void> {
+    const repo = this.requireRepo();
+    await repo.update(
+      { exchangeOrderId, exchangeId },
+      updates as any
+    );
+  }
 }

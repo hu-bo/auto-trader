@@ -41,6 +41,9 @@ type Manager struct {
 	opts     ManagerOptions
 	orderIdx *OrderIndex
 	hub      *OrderUpdateHub
+
+	onOrderUpdate         func(accountID string, update OrderUpdate)
+	onStrategyOrderUpdate func(accountID string, update StrategyOrderUpdate)
 }
 
 type sessionResources struct {
@@ -59,6 +62,14 @@ func NewManager(opts ManagerOptions, orderIdx *OrderIndex, hub *OrderUpdateHub) 
 		orderIdx: orderIdx,
 		hub:      hub,
 	}
+}
+
+func (m *Manager) SetOnOrderUpdate(fn func(accountID string, update OrderUpdate)) {
+	m.onOrderUpdate = fn
+}
+
+func (m *Manager) SetOnStrategyOrderUpdate(fn func(accountID string, update StrategyOrderUpdate)) {
+	m.onStrategyOrderUpdate = fn
 }
 
 func (m *Manager) CloseAll(ctx context.Context) {
@@ -166,33 +177,55 @@ func (m *Manager) EnsureWsSubscribed(ctx context.Context, token string, cfg sess
 	}
 
 	err := r.ws.Subscribe(ctx, options, func(event core.WsUserDataEvent) {
-		ou, ok := event.(core.WsOrderUpdate)
-		if !ok {
-			return
-		}
+		switch ev := event.(type) {
+		case core.WsOrderUpdate:
+			if m.orderIdx != nil {
+				m.orderIdx.Upsert(token, ev.Symbol, ev.TradeType, ev.OrderID, ev.ClientOrderID)
+			}
+			upd := OrderUpdate{
+				Symbol:         ev.Symbol,
+				TradeType:      ev.TradeType,
+				OrderID:        ev.OrderID,
+				ClientOrderID:  ev.ClientOrderID,
+				Side:           ev.Side,
+				PositionSide:   ev.PositionSide,
+				OrderType:      ev.OrderType,
+				Status:         ev.Status,
+				Price:          ev.Price,
+				Quantity:       ev.Quantity,
+				FilledQuantity: ev.FilledQuantity,
+				AvgPrice:       ev.AvgPrice,
+				Fee:            ev.Fee,
+				FeeAsset:       ev.FeeAsset,
+				ReduceOnly:     ev.ReduceOnly,
+				UpdateTime:     ev.UpdateTime,
+			}
+			if m.hub != nil {
+				m.hub.Publish(token, ev.TradeType, upd)
+			}
+			if m.onOrderUpdate != nil && r.cfg.AccountID != "" {
+				m.onOrderUpdate(r.cfg.AccountID, upd)
+			}
 
-		if m.orderIdx != nil {
-			m.orderIdx.Upsert(token, ou.Symbol, ou.TradeType, ou.OrderID, ou.ClientOrderID)
-		}
-		if m.hub != nil {
-			m.hub.Publish(token, ou.TradeType, OrderUpdate{
-				Symbol:         ou.Symbol,
-				TradeType:      ou.TradeType,
-				OrderID:        ou.OrderID,
-				ClientOrderID:  ou.ClientOrderID,
-				Side:           ou.Side,
-				PositionSide:   ou.PositionSide,
-				OrderType:      ou.OrderType,
-				Status:         ou.Status,
-				Price:          ou.Price,
-				Quantity:       ou.Quantity,
-				FilledQuantity: ou.FilledQuantity,
-				AvgPrice:       ou.AvgPrice,
-				Fee:            ou.Fee,
-				FeeAsset:       ou.FeeAsset,
-				ReduceOnly:     ou.ReduceOnly,
-				UpdateTime:     ou.UpdateTime,
-			})
+		case core.WsStrategyOrderUpdate:
+			supd := StrategyOrderUpdate{
+				Symbol:       ev.Symbol,
+				TradeType:    ev.TradeType,
+				AlgoID:       ev.AlgoID,
+				ClientAlgoID: ev.ClientAlgoID,
+				Side:         ev.Side,
+				PositionSide: ev.PositionSide,
+				StrategyType: ev.StrategyType,
+				Status:       ev.Status,
+				TriggerPrice: ev.TriggerPrice,
+				OrderPrice:   ev.OrderPrice,
+				Quantity:     ev.Quantity,
+				TriggerTime:  ev.TriggerTime,
+				UpdateTime:   ev.UpdateTime,
+			}
+			if m.onStrategyOrderUpdate != nil && r.cfg.AccountID != "" {
+				m.onStrategyOrderUpdate(r.cfg.AccountID, supd)
+			}
 		}
 	})
 	if err != nil {

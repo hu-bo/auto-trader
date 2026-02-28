@@ -20,9 +20,9 @@ import type { Exchange, ExchangeCreate, ExchangeType } from '@/types'
 const { Title } = Typography
 
 const EXCHANGE_TYPES: { value: ExchangeType; label: string }[] = [
-  { value: 'BINANCE', label: 'Binance' },
-  { value: 'OKX', label: 'OKX' },
-  { value: 'BYBIT', label: 'Bybit' }
+  { value: 'binance', label: 'Binance' },
+  { value: 'okx', label: 'OKX' },
+  { value: 'bybit', label: 'Bybit' }
 ]
 
 const ExchangeConfig: React.FC = () => {
@@ -90,7 +90,11 @@ const ExchangeConfig: React.FC = () => {
   const handleSubmit = (values: ExchangeCreate) => {
     if (editingExchange) {
       const { exchangeType, ...rest } = values
-      updateMutation.mutate({ id: editingExchange.id, ...rest })
+      updateMutation.mutate({
+        id: editingExchange.id,
+        ...rest,
+        exchangeType: editingExchange.exchangeType.toLowerCase() as ExchangeType,
+      })
     } else {
       createMutation.mutate(values)
     }
@@ -105,7 +109,7 @@ const ExchangeConfig: React.FC = () => {
       title: '交易所',
       dataIndex: 'exchangeType',
       render: (type: string) => {
-        const exchange = EXCHANGE_TYPES.find((e) => e.value === type)
+        const exchange = EXCHANGE_TYPES.find((e) => e.value === type.toLowerCase())
         return exchange?.label || type
       },
     },

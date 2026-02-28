@@ -20,18 +20,13 @@ import {
 } from '@douyinfe/semi-icons'
 import { useQuery } from '@tanstack/react-query'
 import { marketApi, debugApi } from '@/api'
+import { useAppStore } from '@/stores/appStore'
 import { StrategyEditor } from '@/components/editor/StrategyEditor'
 import { formatDateTime, formatPrice } from '@/utils/format'
 import type { DebugStep, DebugResponse, DebugBar } from '@/api/debug'
 import type { CandleData } from '@/api/market'
 
 const { Title, Text } = Typography
-
-const EXCHANGES = [
-  { value: 'binance', label: 'Binance' },
-  { value: 'okx', label: 'OKX' },
-  { value: 'bybit', label: 'Bybit' },
-]
 
 const PERIODS = [
   { value: '1m', label: '1m' },
@@ -50,11 +45,13 @@ IF rsi < 30 AND ma_fast > ma_slow THEN BUY("oversold reversal")
 IF rsi > 70 AND ma_fast < ma_slow THEN SELL("overbought reversal")`
 
 const StrategyDebugger: React.FC = () => {
+  const { selectedExchange } = useAppStore()
+  const exchange = selectedExchange?.exchangeType?.toLowerCase() || 'binance'
+
   // Editor state
   const [code, setCode] = useState(DEFAULT_CODE)
 
   // Data source selector
-  const [exchange, setExchange] = useState('binance')
   const [tradeType] = useState('spot')
   const [symbol, setSymbol] = useState('ETH-USDT')
   const [period, setPeriod] = useState('15m')
@@ -202,13 +199,7 @@ const StrategyDebugger: React.FC = () => {
 
           <Card title="数据源" style={{ marginBottom: 16 }} bodyStyle={{ padding: '12px 16px' }}>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-              <Select
-                value={exchange}
-                onChange={(v) => setExchange(v as string)}
-                optionList={EXCHANGES}
-                style={{ width: 120 }}
-                prefix="交易所"
-              />
+              <Tag size="large" color="blue">{exchange.toUpperCase()}</Tag>
               <Select
                 value={symbol}
                 onChange={(v) => setSymbol(v as string)}

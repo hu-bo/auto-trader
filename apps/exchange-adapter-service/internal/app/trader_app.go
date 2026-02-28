@@ -10,6 +10,7 @@ import (
 	httpapi "exchange-adapter-service/internal/api"
 	"exchange-adapter-service/internal/config"
 	grpcserver "exchange-adapter-service/internal/grpc"
+	"exchange-adapter-service/internal/publisher"
 	"exchange-adapter-service/internal/session"
 	"exchange-adapter-service/internal/trading"
 
@@ -26,8 +27,9 @@ type App struct {
 	orderIdx *trading.OrderIndex
 	hub      *trading.OrderUpdateHub
 
-	grpcServer *grpcserver.Server
-	httpServer *httpapi.Server
+	grpcServer    *grpcserver.Server
+	httpServer    *httpapi.Server
+	natsPublisher *publisher.Publisher
 
 	marketApp *MarketApp
 }
@@ -54,6 +56,63 @@ func New(cfg *config.Config) (*App, error) {
 		}()
 	})
 
+	// NATS publisher for order update forwarding (separate from MarketApp's publisher).
+	var natsPub *publisher.Publisher
+	if cfg.NATS.IsEnabled() {
+		pub, err := publisher.New(&cfg.NATS)
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to create NATS publisher for order updates, continuing without it")
+		} else {
+			natsPub = pub
+			manager.SetOnOrderUpdate(func(accountID string, upd trading.OrderUpdate) {
+				posSide := ""
+				if upd.PositionSide != nil {
+					posSide = string(*upd.PositionSide)
+				}
+				pub.PublishOrderUpdate(accountID, publisher.OrderUpdateMessage{
+					OrderID:        upd.OrderID,
+					ClientOrderID:  upd.ClientOrderID,
+					Symbol:         upd.Symbol,
+					TradeType:      string(upd.TradeType),
+					Side:           string(upd.Side),
+					PositionSide:   posSide,
+					OrderType:      string(upd.OrderType),
+					Status:         string(upd.Status),
+					Price:          upd.Price,
+					Quantity:       upd.Quantity,
+					FilledQuantity: upd.FilledQuantity,
+					AvgPrice:       upd.AvgPrice,
+					Fee:            upd.Fee,
+					FeeAsset:       upd.FeeAsset,
+					ReduceOnly:     upd.ReduceOnly,
+					UpdateTime:     upd.UpdateTime,
+				})
+			})
+			manager.SetOnStrategyOrderUpdate(func(accountID string, upd trading.StrategyOrderUpdate) {
+				posSide := ""
+				if upd.PositionSide != nil {
+					posSide = string(*upd.PositionSide)
+				}
+				pub.PublishStrategyOrderUpdate(accountID, publisher.StrategyOrderUpdateMessage{
+					AlgoID:       upd.AlgoID,
+					ClientAlgoID: upd.ClientAlgoID,
+					Symbol:       upd.Symbol,
+					TradeType:    string(upd.TradeType),
+					Side:         string(upd.Side),
+					PositionSide: posSide,
+					StrategyType: string(upd.StrategyType),
+					Status:       string(upd.Status),
+					TriggerPrice: upd.TriggerPrice,
+					OrderPrice:   upd.OrderPrice,
+					Quantity:     upd.Quantity,
+					TriggerTime:  upd.TriggerTime,
+					UpdateTime:   upd.UpdateTime,
+				})
+			})
+			log.Info().Msg("NATS order update publisher wired")
+		}
+	}
+
 	svc := grpcserver.NewExchangeService(cfg, store, manager, orderIdx, hub)
 	srv, err := grpcserver.New(cfg, svc)
 	if err != nil {
@@ -66,13 +125,14 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	return &App{
-		cfg:        cfg,
-		store:      store,
-		manager:    manager,
-		orderIdx:   orderIdx,
-		hub:        hub,
-		grpcServer: srv,
-		marketApp:  marketApp,
+		cfg:           cfg,
+		store:         store,
+		manager:       manager,
+		orderIdx:      orderIdx,
+		hub:           hub,
+		grpcServer:    srv,
+		natsPublisher: natsPub,
+		marketApp:     marketApp,
 	}, nil
 }
 
@@ -142,6 +202,9 @@ func (a *App) Run() error {
 	}
 	if a.manager != nil {
 		a.manager.CloseAll(shutdownCtx)
+	}
+	if a.natsPublisher != nil {
+		_ = a.natsPublisher.Close()
 	}
 
 	log.Info().Msg("shutdown complete")

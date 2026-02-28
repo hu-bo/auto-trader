@@ -30,6 +30,7 @@ export enum OrderStatus {
 @Index(['status'])
 @Index(['source'])
 @Index(['strategyOrderId'])
+@Index(['exchangeOrderId'])
 export class Order {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   orderid!: string;

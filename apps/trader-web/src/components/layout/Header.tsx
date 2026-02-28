@@ -1,5 +1,5 @@
-import React from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Layout, Avatar, Dropdown, Button, Select, Tag } from '@douyinfe/semi-ui-19'
 import {
   IconMenu,
@@ -11,55 +11,56 @@ import {
   IconComponent,
 } from '@douyinfe/semi-icons'
 import { useQuery } from '@tanstack/react-query'
-import { useAuth } from '@/hooks'
+import { useAuth, useNavigateKeepParams } from '@/hooks'
 import { useAppStore } from '@/stores/appStore'
 import { exchangeApi } from '@/api'
-import type { Exchange } from '@/types'
 
 const { Header: SemiHeader } = Layout
 
 interface HeaderProps {
   onToggleSidebar?: () => void
 }
-const exchanges = [
-    // {
-    //     "id": 4,
-    //     "exchangeType": "BINANCE",
-    //     "name": "币安",
-    //     "isTestnet": true,
-    //     "isActive": true,
-    // },
-    // {
-    //     "id": 3,
-    //     "exchangeType": "BINANCE",
-    //     "name": "币安",
-    //     "isTestnet": true,
-    // },
-    {
-        "id": 2,
-        "exchangeType": "OKX",
-        "name": "欧易",
-        "isTestnet": false,
-        "isActive": true,
-    },
-    {
-        "id": 1,
-        "exchangeType": "BINANCE",
-        "name": "币安",
-        "isTestnet": false,
-    }
-]
+
 export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
-  const navigate = useNavigate()
+  const navigate = useNavigateKeepParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user, logout } = useAuth()
   const { theme, toggleTheme, selectedExchange, setSelectedExchange } = useAppStore()
 
-  // const handleExchangeChange = (value: string | number | any[] | Record<string, any> | undefined) => {
-  //   const exchange = exchanges?.find((e) => e.id === value)
-  //   if (exchange) {
-  //     setSelectedExchange(exchange)
-  //   }
-  // }
+  const { data: exchanges } = useQuery({
+    queryKey: ['exchanges'],
+    queryFn: exchangeApi.list,
+  })
+
+  // On mount: sync URL query -> store (if URL has exchangeId and store doesn't match)
+  useEffect(() => {
+    if (!exchanges?.length) return
+    const urlExchangeId = searchParams.get('exchangeId')
+    if (urlExchangeId && urlExchangeId !== selectedExchange?.id) {
+      const found = exchanges.find((e) => e.id === urlExchangeId)
+      if (found) {
+        setSelectedExchange(found)
+      }
+    } else if (!urlExchangeId && selectedExchange) {
+      // Store has selection but URL doesn't — sync URL
+      setSearchParams((prev) => {
+        prev.set('exchangeId', selectedExchange.id)
+        prev.set('exchangeType', selectedExchange.exchangeType)
+        return prev
+      }, { replace: true })
+    }
+  }, [exchanges])
+
+  const handleExchangeChange = (value: string | number | any[] | Record<string, any> | undefined) => {
+    const exchange = exchanges?.find((e) => e.id === value)
+    if (exchange) {
+      setSelectedExchange(exchange)
+      setSearchParams((prev) => {
+        prev.set('exchangeId', exchange.id)
+        return prev
+      }, { replace: true })
+    }
+  }
 
   const userMenu = (
     <Dropdown.Menu>
@@ -92,24 +93,24 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         />
 
         {/* 交易所选择器 */}
-        {/* <Select
+        <Select
           value={selectedExchange?.id}
           onChange={handleExchangeChange}
           placeholder="选择交易所"
-          style={{ width: 200 }}
+          style={{ width: 240 }}
           prefix={<IconComponent />}
-          optionList={exchanges.map((e) => ({
+          optionList={(exchanges || []).map((e) => ({
             value: e.id,
             label: (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>{e.name}</span>
+                <span>{e.exchangeType} ({e.name})</span>
                 <Tag size="small" color={e.isTestnet ? 'orange' : 'green'}>
                   {e.isTestnet ? '测试网' : '主网'}
                 </Tag>
               </div>
             ),
           }))}
-        /> */}
+        />
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
