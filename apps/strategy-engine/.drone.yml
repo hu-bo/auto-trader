@@ -20,7 +20,7 @@ steps:
 # 1️⃣ 构建 Rust 扩展 (hquant-py)
 # -------------------------------------------------
   - name: build-hquant
-    image: ghcr.io/pyo3/maturin:py3.12
+    image: ghcr.io/pyo3/maturin:latest
     environment:
       CARGO_HOME: /root/.cargo
     volumes:
@@ -31,7 +31,7 @@ steps:
     commands:
       - echo "== Building hquant wheel =="
       - cd packages/hquant-py
-      - maturin build --release --strip -o /drone/src/wheels
+      - maturin build --release --strip -i /opt/python/cp312-cp312/bin/python -o /drone/src/wheels 
       - ls -lah /drone/src/wheels
 
 # -------------------------------------------------
@@ -70,7 +70,7 @@ steps:
       - mv strategy-engine.tar.gz /drone/src/
 
 # -------------------------------------------------
-# 3️⃣ SCP 上传
+# 3️⃣ SCP 上传1
 # -------------------------------------------------
   - name: scp
     image: appleboy/drone-scp
