@@ -17,7 +17,7 @@ volumes:
 steps:
 
 # -------------------------------------------------
-# 1️⃣ 构建 Rust 扩展 (hquant-py)
+# 1️⃣ 构建 Rust 扩展 (hquant-py)1
 # -------------------------------------------------
   - name: build-hquant
     image: ghcr.io/pyo3/maturin:latest
