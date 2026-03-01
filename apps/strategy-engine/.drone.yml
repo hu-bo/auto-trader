@@ -20,7 +20,7 @@ steps:
 # 1️⃣ 构建 Rust 扩展 (hquant-py)
 # -------------------------------------------------
   - name: build-hquant
-    image: ghcr.io/pyo3/maturin:latest
+    image: ghcr.io/pyo3/maturin:py3.12
     environment:
       CARGO_HOME: /root/.cargo
     volumes:
@@ -38,7 +38,7 @@ steps:
 # 2️⃣ 构建 Python 服务
 # -------------------------------------------------
   - name: build-service
-    image: python:3.11-slim
+    image: python:3.12-slim
     environment:
       POETRY_VERSION: "1.8.3"
     volumes:
