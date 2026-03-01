@@ -1,9 +1,4 @@
 kind: pipeline
-# Docker-based CI pipeline for the Python strategy-engine service
-# modeled after apps/exchange-adapter-service/.drone.yml with
-# extra handling for local python packages (hquant-py, casdoor-py,
-# logger-py) which are declared as path dependencies in pyproject.toml.
-
 type: docker
 name: strategy-engine
 
@@ -18,76 +13,71 @@ volumes:
   - name: cargo-cache
     host:
       path: /var/lib/drone-cache/cargo
-  - name: app
-    host:
-      path: /data/app/strategy-engine
 
 steps:
-  - name: restore-cache
-    image: drillster/drone-volume-cache
-    volumes:
-      - name: pip-cache
-        path: /cache
-    settings:
-      restore: true
-      cache_key: [ DRONE_REPO_OWNER, DRONE_REPO_NAME, DRONE_BRANCH ]
-      mount:
-        - /root/.cache/pip
-        - /root/.cache/pypoetry
 
-  - name: build
+# -------------------------------------------------
+# 1️⃣ 构建 Rust 扩展 (hquant-py)
+# -------------------------------------------------
+  - name: build-hquant
+    image: ghcr.io/pyo3/maturin:latest
+    environment:
+      CARGO_HOME: /root/.cargo
+    volumes:
+      - name: cargo-cache
+        path: /root/.cargo/registry
+      - name: cargo-cache
+        path: /root/.cargo/git
+    commands:
+      - echo "== Building hquant wheel =="
+      - cd packages/hquant-py
+      - maturin build --release --strip -o /drone/src/wheels
+      - ls -lah /drone/src/wheels
+
+# -------------------------------------------------
+# 2️⃣ 构建 Python 服务
+# -------------------------------------------------
+  - name: build-service
     image: python:3.11-slim
     environment:
       POETRY_VERSION: "1.8.3"
     volumes:
-      - name: app
-        path: /temp/strategy-engine
-    commands:
-      # prepare sdks/tools (rust + headers needed for maturin)
-      - apt-get update && apt-get install -y --no-install-recommends \
-          build-essential git curl rustc cargo python3-dev && \
-        rm -rf /var/lib/apt/lists/*
-      - pip install --no-cache-dir "poetry==$POETRY_VERSION" maturin
-
-      # copy repo content into container (monorepo layout)
-      - mkdir -p /app/packages
-      - cp -R packages/hquant-py /app/packages/hquant-py
-      - cp -R packages/logger-py /app/packages/logger-py
-      - cp -R packages/casdoor-py /app/packages/casdoor-py
-      - cp -R apps/strategy-engine /app/apps/strategy-engine
-
-      # build hquant Python extension explicitly so server never has to
-      # compile it. wheels will be produced in /app/wheels.
-      - cd /app/packages/hquant-py
-      - maturin build --release --strip -o /app/wheels
-      - ls -l /app/wheels
-      - pip install /app/wheels/hquant-*.whl
-
-      # install and run tests / build the service
-      - cd /app/apps/strategy-engine
-      - poetry install --no-dev --no-interaction --no-ansi
-      - poetry run pytest tests/ || true   # don't fail pipeline if no tests
-      - poetry build -f wheel -n
-      - tar czf strategy-engine.tar.gz dist/*
-
-  - name: rebuild-cache
-    image: drillster/drone-volume-cache
-    volumes:
       - name: pip-cache
-        path: /cache
-    settings:
-      rebuild: true
-      cache_key: [ DRONE_REPO_OWNER, DRONE_REPO_NAME, DRONE_BRANCH ]
-      mount:
-        - /root/.cache/pip
-        - /root/.cache/pypoetry
+        path: /root/.cache
+    commands:
+      - echo "== Installing build deps =="
+      - apt-get update && apt-get install -y --no-install-recommends \
+          build-essential git curl && \
+        rm -rf /var/lib/apt/lists/*
 
+      - pip install --no-cache-dir "poetry==$POETRY_VERSION"
+
+      - echo "== Install prebuilt hquant wheel =="
+      - pip install wheels/hquant-*.whl
+
+      - echo "== Install local path packages =="
+      - cd apps/strategy-engine
+      - poetry install --no-dev --no-interaction --no-ansi
+
+      - echo "== Run tests (if exist) =="
+      - poetry run pytest tests/ || true
+
+      - echo "== Build service wheel =="
+      - poetry build -f wheel -n
+
+      - echo "== Package release artifact =="
+      - tar czf strategy-engine.tar.gz dist/*
+      - mv strategy-engine.tar.gz /drone/src/
+
+# -------------------------------------------------
+# 3️⃣ SCP 上传
+# -------------------------------------------------
   - name: scp
     image: appleboy/drone-scp
     settings:
       debug: true
       source:
-        - apps/strategy-engine/strategy-engine.tar.gz
+        - strategy-engine.tar.gz
       host:
         from_secret: HOST_HONKONG_1
       username: root
@@ -96,6 +86,9 @@ steps:
         from_secret: SSH_PWD
       target: /temp
 
+# -------------------------------------------------
+# 4️⃣ 远程部署
+# -------------------------------------------------
   - name: deploy
     image: appleboy/drone-ssh
     settings:
@@ -108,10 +101,9 @@ steps:
       command_timeout: 2m
       script:
         - export APP_NAME=strategy-engine
-        - cd /temp/apps/$APP_NAME
         - mkdir -p /data/app/$APP_NAME
         - rm -rf /data/app/$APP_NAME/*
-        - tar xzf $APP_NAME.tar.gz -C /data/app/$APP_NAME
+        - tar xzf /temp/strategy-engine.tar.gz -C /data/app/$APP_NAME
         - cd /data/app/$APP_NAME
         - ls -la
         - docker-compose up -d --no-recreate nats redis
