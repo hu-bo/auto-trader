@@ -70,7 +70,7 @@ steps:
       - mv strategy-engine.tar.gz /drone/src/
 
 # -------------------------------------------------
-# 3️⃣ SCP 上传
+# 3️⃣ SCP 上传1
 # -------------------------------------------------
   - name: scp
     image: appleboy/drone-scp
