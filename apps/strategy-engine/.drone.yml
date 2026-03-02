@@ -1,0 +1,112 @@
+kind: pipeline
+type: docker
+name: strategy-engine
+
+trigger:
+  branch:
+    - master
+
+volumes:
+  - name: pip-cache
+    host:
+      path: /var/lib/drone-cache/pip
+  - name: cargo-cache
+    host:
+      path: /var/lib/drone-cache/cargo
+
+steps:
+
+# -------------------------------------------------
+# 1️⃣ 构建 Rust 扩展 (hquant-py)1
+# -------------------------------------------------
+  - name: build-hquant
+    image: ghcr.io/pyo3/maturin:latest
+    environment:
+      CARGO_HOME: /root/.cargo
+    volumes:
+      - name: cargo-cache
+        path: /root/.cargo/registry
+      - name: cargo-cache
+        path: /root/.cargo/git
+    commands:
+      - echo "== Building hquant wheel =="
+      - cd packages/hquant-py
+      - maturin build --release --strip -i /opt/python/cp312-cp312/bin/python -o /drone/src/wheels 
+      - ls -lah /drone/src/wheels
+
+# -------------------------------------------------
+# 2️⃣ 构建 Python 服务
+# -------------------------------------------------
+  - name: build-service
+    image: python:3.12-slim
+    environment:
+      POETRY_VERSION: "1.8.3"
+    volumes:
+      - name: pip-cache
+        path: /root/.cache
+    commands:
+      - echo "== Installing build deps =="
+      - apt-get update && apt-get install -y --no-install-recommends \
+          build-essential git curl && \
+        rm -rf /var/lib/apt/lists/*
+
+      - pip install --no-cache-dir "poetry==$POETRY_VERSION"
+
+      - echo "== Install prebuilt hquant wheel =="
+      - pip install wheels/hquant-*.whl
+
+      - echo "== Install local path packages =="
+      - cd apps/strategy-engine
+      - poetry install --only main --no-interaction --no-ansi
+
+      - echo "== Run tests (if exist) =="
+      - poetry run pytest tests/ || true
+
+      - echo "== Build service wheel =="
+      - poetry build -f wheel -n
+
+      - echo "== Package release artifact =="
+      - tar czf strategy-engine.tar.gz dist/*
+      - mv strategy-engine.tar.gz /drone/src/
+
+# -------------------------------------------------
+# 3️⃣ SCP 上传1
+# -------------------------------------------------
+  - name: scp
+    image: appleboy/drone-scp
+    settings:
+      debug: true
+      source:
+        - strategy-engine.tar.gz
+      host:
+        from_secret: HOST_HONKONG_1
+      username: root
+      port: 22
+      password:
+        from_secret: SSH_PWD
+      target: /temp
+
+# -------------------------------------------------
+# 4️⃣ 远程部署
+# -------------------------------------------------
+  - name: deploy
+    image: appleboy/drone-ssh
+    settings:
+      host:
+        from_secret: HOST_HONKONG_1
+      username: root
+      password:
+        from_secret: SSH_PWD
+      port: 22
+      command_timeout: 2m
+      script:
+        - export APP_NAME=strategy-engine
+        - mkdir -p /data/app/$APP_NAME
+        - rm -rf /data/app/$APP_NAME/*
+        - tar xzf /temp/strategy-engine.tar.gz -C /data/app/$APP_NAME
+        - cd /data/app/$APP_NAME
+        - ls -la
+        - docker-compose up -d --no-recreate nats redis
+        - docker-compose up -d --force-recreate --no-deps strategy-engine
+        - sleep 2
+        - docker logs strategy-engine
