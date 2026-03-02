@@ -6,6 +6,7 @@
 
 ```bash
 cd apps/strategy-engine
+conda create -n python312 python=3.12
 conda activate python312
 poetry install
 
