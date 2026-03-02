@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"exchange-adapter-service/internal/storage"
+	"exchange-adapter-service/internal/utils"
 
 	binanceAdapter "github.com/pkg/exchange-adapter/exchanges/binance"
 	okxAdapter "github.com/pkg/exchange-adapter/exchanges/okx"
@@ -168,8 +169,8 @@ func (s *TickerSyncService) handleBinanceTicker(ticker marketdata.TickerUpdate) 
 		TradeType:      string(ticker.TradeType),
 		LastPrice:      ticker.LastPrice,
 		LastSz:         ticker.LastSz,
-		PriceChange:    ticker.PriceChange,
-		PriceChangePct: ticker.PriceChangePct,
+		PriceChange:    utils.RoundFloat(ticker.PriceChange, 4),
+		PriceChangePct: utils.RoundFloat(ticker.PriceChangePct, 4),
 		High24h:        ticker.High24h,
 		Low24h:         ticker.Low24h,
 		Volume24h:      ticker.Volume24h,
@@ -194,8 +195,8 @@ func (s *TickerSyncService) handleOKXTicker(ticker marketdata.TickerUpdate) {
 		TradeType:      string(ticker.TradeType),
 		LastPrice:      ticker.LastPrice,
 		LastSz:         ticker.LastSz,
-		PriceChange:    ticker.PriceChange,
-		PriceChangePct: ticker.PriceChangePct,
+		PriceChange:    utils.RoundFloat(ticker.PriceChange, 4),
+		PriceChangePct: utils.RoundFloat(ticker.PriceChangePct, 4),
 		High24h:        ticker.High24h,
 		Low24h:         ticker.Low24h,
 		Volume24h:      ticker.Volume24h,
