@@ -43,7 +43,7 @@ steps:
   #       - cat /data/app/exchange-sync/config.local.yaml
 
   - name: build
-    image: golang:1.23-alpine
+    image: golang:1.24-alpine
     environment:
       GOPROXY: https://goproxy.cn,direct
       CGO_ENABLED: 0
