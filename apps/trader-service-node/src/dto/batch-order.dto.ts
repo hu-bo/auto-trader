@@ -5,7 +5,7 @@ export class PlaceBatchStrategyOrderBodyDTO {
   @Rule(Joi.number().integer().positive().required())
   exchangeId!: number;
 
-  @Rule(Joi.string().trim().valid('futures', 'spot').required())
+  @Rule(Joi.string().trim().valid('futures', 'spot', 'usdm-algo').required())
   tradeType!: string;
 
   @Rule(Joi.array().items(Joi.string().trim().min(1)).min(1).required())
@@ -31,6 +31,6 @@ export class CheckDuplicatesBodyDTO {
   @Rule(Joi.number().integer().positive().required())
   exchangeId!: number;
 
-  @Rule(Joi.string().trim().valid('futures', 'spot').required())
+  @Rule(Joi.string().trim().valid('futures', 'spot', 'usdm-algo').required())
   tradeType!: string;
 }

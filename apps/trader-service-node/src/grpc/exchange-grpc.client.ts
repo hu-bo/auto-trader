@@ -24,6 +24,7 @@ type GrpcStrategyTriggerPriceType = 'STRATEGY_TRIGGER_PRICE_TYPE_LAST' | 'STRATE
 function mapTradeType(input: string): GrpcTradeType {
   const v = input.trim().toUpperCase();
   if (v === 'SPOT' || v === 'TRADE_TYPE_SPOT') return 'TRADE_TYPE_SPOT';
+  if (v === 'USDM-ALGO' || v === 'USDM_ALGO') return 'TRADE_TYPE_FUTURES';
   if (v === 'FUTURES' || v === 'TRADE_TYPE_FUTURES') return 'TRADE_TYPE_FUTURES';
   if (v === 'DELIVERY' || v === 'TRADE_TYPE_DELIVERY') return 'TRADE_TYPE_DELIVERY';
   throw new httpError.BadRequestError(`Invalid trade_type: ${input}`);

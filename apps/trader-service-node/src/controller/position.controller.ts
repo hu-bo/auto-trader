@@ -32,6 +32,12 @@ export class PositionController {
   @Inject()
   userService!: UserService;
 
+  private requireGrpcSuccess(resp: any, fallbackMessage: string): void {
+    if (!resp?.success) {
+      throw new httpError.BadRequestError(resp?.error?.message || fallbackMessage);
+    }
+  }
+
   private async getTokenForExchange(exchangeId: number): Promise<string> {
     const user = await this.userService.getOrCreateCurrentUser(this.ctx.state.user);
     const exchange = await this.exchangeService.get(user.id, exchangeId);
@@ -61,13 +67,14 @@ export class PositionController {
       token,
       symbol: query.symbol,
     });
-    return apiOk(resp);
+    return apiOk({ positions: Array.isArray(resp?.positions) ? resp.positions : [] });
   }
 
   @Post('/sync')
   async sync(@Body() body: SyncPositionsBodyDTO) {
     const token = await this.getTokenForExchange(body.exchangeId);
     const resp = await this.exchangeGrpc.syncPositions({ token });
+    this.requireGrpcSuccess(resp, '同步持仓失败');
     return apiOk(resp);
   }
 
@@ -75,6 +82,9 @@ export class PositionController {
   async close(@Param() params: PositionIdParamDTO, @Body() body: ClosePositionBodyDTO) {
     const token = await this.getTokenForExchange(body.exchangeId);
     const positionsResp = await this.exchangeGrpc.getPositions({ token });
+    if (!Array.isArray(positionsResp?.positions)) {
+      throw new httpError.BadGatewayError('查询持仓返回异常');
+    }
     const positions: any[] = Array.isArray(positionsResp?.positions) ? positionsResp.positions : [];
 
     const position = positions.find(p => p?.id === params.positionId);
@@ -108,6 +118,7 @@ export class PositionController {
       clientOrderId: body.clientOrderId ?? null,
       reduceOnly: true,
     });
+    this.requireGrpcSuccess(resp, '平仓下单失败');
     return apiOk(resp);
   }
 }

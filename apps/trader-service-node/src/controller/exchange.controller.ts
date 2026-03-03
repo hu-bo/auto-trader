@@ -120,12 +120,15 @@ export class ExchangeController {
     });
 
     if (!initResp?.success || !initResp?.token) {
-      const msg = initResp?.error || 'InitAccount failed';
+      const msg = initResp?.error?.message || 'InitAccount failed';
       throw new httpError.BadGatewayError(msg);
     }
 
     // 验证 token（同时验证 API Key 是否可用）
     const validateResp = await this.exchangeGrpc.validateToken({ token: initResp.token });
+    if (validateResp?.error) {
+      throw new httpError.BadGatewayError(validateResp.error?.message || 'ValidateToken failed');
+    }
     return apiOk({
       valid: validateResp.valid,
       exchange: validateResp.exchange,

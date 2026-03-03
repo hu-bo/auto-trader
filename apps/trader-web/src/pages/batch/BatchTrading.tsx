@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import {
   Table,
-  Select,
   InputNumber,
   Radio,
   RadioGroup,
@@ -27,20 +26,22 @@ const BatchTrading: React.FC = () => {
   const navigate = useNavigateKeepParams()
   const { selectedExchange } = useAppStore()
   const exchange = selectedExchange?.exchangeType?.toLowerCase() || 'binance'
-  const [tradeType, setTradeType] = useState<'futures' | 'spot'>('futures')
+  const marketTradeType = 'futures'
+  const strategyTradeType = 'usdm-algo'
   const [filterMode, setFilterMode] = useState<FilterMode>('gainers')
   const [topN, setTopN] = useState(20)
   const [selectedRowKeys, setSelectedRowKeys] = useState<(string | number)[]>([])
   const [direction, setDirection] = useState<'buy_long' | 'sell_short'>('buy_long')
   const [amountUSDT, setAmountUSDT] = useState<number>(100)
-  const [priceOffsetPercent, setPriceOffsetPercent] = useState<number>(0)
+  const [priceOffsetPercent, setPriceOffsetPercent] = useState<number>(1)
   const [stopLossPercent, setStopLossPercent] = useState<number>(5)
   const [takeProfitPercent, setTakeProfitPercent] = useState<number>(10)
+  const [leverage, setLeverage] = useState<number>(10)
   const [submitting, setSubmitting] = useState(false)
 
   const { data: tickerData, isLoading } = useQuery({
-    queryKey: ['batch-tickers', exchange, tradeType],
-    queryFn: () => marketApi.getTickers({ exchange, trade_type: tradeType }),
+    queryKey: ['batch-tickers', exchange, marketTradeType],
+    queryFn: () => marketApi.getTickers({ exchange, trade_type: marketTradeType }),
     refetchInterval: 10000,
   })
   const tickers = tickerData?.tickers || []
@@ -121,7 +122,7 @@ const BatchTrading: React.FC = () => {
 
       const duplicateResult = await batchOrderApi.checkDuplicates({
         exchangeId,
-        tradeType,
+        tradeType: strategyTradeType,
       })
 
       const openSymbols = new Set(
@@ -132,20 +133,23 @@ const BatchTrading: React.FC = () => {
       const placeOrders = async () => {
         const result = await batchOrderApi.placeBatchStrategy({
           exchangeId,
-          tradeType,
+          tradeType: strategyTradeType,
           symbols,
           direction,
           amountUSDT,
           priceOffsetPercent,
           stopLossPercent,
           takeProfitPercent,
+          ...(marketTradeType === 'futures' ? { leverage } : {}),
         })
 
         Modal.info({
           title: '批量下单结果',
           content: `成功: ${result.success_count}, 失败: ${result.failed_count}`,
           afterClose: () => {
-            navigate('/orders')
+            if (result.success_count > 0) {
+              navigate('/orders')
+            }
           },
         })
       }
@@ -162,7 +166,7 @@ const BatchTrading: React.FC = () => {
         await placeOrders()
       }
     } catch (err: any) {
-      Toast.error({ content: err.message || '下单失败' })
+      // Toast.error({ content: err.message || '下单失败' })
     } finally {
       setSubmitting(false)
     }
@@ -211,18 +215,7 @@ const BatchTrading: React.FC = () => {
           >
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
               <Tag size="large" color="blue">{exchange.toUpperCase()}</Tag>
-              <Select
-                value={tradeType}
-                onChange={(v) => {
-                  setTradeType(v as 'futures' | 'spot')
-                  setSelectedRowKeys([])
-                }}
-                style={{ width: 90 }}
-                size="small"
-              >
-                <Select.Option value="futures">合约</Select.Option>
-                <Select.Option value="spot">现货</Select.Option>
-              </Select>
+              <Tag size="large" color="cyan">USDM-ALGO</Tag>
               <RadioGroup
                 value={filterMode}
                 onChange={(e) => {
@@ -284,6 +277,21 @@ const BatchTrading: React.FC = () => {
                 </Radio>
               </RadioGroup>
             </div>
+
+            {marketTradeType === 'futures' && (
+              <div style={fieldStyle}>
+                <div style={labelStyle}>杠杆倍数</div>
+                <InputNumber
+                  value={leverage}
+                  onChange={(v) => setLeverage(v as number)}
+                  min={1}
+                  max={125}
+                  step={1}
+                  style={{ width: '100%' }}
+                  suffix="x"
+                />
+              </div>
+            )}
 
             <div style={fieldStyle}>
               <div style={labelStyle}>金额 (USDT)</div>

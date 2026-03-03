@@ -83,7 +83,7 @@ export function formatDate(
 // 日期时间格式化
 export function formatDateTime(
   date: string | number | Date | null | undefined,
-  format = 'YYYY-MM-DD HH:mm:ss'
+  format = 'YYYY/M/D H:m:s'
 ): string {
   if (!date) return '-'
   return dayjs(date).format(format)
@@ -125,7 +125,14 @@ export function formatOrderStatus(status: string): string {
 }
 
 // 订单方向文本
-export function formatOrderSide(side: string): string {
+export function formatOrderSide(side: string, positionSide?: string): string {
+  if (positionSide) {
+    const positionSideMap: Record<string, Record<string, string>> = {
+      long: { buy: '开多', sell: '平多' },
+      short: { buy: '平空', sell: '开空' },
+    }
+    return positionSideMap[positionSide]?.[side] || side
+  }
   return side === 'buy' ? '买入' : '卖出'
 }
 

@@ -39,7 +39,6 @@ export class OrderService {
     }
     const [orders, total] = await repo.findAndCount({
       where,
-      relations: ['exchange'],
       order: { createdAt: 'DESC' },
       skip: params.offset ?? 0,
       take: params.limit ?? 50,
