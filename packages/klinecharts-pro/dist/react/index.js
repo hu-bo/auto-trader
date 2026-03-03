@@ -4,17 +4,25 @@ import { useRef, useEffect, useCallback, useImperativeHandle, useState, useMemo 
 // src/core/KLineChartPro.ts
 import { init, dispose, registerLocale, registerStyles } from "klinecharts";
 
+// src/types/index.ts
+function toKCPeriod(period) {
+  return { type: period.timespan, span: period.multiplier };
+}
+function fromKCPeriod(kcPeriod, text = "") {
+  return { multiplier: kcPeriod.span, timespan: kcPeriod.type, text };
+}
+
 // src/core/defaults.ts
 var DEFAULT_PERIODS = [
-  { span: 1, type: "minute", text: "1m" },
-  { span: 5, type: "minute", text: "5m" },
-  { span: 15, type: "minute", text: "15m" },
-  { span: 30, type: "minute", text: "30m" },
-  { span: 1, type: "hour", text: "1H" },
-  { span: 4, type: "hour", text: "4H" },
-  { span: 1, type: "day", text: "1D" },
-  { span: 1, type: "week", text: "1W" },
-  { span: 1, type: "month", text: "1M" }
+  { multiplier: 1, timespan: "minute", text: "1m" },
+  { multiplier: 5, timespan: "minute", text: "5m" },
+  { multiplier: 15, timespan: "minute", text: "15m" },
+  { multiplier: 30, timespan: "minute", text: "30m" },
+  { multiplier: 1, timespan: "hour", text: "1H" },
+  { multiplier: 4, timespan: "hour", text: "4H" },
+  { multiplier: 1, timespan: "day", text: "1D" },
+  { multiplier: 1, timespan: "week", text: "1W" },
+  { multiplier: 1, timespan: "month", text: "1M" }
 ];
 function getDefaultMainIndicators() {
   return ["MA"];
@@ -781,7 +789,7 @@ var KLineChartPro = class {
     }
     this.setupChartEvents();
     this.setupDataLoader();
-    this.chart.setPeriod(this.currentPeriod);
+    this.chart.setPeriod(toKCPeriod(this.currentPeriod));
     this.chart.setSymbol(this.currentSymbol);
   }
   /**
@@ -869,7 +877,7 @@ var KLineChartPro = class {
   /** Find our extended Period (with text) matching a klinecharts Period */
   findPeriod(kcPeriod) {
     return this.periods.find(
-      (p) => p.type === kcPeriod.type && p.span === kcPeriod.span
+      (p) => p.timespan === kcPeriod.type && p.multiplier === kcPeriod.span
     );
   }
   setupChartEvents() {
@@ -910,7 +918,7 @@ var KLineChartPro = class {
       month: 30 * 24 * 60 * 60 * 1e3,
       year: 365 * 24 * 60 * 60 * 1e3
     };
-    return (multipliers[p.type] || 60 * 1e3) * p.span;
+    return (multipliers[p.timespan] || 60 * 1e3) * p.multiplier;
   }
   setTheme(theme) {
     if (!this.chart) return;
@@ -954,7 +962,7 @@ var KLineChartPro = class {
   setPeriod(period) {
     const oldPeriod = this.currentPeriod;
     this.currentPeriod = period;
-    this.chart?.setPeriod(period);
+    this.chart?.setPeriod(toKCPeriod(period));
     this.emitAction("onPeriodChange", { oldPeriod, newPeriod: period });
   }
   getPeriod() {
@@ -1622,7 +1630,7 @@ var DefaultDatafeed = class {
     this.apiKey = apiKey;
   }
   getSubscriptionKey(symbol, period) {
-    return `${symbol.ticker}_${period.span}_${period.type}`;
+    return `${symbol.ticker}_${period.multiplier}_${period.timespan}`;
   }
   periodToPolygonTimespan(period) {
     const timespanMap = {
@@ -1633,7 +1641,7 @@ var DefaultDatafeed = class {
       month: "month",
       year: "year"
     };
-    return timespanMap[period.type] || "day";
+    return timespanMap[period.timespan] || "day";
   }
   async searchSymbols(search) {
     if (!search || search.length < 1) {
@@ -1667,7 +1675,7 @@ var DefaultDatafeed = class {
     const toDate = new Date(to).toISOString().split("T")[0];
     try {
       const response = await fetch(
-        `${this.baseUrl}/v2/aggs/ticker/${symbol.ticker}/range/${period.span}/${timespan}/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=50000&apiKey=${this.apiKey}`
+        `${this.baseUrl}/v2/aggs/ticker/${symbol.ticker}/range/${period.multiplier}/${timespan}/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=50000&apiKey=${this.apiKey}`
       );
       const data = await response.json();
       if (data.results) {
@@ -1719,8 +1727,8 @@ var DefaultDatafeed = class {
       month: 30 * 24 * 60 * 60 * 1e3,
       year: 365 * 24 * 60 * 60 * 1e3
     };
-    const base = baseIntervals[period.type] || 60 * 1e3;
-    return Math.min(base * period.span, 60 * 1e3);
+    const base = baseIntervals[period.timespan] || 60 * 1e3;
+    return Math.min(base * period.multiplier, 60 * 1e3);
   }
   destroy() {
     this.subscriptions.forEach((intervalId) => {
@@ -1741,9 +1749,11 @@ export {
   createChartInstance,
   darkTheme,
   enUS,
+  fromKCPeriod,
   getDefaultMainIndicators,
   getDefaultSubIndicators,
   lightTheme,
+  toKCPeriod,
   zhCN,
   zhTW
 };

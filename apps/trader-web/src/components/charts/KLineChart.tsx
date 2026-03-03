@@ -18,19 +18,19 @@ interface KLineChartProps {
   onIntervalChange?: (interval: string) => void
 }
 
-function periodToString(period: Period): string {
-  const { span, type } = period
-  switch (type) {
-    case 'minute': return `${span}m`
-    case 'hour': return `${span}h`
-    case 'day': return `${span}d`
-    case 'week': return `${span}w`
-    case 'month': return `${span}M`
+export function periodToString(period: Period): string {
+  const { multiplier, timespan } = period
+  switch (timespan) {
+    case 'minute': return `${multiplier}m`
+    case 'hour': return `${multiplier}h`
+    case 'day': return `${multiplier}d`
+    case 'week': return `${multiplier}w`
+    case 'month': return `${multiplier}M`
     default: return '15m'
   }
 }
 
-class TradingDatafeed implements Datafeed {
+export class TradingDatafeed implements Datafeed {
   private socket: Socket | null = null
   private callbacks: Map<string, (data: KLineData) => void> = new Map()
   private exchange: string
@@ -190,9 +190,9 @@ class TradingDatafeed implements Datafeed {
 }
 
 const periods: Period[] = [
-  { span: 15, type: 'minute', text: '15m' },
-  { span: 4, type: 'hour', text: '4H' },
-  { span: 1, type: 'day', text: '1D' },
+  { multiplier: 15, timespan: 'minute', text: '15m' },
+  { multiplier: 4, timespan: 'hour', text: '4H' },
+  { multiplier: 1, timespan: 'day', text: '1D' },
 ]
 
 export const KLineChart: React.FC<KLineChartProps> = ({

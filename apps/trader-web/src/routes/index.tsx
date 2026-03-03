@@ -15,6 +15,7 @@ const Positions = lazy(() => import('@/pages/position/Positions'))
 const Orders = lazy(() => import('@/pages/order/Orders'))
 const StrategyOrders = lazy(() => import('@/pages/order/StrategyOrders'))
 const StrategyDebugger = lazy(() => import('@/pages/strategy/StrategyDebugger'))
+const ChartPro = lazy(() => import('@/pages/chart/ChartPro'))
 const BatchTrading = lazy(() => import('@/pages/batch/BatchTrading'))
 const ExchangeConfig = lazy(() => import('@/pages/exchange/ExchangeConfig'))
 const Settings = lazy(() => import('@/pages/settings/Settings'))
@@ -114,6 +115,14 @@ export const router = createBrowserRouter([
         element: (
           <LazyPage>
             <StrategyDebugger />
+          </LazyPage>
+        ),
+      },
+      {
+        path: 'chart-pro',
+        element: (
+          <LazyPage>
+            <ChartPro />
           </LazyPage>
         ),
       },

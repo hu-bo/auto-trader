@@ -1,15 +1,15 @@
 import type { Period, DrawingToolGroup } from '../types'
 
 export const DEFAULT_PERIODS: Period[] = [
-  { span: 1, type: 'minute', text: '1m' },
-  { span: 5, type: 'minute', text: '5m' },
-  { span: 15, type: 'minute', text: '15m' },
-  { span: 30, type: 'minute', text: '30m' },
-  { span: 1, type: 'hour', text: '1H' },
-  { span: 4, type: 'hour', text: '4H' },
-  { span: 1, type: 'day', text: '1D' },
-  { span: 1, type: 'week', text: '1W' },
-  { span: 1, type: 'month', text: '1M' },
+  { multiplier: 1, timespan: 'minute', text: '1m' },
+  { multiplier: 5, timespan: 'minute', text: '5m' },
+  { multiplier: 15, timespan: 'minute', text: '15m' },
+  { multiplier: 30, timespan: 'minute', text: '30m' },
+  { multiplier: 1, timespan: 'hour', text: '1H' },
+  { multiplier: 4, timespan: 'hour', text: '4H' },
+  { multiplier: 1, timespan: 'day', text: '1D' },
+  { multiplier: 1, timespan: 'week', text: '1W' },
+  { multiplier: 1, timespan: 'month', text: '1M' },
 ]
 
 export function getDefaultMainIndicators(): string[] {

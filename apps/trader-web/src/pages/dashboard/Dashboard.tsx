@@ -92,7 +92,7 @@ const Dashboard: React.FC = () => {
 
   const { data: strategyOrders } = useQuery({
     queryKey: ['strategy-orders'],
-    queryFn: strategyOrderApi.list,
+    queryFn: () => strategyOrderApi.list(),
   })
 
   const { data: positions } = useQuery({
@@ -104,7 +104,7 @@ const Dashboard: React.FC = () => {
     enabled: !!selectedExchange,
   })
 
-  const runningStrategies = strategyOrders?.filter((s) => s.isRunning) || []
+  const runningStrategies = strategyOrders?.data?.filter((s) => s.is_running) || []
   const totalPositions = positions?.positions?.length || 0
 
   if (loadingStats) {
@@ -186,7 +186,7 @@ const Dashboard: React.FC = () => {
                     }}
                   >
                     <div>
-                      <Text strong>{order.strategyId}</Text>
+                      <Text strong>{order.strategy_id}</Text>
                       <div style={{ marginTop: 4 }}>
                         {order.symbols.map((symbol) => (
                           <Tag key={symbol} size="small" style={{ marginRight: 4 }}>
