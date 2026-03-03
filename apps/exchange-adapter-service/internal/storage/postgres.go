@@ -24,6 +24,8 @@ const (
 	defaultPoolMinConns = 5
 )
 
+const storedCandlePeriod = string(exchange.Period15m)
+
 //go:embed db/migrations/*.sql
 var migrationsFS embed.FS
 
@@ -106,8 +108,18 @@ func (r *PostgresRepository) SaveCandles(ctx context.Context, candles []exchange
 		return nil
 	}
 
+	filtered := make([]exchange.NormalizedCandle, 0, len(candles))
+	for _, candle := range candles {
+		if candle.Period == storedCandlePeriod {
+			filtered = append(filtered, candle)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+
 	// 按年份分组
-	grouped := r.groupCandlesByYear(candles)
+	grouped := r.groupCandlesByYear(filtered)
 
 	for year, yearCandles := range grouped {
 		tableName, err := r.partition.EnsurePartitionByYear(ctx, year)
@@ -190,6 +202,10 @@ func (r *PostgresRepository) groupCandlesByYear(candles []exchange.NormalizedCan
 
 // SaveCandle 保存单条K线
 func (r *PostgresRepository) SaveCandle(ctx context.Context, candle exchange.NormalizedCandle) error {
+	if candle.Period != storedCandlePeriod {
+		return nil
+	}
+
 	tableName, err := r.partition.EnsurePartition(ctx, candle.Timestamp)
 	if err != nil {
 		return err
@@ -218,6 +234,10 @@ func (r *PostgresRepository) SaveCandle(ctx context.Context, candle exchange.Nor
 
 // UpdateCandleIfExists 仅在数据存在时更新K线数据，不存在则忽略
 func (r *PostgresRepository) UpdateCandleIfExists(ctx context.Context, candle exchange.NormalizedCandle) (bool, error) {
+	if candle.Period != storedCandlePeriod {
+		return false, nil
+	}
+
 	tableName := r.partition.GetTableNameByYear(r.partition.getYearFromTimestamp(candle.Timestamp))
 
 	// 检查表是否存在

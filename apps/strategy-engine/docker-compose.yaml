@@ -1,0 +1,66 @@
+version: "3.8"
+
+services:
+  nats:
+    image: nats:latest
+    container_name: strategy-engine-nats
+    command: ["-js", "--user=strategy_engine", "--pass=123456"]
+    ports:
+      - "16001:4222"
+    healthcheck:
+      test: ["CMD", "nats-server", "--help"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - shared_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: strategy-engine-redis
+    restart: unless-stopped
+    ports:
+      - "16000:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shared_network
+
+  strategy-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: strategy-engine
+    restart: always
+    depends_on:
+      - nats
+      - redis
+    environment:
+      APP_ENV: production
+      APP_PORT: 9002
+      GRPC_PORT: 50052
+      SIGNAL_NATS_URL: nats://nats:4222
+      SIGNAL_NATS_USER: strategy_engine
+      SIGNAL_NATS_PASS: "123456"
+      UPSTREAM_NATS_URL: nats://nats:4222
+      UPSTREAM_NATS_USER: strategy_engine
+      UPSTREAM_NATS_PASS: "123456"
+      EXCHANGE_ADAPTER_URL: http://exchange-adapter-service:9100
+      LOG_LEVEL: INFO
+    ports:
+      - "9002:9002"
+      - "50052:50052"
+    networks:
+      - shared_network
+
+volumes:
+  redis_data:
+
+networks:
+  shared_network:
+    external: true

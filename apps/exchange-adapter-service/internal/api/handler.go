@@ -305,7 +305,7 @@ func (h *Handler) GetCandles(c echo.Context) error {
 	)
 
 	requestedPeriod := exchange.Period(req.Period)
-	if requestedPeriod == exchange.Period4h {
+	if shouldAggregateFrom15m(requestedPeriod) {
 		sourcePeriod := exchange.Period15m
 		ratio := int(requestedPeriod.IntervalMs() / sourcePeriod.IntervalMs())
 		sourceLimit := 0
@@ -348,6 +348,17 @@ func (h *Handler) GetCandles(c echo.Context) error {
 	}
 
 	return Success(c, candles)
+}
+
+func shouldAggregateFrom15m(period exchange.Period) bool {
+	sourcePeriod := exchange.Period15m
+	if !period.IsValid() || period == sourcePeriod {
+		return false
+	}
+
+	sourceInterval := sourcePeriod.IntervalMs()
+	targetInterval := period.IntervalMs()
+	return targetInterval > sourceInterval && targetInterval%sourceInterval == 0
 }
 
 func filterCandlesByRangeAndLimit(candles []exchange.NormalizedCandle, startTime, endTime int64, limit int) []exchange.NormalizedCandle {

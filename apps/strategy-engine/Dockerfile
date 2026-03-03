@@ -1,21 +1,19 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir poetry==1.8.3
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Copy dependencies (monorepo build context: repo root)
-COPY packages/hquant-py /app/packages/hquant-py
-COPY packages/logger-py /app/packages/logger-py
+# Runtime wheels are expected in the release artifact.
+COPY wheels/hquant-*.whl /tmp/
+COPY wheels/hquant_logger-*.whl /tmp/
+COPY dist/strategy_engine-*.whl /tmp/
 
-# Copy app source
-COPY apps/strategy-engine /app/apps/strategy-engine
+RUN pip install --no-cache-dir /tmp/hquant-*.whl /tmp/hquant_logger-*.whl /tmp/strategy_engine-*.whl && \
+    rm -rf /tmp/*
 
-WORKDIR /app/apps/strategy-engine
+EXPOSE 9004
+EXPOSE 9005
 
-RUN poetry install --only main --no-interaction --no-ansi
-
-EXPOSE 9002
-
-CMD ["poetry", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9002"]
-
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9002"]

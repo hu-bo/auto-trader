@@ -123,8 +123,8 @@ class TradingDatafeed implements Datafeed {
 const chart = new KLineChartPro({
   container: document.getElementById('container')!,
   symbol: {
-    ticker: 'BTC-USDT',
-    name: 'BTC/USDT',
+    ticker: 'ETH-USDT',
+    name: 'ETH/USDT',
     exchange: EXCHANGE,
     market: TRADE_TYPE,
   },
