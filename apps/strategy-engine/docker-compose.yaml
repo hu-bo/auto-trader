@@ -42,19 +42,12 @@ services:
       - redis
     environment:
       APP_ENV: production
-      APP_PORT: 9002
-      GRPC_PORT: 50052
-      SIGNAL_NATS_URL: nats://nats:4222
-      SIGNAL_NATS_USER: strategy_engine
-      SIGNAL_NATS_PASS: "123456"
-      UPSTREAM_NATS_URL: nats://nats:4222
-      UPSTREAM_NATS_USER: strategy_engine
-      UPSTREAM_NATS_PASS: "123456"
-      EXCHANGE_ADAPTER_URL: http://exchange-adapter-service:9100
+      APP_PORT: 9004
+      GRPC_PORT: 9005
       LOG_LEVEL: INFO
     ports:
-      - "9002:9002"
-      - "50052:50052"
+      - "9004:9004"
+      - "9005:9005"
     networks:
       - shared_network
 

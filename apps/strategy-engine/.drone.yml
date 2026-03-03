@@ -77,7 +77,6 @@ steps:
       - cp apps/strategy-engine/docker-compose.yaml release/strategy-engine/
       - cp apps/strategy-engine/.env.example release/strategy-engine/
       - tar czf strategy-engine.tar.gz -C release/strategy-engine .
-      - mv strategy-engine.tar.gz /drone/src/
 
 # -------------------------------------------------
 # 3️⃣ SCP 上传1
