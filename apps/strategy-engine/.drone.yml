@@ -54,10 +54,11 @@ steps:
 
       - echo "== Install prebuilt hquant wheel =="
       - pip install wheels/hquant-*.whl
+      - pip install ./packages/logger-py
 
       - echo "== Install local path packages =="
       - cd apps/strategy-engine
-      - poetry install --only main --no-interaction --no-ansi
+      - poetry install --only main --no-interaction --no-ansi --no-directory
 
       - echo "== Run tests (if exist) =="
       - poetry run pytest tests/ || true
