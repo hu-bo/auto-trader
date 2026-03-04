@@ -179,11 +179,17 @@ export class OrderController {
 
     for (const symbol of body.symbols) {
       const lastPrice = tickerMap.get(symbol);
-      if (!lastPrice) continue;
-
+      if (!lastPrice) {
+        this.logger.warn('[BatchStrategy] No price data for symbol %s, skipping', symbol);
+        continue;
+      };
+      
       const entryPrice = lastPrice * offsetMultiplier;
       const quantity = tq(body.amountUSDT / entryPrice, symbol);
-      if (quantity <= 0) continue;
+      if (quantity <= 0) {
+        this.logger.warn('[BatchStrategy] Computed quantity %.8f for symbol %s is too small, skipping', quantity, symbol);
+        continue;
+      };
 
       if (body.direction === 'buy_long') {
         orders.push({
