@@ -10,10 +10,13 @@ import {
   IconPulse,
   IconList,
   IconUserGroup,
-  IconServer,
+  IconTicketCodeExchangeStroked,
   IconCode,
   IconCopyStroked,
+  IconAlignVBotStroked,
+  IconMoneyExchangeStroked,
 } from '@douyinfe/semi-icons'
+import { IconTable, IconTree } from '@douyinfe/semi-icons-lab';
 import { useAuthStore } from '@/stores/authStore'
 import { useNavigateKeepParams } from '@/hooks'
 
@@ -25,21 +28,20 @@ interface SidebarProps {
 
 const menuItems = [
   { itemKey: '/dashboard', text: '仪表盘', icon: <IconHome /> },
-  { itemKey: '/market', text: '行情', icon: <IconLineChartStroked /> },
-  { itemKey: '/trading/BTC-USDT', text: '交易', icon: <IconPulse /> },
-  { itemKey: '/positions', text: '持仓', icon: <IconPulse /> },
+  { itemKey: '/market', text: '行情总览', icon: <IconTable /> },
+  { itemKey: '/trading/BTC-USDT', text: '行情交易', icon: <IconAlignVBotStroked /> },
+  { itemKey: '/positions', text: '持仓', icon: <IconMoneyExchangeStroked /> },
   { itemKey: '/orders', text: '订单', icon: <IconList /> },
   { itemKey: '/strategy-orders', text: '策略运行', icon: <IconGridStroked /> },
   { itemKey: '/batch-trading', text: '批量交易', icon: <IconCopyStroked /> },
   { itemKey: '/strategy-debugger', text: '策略调试', icon: <IconCode /> },
-  { itemKey: '/chart-pro', text: '图表(官方)', icon: <IconHistogram /> },
-  { itemKey: '/exchanges', text: '交易所', icon: <IconServer /> },
+  { itemKey: '/exchanges', text: '交易所', icon: <IconTicketCodeExchangeStroked /> },
+  { itemKey: '/strategy-library', text: '策略库', icon: <IconTree /> },
   { itemKey: '/settings', text: '设置', icon: <IconSetting /> },
 ]
 
 const adminMenuItems = [
   { itemKey: '/admin/users', text: '用户管理', icon: <IconUserGroup /> },
-  { itemKey: '/admin/strategy-library', text: '策略库', icon: <IconServer /> },
 ]
 
 export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {

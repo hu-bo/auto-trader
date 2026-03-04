@@ -14,19 +14,37 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuth, useNavigateKeepParams } from '@/hooks'
 import { useAppStore } from '@/stores/appStore'
 import { exchangeApi } from '@/api'
+import { Exchange } from '@/types'
 
 const { Header: SemiHeader } = Layout
 
 interface HeaderProps {
   onToggleSidebar?: () => void
 }
-
+const defalutExchanges: Exchange[] = [
+  {
+    id: '1',
+    name: 'Binance',
+    exchangeType: 'binance' as const,
+    isTestnet: false,
+    isActive: true,
+    userId: '',
+  },
+  {
+    id: '2',
+    name: 'OKX',
+    exchangeType: 'okx' as const,
+    isTestnet: false,
+    isActive: true,
+    userId: '',
+  }
+]
 export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const navigate = useNavigateKeepParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const { user, logout } = useAuth()
   const { theme, toggleTheme, selectedExchange, setSelectedExchange } = useAppStore()
-
+  const [exchangeOptions, setExchangeOptions] = React.useState<Exchange[]>(defalutExchanges)
   const { data: exchanges } = useQuery({
     queryKey: ['exchanges'],
     queryFn: exchangeApi.list,
@@ -34,7 +52,15 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
   // On mount: sync URL query -> store (if URL has exchangeId and store doesn't match)
   useEffect(() => {
-    if (!exchanges?.length) return
+    if (!exchanges?.length) {
+      setSelectedExchange(defalutExchanges[0])
+      setSearchParams((prev) => {
+        prev.set('exchangeId', defalutExchanges[0].id)
+        prev.set('exchangeType', defalutExchanges[0].exchangeType)
+        return prev
+      }, { replace: true })
+      return
+    }
     const urlExchangeId = searchParams.get('exchangeId')
     if (urlExchangeId && urlExchangeId !== selectedExchange?.id) {
       const found = exchanges.find((e) => e.id === urlExchangeId)
@@ -49,10 +75,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         return prev
       }, { replace: true })
     }
+    setExchangeOptions(exchanges)
   }, [exchanges])
 
   const handleExchangeChange = (value: string | number | any[] | Record<string, any> | undefined) => {
-    const exchange = exchanges?.find((e) => e.id === value)
+    const exchange = exchangeOptions?.find((e) => e.id === value)
     if (exchange) {
       setSelectedExchange(exchange)
       setSearchParams((prev) => {
@@ -99,7 +126,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           placeholder="选择交易所"
           style={{ width: 240 }}
           prefix={<IconComponent />}
-          optionList={(exchanges || []).map((e) => ({
+          optionList={exchangeOptions.map((e) => ({
             value: e.id,
             label: (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

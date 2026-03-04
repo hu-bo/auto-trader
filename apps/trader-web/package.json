@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@douyinfe/semi-icons": "^2.90.13",
+    "@douyinfe/semi-icons-lab": "^2.92.2",
     "@douyinfe/semi-ui-19": "^2.90.13",
     "@hquant/casdoor": "workspace:*",
     "@hquant/klinecharts-pro": "workspace:*",

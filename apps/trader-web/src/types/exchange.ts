@@ -8,10 +8,10 @@ export interface Exchange {
   apiKey?: string
   apiSecret?: string
   passphrase?: string
-  isTestnet: boolean
+  isTestnet?: boolean
   isActive: boolean
-  createdAt: string
-  updatedAt: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export type ExchangeCreate =
