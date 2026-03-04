@@ -12,7 +12,7 @@ export class ReportMiddleware implements IMiddleware<Context, NextFunction> {
       const result = await next();
       // 控制器之后执行的逻辑
       ctx.logger.info(
-        `Report in "src/middleware/report.middleware.ts", rt = ${
+        `Report in "${ctx.req.url}", rt = ${
           Date.now() - startTime
         }ms`
       );

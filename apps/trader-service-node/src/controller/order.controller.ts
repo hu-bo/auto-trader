@@ -335,6 +335,7 @@ export class OrderController {
           token,
           orderId: order.exchangeOrderId,
         });
+    console.log(this.isStrategyAlgoOrder(order), resp)
     this.requireGrpcSuccess(resp, '取消订单失败');
     return apiOk(resp);
   }
