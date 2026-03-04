@@ -20,6 +20,18 @@ export class AccountController {
   @Inject()
   userService!: UserService;
 
+  private requireGrpcSuccess(resp: any, fallbackMessage: string): void {
+    if (!resp?.success) {
+      throw new httpError.BadRequestError(resp?.error?.message || fallbackMessage);
+    }
+  }
+
+  private requireGrpcNoError(resp: any, fallbackMessage: string): void {
+    if (resp?.error) {
+      throw new httpError.BadRequestError(resp.error?.message || fallbackMessage);
+    }
+  }
+
   private async getTokenForExchange(exchangeId: number): Promise<string> {
     const user = await this.userService.getOrCreateCurrentUser(this.ctx.state.user);
     const exchange = await this.exchangeService.get(user.id, exchangeId);
@@ -49,6 +61,7 @@ export class AccountController {
       token,
       tradeType: query.tradeType,
     });
+    this.requireGrpcNoError(resp, '获取余额失败');
     return apiOk(resp);
   }
 
@@ -62,6 +75,7 @@ export class AccountController {
       tradeType: body.tradeType,
       positionSide: body.positionSide ?? null,
     });
+    this.requireGrpcSuccess(resp, '设置杠杆失败');
     return apiOk(resp);
   }
 }

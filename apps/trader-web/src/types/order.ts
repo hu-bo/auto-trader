@@ -5,7 +5,7 @@ export type OrderType = 'market' | 'limit' | 'stop_market' | 'stop_limit'
 export type OrderStatus = 'new' | 'partially_filled' | 'filled' | 'canceled' | 'rejected' | 'expired'
 
 export interface Order {
-  id: string
+  orderid: string
   exchangeId: string
   symbol: string
   tradeType: TradeType

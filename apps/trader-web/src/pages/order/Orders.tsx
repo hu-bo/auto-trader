@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Card, Table, Tag, Button, Select, Toast, Empty, Popconfirm, Typography } from '@douyinfe/semi-ui-19'
+import { Card, Table, Tag, Button, Select, Toast, Empty, Typography } from '@douyinfe/semi-ui-19'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { orderApi } from '@/api'
 import { useAppStore } from '@/stores/appStore'
@@ -43,8 +43,8 @@ const Orders: React.FC = () => {
   })
 
   const cancelMutation = useMutation({
-    mutationFn: ({ orderId, exchangeId }: { orderId: string; exchangeId: string }) =>
-      orderApi.cancel(orderId, { exchangeId }),
+    mutationFn: ({ orderid, exchangeId }: { orderid: string; exchangeId: string }) =>
+      orderApi.cancel(orderid, { exchangeId }),
     onSuccess: () => {
       Toast.success('订单已取消')
       queryClient.invalidateQueries({ queryKey: ['orders'] })
@@ -56,33 +56,25 @@ const Orders: React.FC = () => {
 
   const columns = [
     {
-      title: '时间',
-      dataIndex: 'createdAt',
-      width: 160,
-      render: (time: string) => formatDateTime(time),
-    },
-    {
       title: '交易对',
       dataIndex: 'symbol',
-      width: 120,
-    },
-    {
-      title: '类型',
-      dataIndex: 'tradeType',
-      width: 80,
-      render: (type: string) => (
-        <Tag size="small" color={type === 'spot' ? 'blue' : 'purple'}>
-          {type === 'spot' ? '现货' : '合约'}
-        </Tag>
+      width: 150,
+      render: (symbol: string, record: Order) => (
+        <span>
+          {symbol}
+          <Tag size="small" color={record.tradeType === 'spot' ? 'blue' : 'purple'} style={{ marginLeft: 4 }}>
+            {record.tradeType === 'spot' ? '现货' : '合约'}
+          </Tag>
+        </span>
       ),
     },
     {
       title: '方向',
       dataIndex: 'side',
       width: 80,
-      render: (side: string) => (
+      render: (side: string, record: Order) => (
         <Tag size="small" color={side === 'buy' ? 'green' : 'red'}>
-          {formatOrderSide(side)}
+          {formatOrderSide(side, record.positionSide)}
         </Tag>
       ),
     },
@@ -99,23 +91,19 @@ const Orders: React.FC = () => {
       render: (price: number | null) => (price ? formatPrice(price) : '市价'),
     },
     {
-      title: '数量',
-      dataIndex: 'quantity',
-      width: 120,
-      render: (qty: number) => formatQuantity(qty),
-    },
-    {
-      title: '已成交',
-      dataIndex: 'executedQty',
-      width: 120,
-      render: (qty: number) => formatQuantity(qty),
-    },
-    {
       title: '成交均价',
       dataIndex: 'avgPrice',
       width: 120,
       render: (price: number | null) => (price ? formatPrice(price) : '-'),
     },
+    {
+      title: '成交/数量',
+      dataIndex: 'quantity',
+      width: 140,
+      render: (qty: number, record: Order) =>
+        `${formatQuantity(record.executedQty)}/${formatQuantity(qty)}`,
+    },
+ 
     {
       title: '状态',
       dataIndex: 'status',
@@ -137,26 +125,31 @@ const Orders: React.FC = () => {
       },
     },
     {
+      title: '时间',
+      dataIndex: 'createdAt',
+      width: 120,
+      render: (time: string) => formatDateTime(time),
+    },
+    {
       title: '操作',
+      fixed: 'right',
       width: 100,
       render: (_: unknown, record: Order) => {
         if (record.status !== 'new' && record.status !== 'partially_filled') {
           return null
         }
         return (
-          <Popconfirm
-            title="确定要取消此订单吗？"
-            onConfirm={() =>
-              cancelMutation.mutate({
-                orderId: record.id,
-                exchangeId: record.exchangeId,
-              })
+          <Button
+            size="small"
+            type="danger"
+            theme="light"
+            loading={cancelMutation.isPending}
+            onClick={() =>
+              cancelMutation.mutate(record)
             }
           >
-            <Button size="small" type="danger" theme="light">
-              取消
-            </Button>
-          </Popconfirm>
+            取消
+          </Button>
         )
       },
     },

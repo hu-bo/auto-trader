@@ -2,9 +2,9 @@
 INSERT INTO normalized_candles (
     symbol, exchange, trade_type, period, timestamp,
     open, high, low, close, volume, buy_volume, symbol_family
-) VALUES (
+) SELECT
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
-)
+WHERE $4 = '15m'
 ON CONFLICT (symbol, exchange, trade_type, period, timestamp)
 DO UPDATE SET
     open = EXCLUDED.open,

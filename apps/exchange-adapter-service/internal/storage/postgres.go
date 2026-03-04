@@ -24,6 +24,8 @@ const (
 	defaultPoolMinConns = 5
 )
 
+const storedCandlePeriod = string(exchange.Period15m)
+
 //go:embed db/migrations/*.sql
 var migrationsFS embed.FS
 
@@ -106,8 +108,18 @@ func (r *PostgresRepository) SaveCandles(ctx context.Context, candles []exchange
 		return nil
 	}
 
+	filtered := make([]exchange.NormalizedCandle, 0, len(candles))
+	for _, candle := range candles {
+		if candle.Period == storedCandlePeriod {
+			filtered = append(filtered, candle)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+
 	// 按年份分组
-	grouped := r.groupCandlesByYear(candles)
+	grouped := r.groupCandlesByYear(filtered)
 
 	for year, yearCandles := range grouped {
 		tableName, err := r.partition.EnsurePartitionByYear(ctx, year)
@@ -190,6 +202,10 @@ func (r *PostgresRepository) groupCandlesByYear(candles []exchange.NormalizedCan
 
 // SaveCandle 保存单条K线
 func (r *PostgresRepository) SaveCandle(ctx context.Context, candle exchange.NormalizedCandle) error {
+	if candle.Period != storedCandlePeriod {
+		return nil
+	}
+
 	tableName, err := r.partition.EnsurePartition(ctx, candle.Timestamp)
 	if err != nil {
 		return err
@@ -218,6 +234,10 @@ func (r *PostgresRepository) SaveCandle(ctx context.Context, candle exchange.Nor
 
 // UpdateCandleIfExists 仅在数据存在时更新K线数据，不存在则忽略
 func (r *PostgresRepository) UpdateCandleIfExists(ctx context.Context, candle exchange.NormalizedCandle) (bool, error) {
+	if candle.Period != storedCandlePeriod {
+		return false, nil
+	}
+
 	tableName := r.partition.GetTableNameByYear(r.partition.getYearFromTimestamp(candle.Timestamp))
 
 	// 检查表是否存在
@@ -252,6 +272,7 @@ func (r *PostgresRepository) GetCandles(ctx context.Context, exchangeName, symbo
 	years := r.partition.GetYearsInRange(startTime, endTime)
 
 	var allCandles []exchange.NormalizedCandle
+	hasLimit := limit > 0
 
 	// 按年份正序查询 (旧数据优先)
 	for i := 0; i < len(years); i++ {
@@ -263,22 +284,44 @@ func (r *PostgresRepository) GetCandles(ctx context.Context, exchangeName, symbo
 			continue
 		}
 
-		query := fmt.Sprintf(`
+		baseQuery := fmt.Sprintf(`
 			SELECT symbol, exchange, trade_type, period, timestamp,
 			       open, high, low, close, volume, buy_volume, COALESCE(symbol_family, '')
 			FROM %s
 			WHERE exchange = $1 AND symbol = $2 AND period = $3
 			  AND timestamp >= $4 AND timestamp <= $5
 			ORDER BY timestamp ASC
-			LIMIT $6
 		`, tableName)
 
-		remaining := limit - len(allCandles)
-		if remaining <= 0 {
-			break
+		if hasLimit {
+			remaining := limit - len(allCandles)
+			if remaining <= 0 {
+				break
+			}
+
+			query := baseQuery + "\nLIMIT $6"
+			rows, err := r.pool.Query(ctx, query, exchangeName, symbol, period, startTime, endTime, remaining)
+			if err != nil {
+				return nil, err
+			}
+
+			for rows.Next() {
+				var c exchange.NormalizedCandle
+				err := rows.Scan(
+					&c.Symbol, &c.Exchange, &c.TradeType, &c.Period, &c.Timestamp,
+					&c.Open, &c.High, &c.Low, &c.Close, &c.Volume, &c.BuyVolume, &c.SymbolFamily,
+				)
+				if err != nil {
+					rows.Close()
+					return nil, err
+				}
+				allCandles = append(allCandles, c)
+			}
+			rows.Close()
+			continue
 		}
 
-		rows, err := r.pool.Query(ctx, query, exchangeName, symbol, period, startTime, endTime, remaining)
+		rows, err := r.pool.Query(ctx, baseQuery, exchangeName, symbol, period, startTime, endTime)
 		if err != nil {
 			return nil, err
 		}
@@ -304,7 +347,7 @@ func (r *PostgresRepository) GetCandles(ctx context.Context, exchangeName, symbo
 	})
 
 	// 截取 limit
-	if len(allCandles) > limit {
+	if hasLimit && len(allCandles) > limit {
 		allCandles = allCandles[:limit]
 	}
 

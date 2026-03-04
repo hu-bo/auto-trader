@@ -1,5 +1,5 @@
-import { KLineData as KLineData$1, Period as Period$1, Chart, DeepPartial as DeepPartial$1, Styles, IndicatorCreate, OverlayCreate, Locales } from 'klinecharts';
-export { AxisStyle, CandleStyle, Chart, CrosshairStyle, DataLoader, DataLoaderGetBarsParams, DataLoaderSubscribeBarParams, DataLoaderUnsubscribeBarParams, Figure, FigureCreate, GridStyle, Indicator, IndicatorCreate, IndicatorFigure, IndicatorFigureStyle, IndicatorStyle, LineStyle, Overlay, OverlayCreate, OverlayFigure, OverlayStyle, PolygonStyle, RectStyle, SeparatorStyle, SmoothLineStyle, Styles, TextStyle, TooltipStyle, dispose, getFigureClass, getSupportedFigures, getSupportedIndicators, getSupportedOverlays, init, registerIndicator, registerLocale, registerOverlay, registerStyles, registerXAxis, registerYAxis, utils, version } from 'klinecharts';
+import { KLineData as KLineData$1, Chart, DeepPartial as DeepPartial$1, Styles, IndicatorCreate, OverlayCreate, Period as Period$1, Locales } from 'klinecharts';
+export { AxisStyle, CandleStyle, Chart, CrosshairStyle, DataLoader, DataLoaderGetBarsParams, DataLoaderSubscribeBarParams, DataLoaderUnsubscribeBarParams, Figure, FigureCreate, GridStyle, Indicator, IndicatorCreate, IndicatorFigure, IndicatorFigureStyle, IndicatorStyle, Period as KCPeriod, LineStyle, Overlay, OverlayCreate, OverlayFigure, OverlayStyle, PolygonStyle, RectStyle, SeparatorStyle, SmoothLineStyle, Styles, TextStyle, TooltipStyle, dispose, getFigureClass, getSupportedFigures, getSupportedIndicators, getSupportedOverlays, init, registerIndicator, registerLocale, registerOverlay, registerStyles, registerXAxis, registerYAxis, utils, version } from 'klinecharts';
 
 type DeepPartial<T> = DeepPartial$1<T>;
 interface KLineData extends KLineData$1 {
@@ -41,14 +41,20 @@ interface SymbolInfo {
     logo?: string;
     [key: string]: unknown;
 }
-type PeriodType = Period$1['type'];
+type PeriodTimespan = 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year' | string;
 /**
- * Extended Period for klinecharts-pro.
- * klinecharts v10 uses `{ type, span }`. We add `text` for UI display.
+ * Period definition aligned with official @klinecharts/pro API.
+ * Uses `multiplier` / `timespan` instead of klinecharts v10 internal `span` / `type`.
  */
-interface Period extends Period$1 {
+interface Period {
+    multiplier: number;
+    timespan: PeriodTimespan;
     text: string;
 }
+/** Convert our Period to klinecharts v10 internal Period (`{ type, span }`). */
+declare function toKCPeriod(period: Period): Period$1;
+/** Convert klinecharts v10 internal Period to our Period (needs `text` lookup). */
+declare function fromKCPeriod(kcPeriod: Period$1, text?: string): Period;
 type DatafeedSubscribeCallback = (data: KLineData) => void;
 interface Datafeed {
     searchSymbols(search?: string): Promise<SymbolInfo[]>;
@@ -89,8 +95,6 @@ interface KLineChartProOptions {
     subIndicators?: string[];
     datafeed: Datafeed;
 }
-/** @deprecated Use PeriodType instead */
-type PeriodTimespan = PeriodType;
 interface ChartReadyCallback {
     (chart: Chart): void;
 }
@@ -285,4 +289,4 @@ declare const BUILT_IN_INDICATORS: {
 declare const DRAWING_TOOL_GROUPS: DrawingToolGroup[];
 declare const DEFAULT_TIMEZONE: string;
 
-export { BUILT_IN_INDICATORS, type BarClickEvent, BaseDatafeed, type ChartActionCallback, type ChartActionType, type ChartReadyCallback, DEFAULT_PERIODS, DEFAULT_TIMEZONE, DRAWING_TOOL_GROUPS, type Datafeed, type DatafeedSubscribeCallback, type DeepPartial, DefaultDatafeed, type DrawingTool, type DrawingToolGroup, type IndicatorInfo, type KLineChartInstance, KLineChartPro, type KLineChartProOptions, type KLineData, type LocaleType, type Period, type PeriodTimespan, type PeriodType, type SymbolInfo, type ThemeType, type TradeMarker, darkTheme, enUS, getDefaultMainIndicators, getDefaultSubIndicators, lightTheme, zhCN, zhTW };
+export { BUILT_IN_INDICATORS, type BarClickEvent, BaseDatafeed, type ChartActionCallback, type ChartActionType, type ChartReadyCallback, DEFAULT_PERIODS, DEFAULT_TIMEZONE, DRAWING_TOOL_GROUPS, type Datafeed, type DatafeedSubscribeCallback, type DeepPartial, DefaultDatafeed, type DrawingTool, type DrawingToolGroup, type IndicatorInfo, type KLineChartInstance, KLineChartPro, type KLineChartProOptions, type KLineData, type LocaleType, type Period, type PeriodTimespan, type SymbolInfo, type ThemeType, type TradeMarker, darkTheme, enUS, fromKCPeriod, getDefaultMainIndicators, getDefaultSubIndicators, lightTheme, toKCPeriod, zhCN, zhTW };

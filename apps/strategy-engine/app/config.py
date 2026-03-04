@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = Field(
         default="development", alias="APP_ENV"
     )
-    app_port: int = Field(default=9002, alias="APP_PORT")
+    app_port: int = Field(default=9004, alias="APP_PORT")
 
     # Signal NATS — publish signals & notifications to trader-service-node
     signal_nats_url: str = Field(default="nats://localhost:16001", alias="SIGNAL_NATS_URL")
@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     )
     history_preload_days: int = Field(default=3, alias="HISTORY_PRELOAD_DAYS")
 
-    grpc_port: int = Field(default=50052, alias="GRPC_PORT")
+    grpc_port: int = Field(default=9005, alias="GRPC_PORT")
 
     candle_buffer_size: int = Field(default=1000, alias="CANDLE_BUFFER_SIZE")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")

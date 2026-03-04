@@ -17,6 +17,7 @@ import type {
 export type {
   Chart, Indicator, Overlay, Styles, IndicatorCreate, OverlayCreate,
   DataLoader, DataLoaderGetBarsParams, DataLoaderSubscribeBarParams, DataLoaderUnsubscribeBarParams,
+  KCPeriod,
 }
 
 export type DeepPartial<T> = KCDeepPartial<T>
@@ -64,14 +65,26 @@ export interface SymbolInfo {
   [key: string]: unknown
 }
 
-export type PeriodType = KCPeriod['type']
+export type PeriodTimespan = 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year' | string
 
 /**
- * Extended Period for klinecharts-pro.
- * klinecharts v10 uses `{ type, span }`. We add `text` for UI display.
+ * Period definition aligned with official @klinecharts/pro API.
+ * Uses `multiplier` / `timespan` instead of klinecharts v10 internal `span` / `type`.
  */
-export interface Period extends KCPeriod {
+export interface Period {
+  multiplier: number
+  timespan: PeriodTimespan
   text: string
+}
+
+/** Convert our Period to klinecharts v10 internal Period (`{ type, span }`). */
+export function toKCPeriod(period: Period): KCPeriod {
+  return { type: period.timespan as KCPeriod['type'], span: period.multiplier }
+}
+
+/** Convert klinecharts v10 internal Period to our Period (needs `text` lookup). */
+export function fromKCPeriod(kcPeriod: KCPeriod, text = ''): Period {
+  return { multiplier: kcPeriod.span, timespan: kcPeriod.type, text }
 }
 
 export type DatafeedSubscribeCallback = (data: KLineData) => void
@@ -131,8 +144,6 @@ export interface KLineChartProOptions {
   datafeed: Datafeed
 }
 
-/** @deprecated Use PeriodType instead */
-export type PeriodTimespan = PeriodType
 
 export interface ChartReadyCallback {
   (chart: Chart): void

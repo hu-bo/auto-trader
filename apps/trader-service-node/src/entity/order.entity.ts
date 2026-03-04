@@ -28,9 +28,7 @@ export enum OrderStatus {
 @Index(['exchangeId'])
 @Index(['symbol'])
 @Index(['status'])
-@Index(['source'])
 @Index(['strategyOrderId'])
-@Index(['exchangeOrderId'])
 export class Order {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   orderid!: string;
@@ -58,13 +56,13 @@ export class Order {
   exchangeOrderId!: string | null;
 
   /** 客户端自定义订单 ID */
-  @Column({ name: 'client_order_id', type: 'varchar', length: 128, nullable: true })
-  clientOrderId!: string | null;
+  // @Column({ name: 'client_order_id', type: 'varchar', length: 128, nullable: true })
+  // clientOrderId!: string | null;
 
   @Column({ type: 'varchar', length: 64 })
   symbol!: string;
 
-  /** spot / futures / delivery */
+  /** spot / futures / delivery / usdm-algo */
   @Column({ name: 'trade_type', type: 'varchar', length: 32, default: 'spot' })
   tradeType!: string;
 

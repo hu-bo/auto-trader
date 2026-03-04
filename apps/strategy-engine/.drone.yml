@@ -54,10 +54,12 @@ steps:
 
       - echo "== Install prebuilt hquant wheel =="
       - pip install wheels/hquant-*.whl
+      - pip install ./packages/logger-py
+      - pip wheel ./packages/logger-py -w /drone/src/wheels
 
       - echo "== Install local path packages =="
       - cd apps/strategy-engine
-      - poetry install --only main --no-interaction --no-ansi
+      - poetry install --only main --no-interaction --no-ansi --no-directory
 
       - echo "== Run tests (if exist) =="
       - poetry run pytest tests/ || true
@@ -66,8 +68,15 @@ steps:
       - poetry build -f wheel -n
 
       - echo "== Package release artifact =="
-      - tar czf strategy-engine.tar.gz dist/*
-      - mv strategy-engine.tar.gz /drone/src/
+      - cd /drone/src
+      - mkdir -p release/strategy-engine/dist release/strategy-engine/wheels
+      - cp apps/strategy-engine/dist/strategy_engine-*.whl release/strategy-engine/dist/
+      - cp wheels/hquant-*.whl release/strategy-engine/wheels/
+      - cp wheels/hquant_logger-*.whl release/strategy-engine/wheels/
+      - cp apps/strategy-engine/Dockerfile release/strategy-engine/
+      - cp apps/strategy-engine/docker-compose.yaml release/strategy-engine/
+      - cp apps/strategy-engine/.env.example release/strategy-engine/
+      - tar czf strategy-engine.tar.gz -C release/strategy-engine .
 
 # -------------------------------------------------
 # 3️⃣ SCP 上传1
@@ -98,7 +107,7 @@ steps:
       password:
         from_secret: SSH_PWD
       port: 22
-      command_timeout: 2m
+      command_timeout: 10m
       script:
         - export APP_NAME=strategy-engine
         - mkdir -p /data/app/$APP_NAME
@@ -106,7 +115,7 @@ steps:
         - tar xzf /temp/strategy-engine.tar.gz -C /data/app/$APP_NAME
         - cd /data/app/$APP_NAME
         - ls -la
-        - docker-compose up -d --no-recreate nats redis
-        - docker-compose up -d --force-recreate --no-deps strategy-engine
+        - docker network inspect shared_network >/dev/null 2>&1 || docker network create shared_network
+        - docker-compose -f docker-compose.yaml up -d --build --force-recreate
         - sleep 2
-        - docker logs strategy-engine
+        - docker logs --tail 200 strategy-engine

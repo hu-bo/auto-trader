@@ -13,6 +13,7 @@ import type {
   BarClickEvent,
   TradeMarker,
 } from '../types'
+import { toKCPeriod } from '../types'
 import { DEFAULT_PERIODS, getDefaultMainIndicators, getDefaultSubIndicators } from './defaults'
 import { darkTheme, lightTheme } from '../themes'
 import { zhCN, zhTW, enUS } from '../locales'
@@ -110,7 +111,7 @@ export class KLineChartPro {
 
     // Set period first, then symbol.
     // klinecharts resets and triggers init loading on each call; this order avoids duplicate initial fetch.
-    this.chart.setPeriod(this.currentPeriod)
+    this.chart.setPeriod(toKCPeriod(this.currentPeriod))
     this.chart.setSymbol(this.currentSymbol)
   }
 
@@ -205,7 +206,7 @@ export class KLineChartPro {
   /** Find our extended Period (with text) matching a klinecharts Period */
   private findPeriod(kcPeriod: { type: string; span: number }): Period | undefined {
     return this.periods.find(
-      (p) => p.type === kcPeriod.type && p.span === kcPeriod.span
+      (p) => p.timespan === kcPeriod.type && p.multiplier === kcPeriod.span
     )
   }
 
@@ -253,7 +254,7 @@ export class KLineChartPro {
       month: 30 * 24 * 60 * 60 * 1000,
       year: 365 * 24 * 60 * 60 * 1000,
     }
-    return (multipliers[p.type] || 60 * 1000) * p.span
+    return (multipliers[p.timespan] || 60 * 1000) * p.multiplier
   }
 
   setTheme(theme: ThemeType): void {
@@ -310,7 +311,7 @@ export class KLineChartPro {
     const oldPeriod = this.currentPeriod
     this.currentPeriod = period
     // v10: setPeriod triggers setDataLoader.getBars automatically
-    this.chart?.setPeriod(period)
+    this.chart?.setPeriod(toKCPeriod(period))
     this.emitAction('onPeriodChange', { oldPeriod, newPeriod: period })
   }
 

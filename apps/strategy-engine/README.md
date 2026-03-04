@@ -6,8 +6,8 @@
 
 ```bash
 cd apps/strategy-engine
-conda create -n python312 python=3.12
-conda activate python312
+conda create -n python314 python=3.14
+conda activate python314
 poetry install
 
 # 直接运行，避免 poetry run 导致 Ctrl+C 无法退出

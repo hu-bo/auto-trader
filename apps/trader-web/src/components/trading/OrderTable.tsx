@@ -1,5 +1,5 @@
 import React from 'react'
-import { Table, Tag, Button, Popconfirm, Toast, Empty } from '@douyinfe/semi-ui-19'
+import { Table, Tag, Button, Toast, Empty } from '@douyinfe/semi-ui-19'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { orderApi } from '@/api'
 import { useAppStore } from '@/stores/appStore'
@@ -57,25 +57,23 @@ export const OrderTable: React.FC<OrderTableProps> = ({
     {
       title: '交易对',
       dataIndex: 'symbol',
-      width: 120,
-    },
-    {
-      title: '类型',
-      dataIndex: 'tradeType',
-      width: 80,
-      render: (type: string) => (
-        <Tag size="small" color={type === 'spot' ? 'blue' : 'purple'}>
-          {type === 'spot' ? '现货' : '合约'}
-        </Tag>
+      width: 150,
+      render: (symbol: string, record: Order) => (
+        <span>
+          {symbol}
+          <Tag size="small" color={record.tradeType === 'spot' ? 'blue' : 'purple'} style={{ marginLeft: 4 }}>
+            {record.tradeType === 'spot' ? '现货' : '合约'}
+          </Tag>
+        </span>
       ),
     },
     {
       title: '方向',
       dataIndex: 'side',
       width: 80,
-      render: (side: string) => (
+      render: (side: string, record: Order) => (
         <Tag size="small" color={side === 'buy' ? 'green' : 'red'}>
-          {formatOrderSide(side)}
+          {formatOrderSide(side, record.positionSide)}
         </Tag>
       ),
     },
@@ -92,16 +90,11 @@ export const OrderTable: React.FC<OrderTableProps> = ({
       render: (price: number | null) => (price ? formatPrice(price) : '市价'),
     },
     {
-      title: '数量',
+      title: '成交/数量',
       dataIndex: 'quantity',
-      width: 120,
-      render: (qty: number) => formatQuantity(qty),
-    },
-    {
-      title: '已成交',
-      dataIndex: 'executedQty',
-      width: 120,
-      render: (qty: number) => formatQuantity(qty),
+      width: 140,
+      render: (qty: number, record: Order) =>
+        `${formatQuantity(record.executedQty)}/${formatQuantity(qty)}`,
     },
     {
       title: '状态',
@@ -133,19 +126,20 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                 return null
               }
               return (
-                <Popconfirm
-                  title="确定要取消此订单吗？"
-                  onConfirm={() =>
+                <Button
+                  size="small"
+                  type="danger"
+                  theme="light"
+                  loading={cancelMutation.isPending}
+                  onClick={() =>
                     cancelMutation.mutate({
-                      orderId: record.id,
+                      orderId: record.orderid,
                       exchangeId: record.exchangeId,
                     })
                   }
                 >
-                  <Button size="small" type="danger" theme="light">
-                    取消
-                  </Button>
-                </Popconfirm>
+                  取消
+                </Button>
               )
             },
           },
@@ -162,7 +156,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
       columns={columns}
       dataSource={data?.orders || []}
       loading={isLoading}
-      rowKey="id"
+      rowKey="orderid"
       pagination={false}
       size="small"
       empty={<Empty description="暂无订单" />}

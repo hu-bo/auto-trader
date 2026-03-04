@@ -9,6 +9,7 @@ export interface PlaceBatchStrategyParams {
   priceOffsetPercent: number
   stopLossPercent: number
   takeProfitPercent: number
+  leverage?: number
 }
 
 export interface PlaceBatchStrategyResult {

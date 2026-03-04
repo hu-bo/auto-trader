@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"exchange-adapter-service/internal/service"
@@ -122,29 +123,37 @@ func (h *Handler) HealthCheck(c echo.Context) error {
 // GetOrderBook 获取订单簿
 // GET /api/orderbook?exchange=binance&symbol=BTC-USDT&trade_type=spot&range=0.1
 func (h *Handler) GetOrderBook(c echo.Context) error {
-	exchangeStr := c.QueryParam("exchange")
-	symbol := c.QueryParam("symbol")
-	tradeTypeStr := c.QueryParam("trade_type")
-	rangeStr := c.QueryParam("range")
-
-	if exchangeStr == "" || symbol == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbol are required")
+	req := struct {
+		Exchange  string  `query:"exchange" validate:"required"`
+		Symbol    string  `query:"symbol" validate:"required"`
+		TradeType string  `query:"trade_type" validate:"required"`
+		Range     float64 `query:"range" validate:"gt=0"`
+	}{
+		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		Symbol:    strings.TrimSpace(c.QueryParam("symbol")),
+		TradeType: "spot",
+		Range:     0.1,
 	}
-
-	if tradeTypeStr == "" {
-		tradeTypeStr = "spot"
+	errs := make([]ErrorItem, 0)
+	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
+		req.TradeType = t
 	}
-
-	priceRange := 0.1 // 默认 10%
-	if rangeStr != "" {
-		if r, err := strconv.ParseFloat(rangeStr, 64); err == nil {
-			priceRange = r
+	if rangeStr := strings.TrimSpace(c.QueryParam("range")); rangeStr != "" {
+		parsed, err := strconv.ParseFloat(rangeStr, 64)
+		if err != nil {
+			errs = append(errs, ErrorItem{Field: "range", Message: "must be a valid number"})
+		} else {
+			req.Range = parsed
 		}
 	}
+	errs = append(errs, validateStruct(req)...)
+	if len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid query parameters", errs)
+	}
 
-	exchangeName := exchange.ExchangeName(exchangeStr)
-	tradeType := exchange.TradeType(tradeTypeStr)
-	orderBook := h.wsSyncService.GetFilteredOrderBook(exchangeName, tradeType, symbol, priceRange)
+	exchangeName := exchange.ExchangeName(req.Exchange)
+	tradeType := exchange.TradeType(req.TradeType)
+	orderBook := h.wsSyncService.GetFilteredOrderBook(exchangeName, tradeType, req.Symbol, req.Range)
 
 	if orderBook == nil {
 		return Error(c, http.StatusNotFound, ErrCodeNotFound, "orderbook not found")
@@ -156,29 +165,37 @@ func (h *Handler) GetOrderBook(c echo.Context) error {
 // GetTracePrice 获取追踪价格
 // GET /api/trace-price?exchange=binance&symbol=BTC-USDT&trade_type=spot&distance=0.1
 func (h *Handler) GetTracePrice(c echo.Context) error {
-	exchangeStr := c.QueryParam("exchange")
-	symbol := c.QueryParam("symbol")
-	tradeTypeStr := c.QueryParam("trade_type")
-	distanceStr := c.QueryParam("distance")
-
-	if exchangeStr == "" || symbol == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbol are required")
+	req := struct {
+		Exchange  string  `query:"exchange" validate:"required"`
+		Symbol    string  `query:"symbol" validate:"required"`
+		TradeType string  `query:"trade_type" validate:"required"`
+		Distance  float64 `query:"distance" validate:"gt=0"`
+	}{
+		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		Symbol:    strings.TrimSpace(c.QueryParam("symbol")),
+		TradeType: "spot",
+		Distance:  0.1,
 	}
-
-	if tradeTypeStr == "" {
-		tradeTypeStr = "spot"
+	errs := make([]ErrorItem, 0)
+	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
+		req.TradeType = t
 	}
-
-	distance := 0.1 // 默认 10%
-	if distanceStr != "" {
-		if d, err := strconv.ParseFloat(distanceStr, 64); err == nil {
-			distance = d
+	if distanceStr := strings.TrimSpace(c.QueryParam("distance")); distanceStr != "" {
+		parsed, err := strconv.ParseFloat(distanceStr, 64)
+		if err != nil {
+			errs = append(errs, ErrorItem{Field: "distance", Message: "must be a valid number"})
+		} else {
+			req.Distance = parsed
 		}
 	}
+	errs = append(errs, validateStruct(req)...)
+	if len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid query parameters", errs)
+	}
 
-	exchangeName := exchange.ExchangeName(exchangeStr)
-	tradeType := exchange.TradeType(tradeTypeStr)
-	result := h.wsSyncService.GetTracePrice(exchangeName, tradeType, symbol, distance)
+	exchangeName := exchange.ExchangeName(req.Exchange)
+	tradeType := exchange.TradeType(req.TradeType)
+	result := h.wsSyncService.GetTracePrice(exchangeName, tradeType, req.Symbol, req.Distance)
 
 	if result == nil {
 		return Error(c, http.StatusNotFound, ErrCodeNotFound, "trace price not found")
@@ -190,40 +207,92 @@ func (h *Handler) GetTracePrice(c echo.Context) error {
 // GetCandles 获取历史K线
 // GET /api/candles?exchange=binance&symbol=BTC-USDT&period=15m&limit=100&start_time=xxx&end_time=xxx
 func (h *Handler) GetCandles(c echo.Context) error {
-	exchangeStr := c.QueryParam("exchange")
-	symbol := c.QueryParam("symbol")
-	period := c.QueryParam("period")
-	limitStr := c.QueryParam("limit")
-	startTimeStr := c.QueryParam("start_time")
-	endTimeStr := c.QueryParam("end_time")
-
-	if exchangeStr == "" || symbol == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbol are required")
+	defaultStart, defaultEnd := utils.Period1d.Interval(1)
+	req := struct {
+		Exchange  string `query:"exchange" validate:"required"`
+		Symbol    string `query:"symbol" validate:"required"`
+		Period    string `query:"period" validate:"required"`
+		Limit     int    `query:"limit" validate:"gte=0"`
+		StartTime int64  `query:"start_time"`
+		EndTime   int64  `query:"end_time"`
+		Column    bool   `query:"column"`
+		Compact   bool   `query:"compact"`
+	}{
+		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		Symbol:    strings.TrimSpace(c.QueryParam("symbol")),
+		Period:    "15m",
+		Limit:     300,
+		StartTime: defaultStart,
+		EndTime:   defaultEnd,
+	}
+	errs := make([]ErrorItem, 0)
+	if p := strings.TrimSpace(c.QueryParam("period")); p != "" {
+		req.Period = p
 	}
 
-	if period == "" {
-		period = "15m"
-	}
+	limitStr := strings.TrimSpace(c.QueryParam("limit"))
+	startTimeStr := strings.TrimSpace(c.QueryParam("start_time"))
+	endTimeStr := strings.TrimSpace(c.QueryParam("end_time"))
+	limitProvided := limitStr != ""
+	startProvided := startTimeStr != ""
+	endProvided := endTimeStr != ""
 
-	limit := 100
-	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil {
-			limit = l
+	if limitProvided {
+		parsed, err := strconv.Atoi(limitStr)
+		if err != nil {
+			errs = append(errs, ErrorItem{Field: "limit", Message: "must be a valid integer"})
+		} else {
+			req.Limit = parsed
+		}
+	}
+	if startProvided {
+		parsed, err := strconv.ParseInt(startTimeStr, 10, 64)
+		if err != nil {
+			errs = append(errs, ErrorItem{Field: "start_time", Message: "must be a valid int64"})
+		} else {
+			req.StartTime = parsed
+		}
+	}
+	if endProvided {
+		parsed, err := strconv.ParseInt(endTimeStr, 10, 64)
+		if err != nil {
+			errs = append(errs, ErrorItem{Field: "end_time", Message: "must be a valid int64"})
+		} else {
+			req.EndTime = parsed
+		}
+	}
+	if !limitProvided {
+		if startProvided != endProvided {
+			errs = append(errs, ErrorItem{Field: "start_time", Message: "must be provided together with end_time when limit is not set"})
+			errs = append(errs, ErrorItem{Field: "end_time", Message: "must be provided together with start_time when limit is not set"})
+		}
+		if startProvided && endProvided {
+			req.Limit = 0
+		}
+	}
+	if req.StartTime > req.EndTime {
+		errs = append(errs, ErrorItem{Field: "start_time", Message: "must be less than or equal to end_time"})
+	}
+	if columnStr := strings.TrimSpace(c.QueryParam("column")); columnStr != "" {
+		parsed, err := strconv.ParseBool(columnStr)
+		if err != nil {
+			errs = append(errs, ErrorItem{Field: "column", Message: "must be a valid boolean"})
+		} else {
+			req.Column = parsed
+		}
+	}
+	if compactStr := strings.TrimSpace(c.QueryParam("compact")); compactStr != "" {
+		parsed, err := strconv.ParseBool(compactStr)
+		if err != nil {
+			errs = append(errs, ErrorItem{Field: "compact", Message: "must be a valid boolean"})
+		} else {
+			req.Compact = parsed
 		}
 	}
 
-	// 默认查询最近24小时
-	startTime, endTime := utils.Period1d.Interval(1)
-
-	if startTimeStr != "" {
-		if t, err := strconv.ParseInt(startTimeStr, 10, 64); err == nil {
-			startTime = t
-		}
-	}
-	if endTimeStr != "" {
-		if t, err := strconv.ParseInt(endTimeStr, 10, 64); err == nil {
-			endTime = t
-		}
+	errs = append(errs, validateStruct(req)...)
+	if len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid query parameters", errs)
 	}
 
 	if h.repo == nil {
@@ -235,22 +304,22 @@ func (h *Handler) GetCandles(c echo.Context) error {
 		err     error
 	)
 
-	requestedPeriod := exchange.Period(period)
-	if requestedPeriod == exchange.Period4h {
+	requestedPeriod := exchange.Period(req.Period)
+	if shouldAggregateFrom15m(requestedPeriod) {
 		sourcePeriod := exchange.Period15m
 		ratio := int(requestedPeriod.IntervalMs() / sourcePeriod.IntervalMs())
 		sourceLimit := 0
-		if limit > 0 {
-			sourceLimit = limit*ratio + ratio
+		if req.Limit > 0 {
+			sourceLimit = req.Limit*ratio + ratio
 		}
-		sourceStart := requestedPeriod.RoundToInterval(startTime)
-		sourceEnd := requestedPeriod.NextInterval(endTime) - sourcePeriod.IntervalMs()
+		sourceStart := requestedPeriod.RoundToInterval(req.StartTime)
+		sourceEnd := requestedPeriod.NextInterval(req.EndTime) - sourcePeriod.IntervalMs()
 
 		if sourceEnd < sourceStart {
-			sourceEnd = endTime
+			sourceEnd = req.EndTime
 		}
 
-		sourceCandles, fetchErr := h.repo.GetCandles(c.Request().Context(), exchangeStr, symbol, string(sourcePeriod), sourceStart, sourceEnd, sourceLimit)
+		sourceCandles, fetchErr := h.repo.GetCandles(c.Request().Context(), req.Exchange, req.Symbol, string(sourcePeriod), sourceStart, sourceEnd, sourceLimit)
 		if fetchErr != nil {
 			return Error(c, http.StatusInternalServerError, ErrCodeInternal, fetchErr.Error())
 		}
@@ -260,25 +329,36 @@ func (h *Handler) GetCandles(c echo.Context) error {
 			return Error(c, http.StatusInternalServerError, ErrCodeInternal, aggErr.Error())
 		}
 
-		candles = filterCandlesByRangeAndLimit(aggregated, startTime, endTime, limit)
+		candles = filterCandlesByRangeAndLimit(aggregated, req.StartTime, req.EndTime, req.Limit)
 	} else {
-		candles, err = h.repo.GetCandles(c.Request().Context(), exchangeStr, symbol, period, startTime, endTime, limit)
+		candles, err = h.repo.GetCandles(c.Request().Context(), req.Exchange, req.Symbol, req.Period, req.StartTime, req.EndTime, req.Limit)
 		if err != nil {
 			return Error(c, http.StatusInternalServerError, ErrCodeInternal, err.Error())
 		}
 	}
 
 	// 列式存储格式 (Column-Oriented)
-	if c.QueryParam("column") == "true" {
+	if req.Column {
 		return Success(c, utils.CandlesToColumnFormat(candles))
 	}
 
 	// 紧凑格式 (Row-Oriented)
-	if c.QueryParam("compact") == "true" {
+	if req.Compact {
 		return Success(c, utils.CompactCandles(candles))
 	}
 
 	return Success(c, candles)
+}
+
+func shouldAggregateFrom15m(period exchange.Period) bool {
+	sourcePeriod := exchange.Period15m
+	if !period.IsValid() || period == sourcePeriod {
+		return false
+	}
+
+	sourceInterval := sourcePeriod.IntervalMs()
+	targetInterval := period.IntervalMs()
+	return targetInterval > sourceInterval && targetInterval%sourceInterval == 0
 }
 
 func filterCandlesByRangeAndLimit(candles []exchange.NormalizedCandle, startTime, endTime int64, limit int) []exchange.NormalizedCandle {
@@ -290,7 +370,7 @@ func filterCandlesByRangeAndLimit(candles []exchange.NormalizedCandle, startTime
 	}
 
 	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].Timestamp > filtered[j].Timestamp
+		return filtered[i].Timestamp < filtered[j].Timestamp
 	})
 
 	if limit > 0 && len(filtered) > limit {
@@ -303,25 +383,31 @@ func filterCandlesByRangeAndLimit(candles []exchange.NormalizedCandle, startTime
 // GetCurrentCandle 获取当前K线
 // GET /api/candle/current?exchange=binance&symbol=BTC-USDT&trade_type=spot&period=15m
 func (h *Handler) GetCurrentCandle(c echo.Context) error {
-	exchangeStr := c.QueryParam("exchange")
-	symbol := c.QueryParam("symbol")
-	tradeTypeStr := c.QueryParam("trade_type")
-	period := c.QueryParam("period")
-
-	if exchangeStr == "" || symbol == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbol are required")
+	req := struct {
+		Exchange  string `query:"exchange" validate:"required"`
+		Symbol    string `query:"symbol" validate:"required"`
+		TradeType string `query:"trade_type" validate:"required"`
+		Period    string `query:"period" validate:"required"`
+	}{
+		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		Symbol:    strings.TrimSpace(c.QueryParam("symbol")),
+		TradeType: "spot",
+		Period:    "15m",
+	}
+	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
+		req.TradeType = t
+	}
+	if p := strings.TrimSpace(c.QueryParam("period")); p != "" {
+		req.Period = p
+	}
+	errs := validateStruct(req)
+	if len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid query parameters", errs)
 	}
 
-	if tradeTypeStr == "" {
-		tradeTypeStr = "spot"
-	}
-	if period == "" {
-		period = "15m"
-	}
-
-	exchangeName := exchange.ExchangeName(exchangeStr)
-	tradeType := exchange.TradeType(tradeTypeStr)
-	candle := h.wsSyncService.GetCurrentCandle(exchangeName, tradeType, symbol, exchange.Period(period))
+	exchangeName := exchange.ExchangeName(req.Exchange)
+	tradeType := exchange.TradeType(req.TradeType)
+	candle := h.wsSyncService.GetCurrentCandle(exchangeName, tradeType, req.Symbol, exchange.Period(req.Period))
 
 	if candle == nil {
 		return Error(c, http.StatusNotFound, ErrCodeNotFound, "candle not found")
@@ -333,40 +419,54 @@ func (h *Handler) GetCurrentCandle(c echo.Context) error {
 // FillMissingData 填充缺失数据
 // GET /api/candle/fill-miss?exchange=binance&symbol=BTC-USDT&period=15m&start_time=xxx&end_time=xxx
 func (h *Handler) FillMissingData(c echo.Context) error {
-	exchangeStr := c.QueryParam("exchange")
-	symbol := c.QueryParam("symbol")
-	tradeType := c.QueryParam("trade_type")
-	startTimeStr := c.QueryParam("start_time")
-	endTimeStr := c.QueryParam("end_time")
-
-	if exchangeStr == "" || symbol == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbol are required")
+	defaultStart, defaultEnd := utils.Period1d.Interval(2)
+	req := struct {
+		Exchange  string `query:"exchange" validate:"required"`
+		Symbol    string `query:"symbol" validate:"required"`
+		TradeType string `query:"trade_type" validate:"required"`
+		StartTime int64  `query:"start_time"`
+		EndTime   int64  `query:"end_time"`
+	}{
+		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		Symbol:    strings.TrimSpace(c.QueryParam("symbol")),
+		TradeType: "spot",
+		StartTime: defaultStart,
+		EndTime:   defaultEnd,
 	}
-
-	if tradeType == "" {
-		tradeType = "spot"
+	errs := make([]ErrorItem, 0)
+	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
+		req.TradeType = t
 	}
-
-	// 默认填充最近2天
-	startTime, endTime := utils.Period1d.Interval(2)
-
-	if startTimeStr != "" {
-		if t, err := strconv.ParseInt(startTimeStr, 10, 64); err == nil {
-			startTime = t
+	if startTimeStr := strings.TrimSpace(c.QueryParam("start_time")); startTimeStr != "" {
+		parsed, err := strconv.ParseInt(startTimeStr, 10, 64)
+		if err != nil {
+			errs = append(errs, ErrorItem{Field: "start_time", Message: "must be a valid int64"})
+		} else {
+			req.StartTime = parsed
 		}
 	}
-	if endTimeStr != "" {
-		if t, err := strconv.ParseInt(endTimeStr, 10, 64); err == nil {
-			endTime = t
+	if endTimeStr := strings.TrimSpace(c.QueryParam("end_time")); endTimeStr != "" {
+		parsed, err := strconv.ParseInt(endTimeStr, 10, 64)
+		if err != nil {
+			errs = append(errs, ErrorItem{Field: "end_time", Message: "must be a valid int64"})
+		} else {
+			req.EndTime = parsed
 		}
+	}
+	if req.StartTime > req.EndTime {
+		errs = append(errs, ErrorItem{Field: "start_time", Message: "must be less than or equal to end_time"})
+	}
+	errs = append(errs, validateStruct(req)...)
+	if len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid query parameters", errs)
 	}
 
 	if h.historySyncService == nil {
 		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "history sync service not available")
 	}
 
-	exchangeName := exchange.ExchangeName(exchangeStr)
-	err := h.historySyncService.FillMissingData(c.Request().Context(), exchangeName, symbol, tradeType, startTime, endTime)
+	exchangeName := exchange.ExchangeName(req.Exchange)
+	err := h.historySyncService.FillMissingData(c.Request().Context(), exchangeName, req.Symbol, req.TradeType, req.StartTime, req.EndTime)
 	if err != nil {
 		return Error(c, http.StatusInternalServerError, ErrCodeInternal, err.Error())
 	}
@@ -376,8 +476,8 @@ func (h *Handler) FillMissingData(c echo.Context) error {
 
 // SubscribeRequest 订阅请求体
 type SubscribeRequest struct {
-	Exchange string                      `json:"exchange"`
-	Symbols  []exchange.SubscribeRequest `json:"symbols"`
+	Exchange string                      `json:"exchange" validate:"required"`
+	Symbols  []exchange.SubscribeRequest `json:"symbols" validate:"min=1"`
 }
 
 // Subscribe 动态订阅
@@ -388,8 +488,8 @@ func (h *Handler) Subscribe(c echo.Context) error {
 		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid request body")
 	}
 
-	if req.Exchange == "" || len(req.Symbols) == 0 {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbols are required")
+	if errs := validateStruct(req); len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid request body", errs)
 	}
 
 	exchangeName := exchange.ExchangeName(req.Exchange)
@@ -402,8 +502,8 @@ func (h *Handler) Subscribe(c echo.Context) error {
 
 // UnsubscribeRequest 取消订阅请求体
 type UnsubscribeRequest struct {
-	Exchange string   `json:"exchange"`
-	Symbols  []string `json:"symbols"`
+	Exchange string   `json:"exchange" validate:"required"`
+	Symbols  []string `json:"symbols" validate:"min=1"`
 }
 
 // Unsubscribe 取消订阅
@@ -414,8 +514,8 @@ func (h *Handler) Unsubscribe(c echo.Context) error {
 		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid request body")
 	}
 
-	if req.Exchange == "" || len(req.Symbols) == 0 {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbols are required")
+	if errs := validateStruct(req); len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid request body", errs)
 	}
 
 	exchangeName := exchange.ExchangeName(req.Exchange)
@@ -428,8 +528,8 @@ func (h *Handler) Unsubscribe(c echo.Context) error {
 
 // DeleteSymbolRequest 删除交易对请求体
 type DeleteSymbolRequest struct {
-	Exchange  string `json:"exchange"`
-	Symbol    string `json:"symbol"`
+	Exchange  string `json:"exchange" validate:"required"`
+	Symbol    string `json:"symbol" validate:"required"`
 	TradeType string `json:"trade_type"`
 }
 
@@ -446,12 +546,11 @@ func (h *Handler) DeleteSymbol(c echo.Context) error {
 		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid request body")
 	}
 
-	if req.Exchange == "" || req.Symbol == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbol are required")
-	}
-
-	if req.TradeType == "" {
+	if strings.TrimSpace(req.TradeType) == "" {
 		req.TradeType = "spot"
+	}
+	if errs := validateStruct(req); len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid request body", errs)
 	}
 
 	if h.repo == nil {
@@ -477,8 +576,8 @@ func (h *Handler) DeleteSymbol(c echo.Context) error {
 
 // DeleteSymbolsBatchRequest 批量删除交易对请求体
 type DeleteSymbolsBatchRequest struct {
-	Exchange  string   `json:"exchange"`
-	Symbols   []string `json:"symbols"`
+	Exchange  string   `json:"exchange" validate:"required"`
+	Symbols   []string `json:"symbols" validate:"min=1"`
 	TradeType string   `json:"trade_type"`
 }
 
@@ -496,12 +595,11 @@ func (h *Handler) DeleteSymbolsBatch(c echo.Context) error {
 		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid request body")
 	}
 
-	if req.Exchange == "" || len(req.Symbols) == 0 {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbols are required")
-	}
-
-	if req.TradeType == "" {
+	if strings.TrimSpace(req.TradeType) == "" {
 		req.TradeType = "spot"
+	}
+	if errs := validateStruct(req); len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid request body", errs)
 	}
 
 	if h.repo == nil {
@@ -540,21 +638,29 @@ type GetSymbolsData struct {
 // GetSymbols 获取所有交易对
 // GET /api/symbols?exchange=binance&trade_type=spot
 func (h *Handler) GetSymbols(c echo.Context) error {
-	exchangeStr := c.QueryParam("exchange")
-	tradeType := c.QueryParam("trade_type")
-	orderBy := c.QueryParam("orderBy")
-	order := c.QueryParam("order")
-	symbolFilter := c.QueryParam("symbol")
-
-	if exchangeStr == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange is required")
+	req := struct {
+		Exchange   string `query:"exchange" validate:"required"`
+		TradeType  string `query:"trade_type"`
+		OrderBy    string `query:"orderBy"`
+		Order      string `query:"order"`
+		SymbolLike string `query:"symbol"`
+	}{
+		Exchange:   strings.TrimSpace(c.QueryParam("exchange")),
+		TradeType:  strings.TrimSpace(c.QueryParam("trade_type")),
+		OrderBy:    strings.TrimSpace(c.QueryParam("orderBy")),
+		Order:      strings.TrimSpace(c.QueryParam("order")),
+		SymbolLike: strings.TrimSpace(c.QueryParam("symbol")),
+	}
+	errs := validateStruct(req)
+	if len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid query parameters", errs)
 	}
 
 	if h.repo == nil {
 		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "database not configured")
 	}
 
-	symbols, err := h.repo.GetSymbolInfos(c.Request().Context(), exchangeStr)
+	symbols, err := h.repo.GetSymbolInfos(c.Request().Context(), req.Exchange)
 	if err != nil {
 		return Error(c, http.StatusInternalServerError, ErrCodeInternal, err.Error())
 	}
@@ -567,18 +673,18 @@ func (h *Handler) GetSymbols(c echo.Context) error {
 	}
 
 	logAPI.Debug().
-		Str("exchange", exchangeStr).
+		Str("exchange", req.Exchange).
 		Int("total", len(symbols)).
 		Int("withTicker", withTicker).
-		Str("orderBy", orderBy).
-		Str("order", order).
+		Str("orderBy", req.OrderBy).
+		Str("order", req.Order).
 		Msg("GetSymbolInfos join check")
 
 	// 如果指定了 trade_type，进行过滤
-	if tradeType != "" {
+	if req.TradeType != "" {
 		filtered := make([]exchange.SymbolInfo, 0)
 		for _, s := range symbols {
-			if s.TradeType == tradeType {
+			if s.TradeType == req.TradeType {
 				filtered = append(filtered, s)
 			}
 		}
@@ -586,10 +692,10 @@ func (h *Handler) GetSymbols(c echo.Context) error {
 	}
 
 	// 过滤指定的 symbol（精确匹配）
-	if symbolFilter != "" {
+	if req.SymbolLike != "" {
 		filtered := make([]exchange.SymbolInfo, 0)
 		for _, s := range symbols {
-			if s.Symbol == symbolFilter {
+			if s.Symbol == req.SymbolLike {
 				filtered = append(filtered, s)
 			}
 		}
@@ -597,10 +703,10 @@ func (h *Handler) GetSymbols(c echo.Context) error {
 	}
 
 	// 排序: orderBy=amount|quoteVolume24h 或 orderBy=change24h
-	sortSymbolsInPlace(symbols, orderBy, order)
+	sortSymbolsInPlace(symbols, req.OrderBy, req.Order)
 
 	return Success(c, GetSymbolsData{
-		Exchange: exchangeStr,
+		Exchange: req.Exchange,
 		Count:    len(symbols),
 		Symbols:  symbols,
 	})
@@ -608,8 +714,8 @@ func (h *Handler) GetSymbols(c echo.Context) error {
 
 // UpdateSymbolRequest 更新交易对请求体
 type UpdateSymbolRequest struct {
-	Exchange    string `json:"exchange"`
-	Symbol      string `json:"symbol"`
+	Exchange    string `json:"exchange" validate:"required"`
+	Symbol      string `json:"symbol" validate:"required"`
 	TradeType   string `json:"trade_type"`
 	SyncEnabled *bool  `json:"sync_enabled"`
 }
@@ -627,12 +733,11 @@ func (h *Handler) UpdateSymbol(c echo.Context) error {
 		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid request body")
 	}
 
-	if req.Exchange == "" || req.Symbol == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbol are required")
-	}
-
-	if req.TradeType == "" {
+	if strings.TrimSpace(req.TradeType) == "" {
 		req.TradeType = "spot"
+	}
+	if errs := validateStruct(req); len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid request body", errs)
 	}
 
 	if h.repo == nil {
@@ -700,11 +805,16 @@ func (h *Handler) GetSyncTasks(c echo.Context) error {
 		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "task manager not initialized")
 	}
 
-	status := c.QueryParam("status")
+	req := struct {
+		Status string `query:"status"`
+	}{
+		Status: strings.TrimSpace(c.QueryParam("status")),
+	}
+
 	var tasks []*utils.SyncTask
 
-	if status != "" {
-		tasks = taskManager.GetTasksByStatus(utils.TaskStatus(status))
+	if req.Status != "" {
+		tasks = taskManager.GetTasksByStatus(utils.TaskStatus(req.Status))
 	} else {
 		tasks = taskManager.GetAllTasks()
 	}
@@ -722,35 +832,43 @@ func (h *Handler) VerifyCandles(c echo.Context) error {
 		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "verify service not available")
 	}
 
-	exchangeStr := c.QueryParam("exchange")
-	symbol := c.QueryParam("symbol")
-	tradeTypeStr := c.QueryParam("trade_type")
-	period := c.QueryParam("period")
-	limitStr := c.QueryParam("limit")
-
-	if exchangeStr == "" || symbol == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbol are required")
+	req := struct {
+		Exchange  string `query:"exchange" validate:"required"`
+		Symbol    string `query:"symbol" validate:"required"`
+		TradeType string `query:"trade_type" validate:"required"`
+		Period    string `query:"period" validate:"required"`
+		Limit     int    `query:"limit" validate:"gt=0"`
+	}{
+		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		Symbol:    strings.TrimSpace(c.QueryParam("symbol")),
+		TradeType: "spot",
+		Period:    "15m",
+		Limit:     100,
 	}
-
-	// 默认参数
-	if tradeTypeStr == "" {
-		tradeTypeStr = "spot"
+	errs := make([]ErrorItem, 0)
+	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
+		req.TradeType = t
 	}
-	if period == "" {
-		period = "15m"
+	if p := strings.TrimSpace(c.QueryParam("period")); p != "" {
+		req.Period = p
 	}
-
-	limit := 100
-	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
-			limit = l
+	if limitStr := strings.TrimSpace(c.QueryParam("limit")); limitStr != "" {
+		parsed, err := strconv.Atoi(limitStr)
+		if err != nil {
+			errs = append(errs, ErrorItem{Field: "limit", Message: "must be a valid integer"})
+		} else {
+			req.Limit = parsed
 		}
 	}
+	errs = append(errs, validateStruct(req)...)
+	if len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid query parameters", errs)
+	}
 
-	exchangeName := exchange.ExchangeName(exchangeStr)
-	tradeType := exchange.TradeType(tradeTypeStr)
+	exchangeName := exchange.ExchangeName(req.Exchange)
+	tradeType := exchange.TradeType(req.TradeType)
 
-	result, err := h.verifyService.VerifyCandles(c.Request().Context(), exchangeName, symbol, tradeType, exchange.Period(period), limit)
+	result, err := h.verifyService.VerifyCandles(c.Request().Context(), exchangeName, req.Symbol, tradeType, exchange.Period(req.Period), req.Limit)
 	if err != nil {
 		return Error(c, http.StatusInternalServerError, ErrCodeInternal, err.Error())
 	}
@@ -765,19 +883,24 @@ func (h *Handler) GetTicker(c echo.Context) error {
 		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "ticker service not available")
 	}
 
-	exchangeStr := c.QueryParam("exchange")
-	symbol := c.QueryParam("symbol")
-	tradeType := c.QueryParam("trade_type")
-
-	if exchangeStr == "" || symbol == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbol are required")
+	req := struct {
+		Exchange  string `query:"exchange" validate:"required"`
+		Symbol    string `query:"symbol" validate:"required"`
+		TradeType string `query:"trade_type" validate:"required"`
+	}{
+		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		Symbol:    strings.TrimSpace(c.QueryParam("symbol")),
+		TradeType: "spot",
+	}
+	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
+		req.TradeType = t
+	}
+	errs := validateStruct(req)
+	if len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid query parameters", errs)
 	}
 
-	if tradeType == "" {
-		tradeType = "spot"
-	}
-
-	ticker, err := h.tickerSyncService.GetTicker(c.Request().Context(), exchangeStr, symbol, tradeType)
+	ticker, err := h.tickerSyncService.GetTicker(c.Request().Context(), req.Exchange, req.Symbol, req.TradeType)
 	if err != nil {
 		return Error(c, http.StatusNotFound, ErrCodeNotFound, "ticker not found")
 	}
@@ -792,17 +915,22 @@ func (h *Handler) GetTickerPriceMap(c echo.Context) error {
 		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "ticker service not available")
 	}
 
-	exchangeStr := c.QueryParam("exchange")
-	tradeType := c.QueryParam("trade_type")
-
-	if exchangeStr == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange is required")
+	req := struct {
+		Exchange  string `query:"exchange" validate:"required"`
+		TradeType string `query:"trade_type" validate:"required"`
+	}{
+		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		TradeType: "spot",
 	}
-	if tradeType == "" {
-		tradeType = "spot"
+	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
+		req.TradeType = t
+	}
+	errs := validateStruct(req)
+	if len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid query parameters", errs)
 	}
 
-	priceMap := h.tickerSyncService.GetTickerPriceMap(exchangeStr, tradeType)
+	priceMap := h.tickerSyncService.GetTickerPriceMap(req.Exchange, req.TradeType)
 	return Success(c, priceMap)
 }
 
@@ -816,41 +944,45 @@ func (h *Handler) GetTickers(c echo.Context) error {
 		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "ticker service not available")
 	}
 
-	exchangeStr := c.QueryParam("exchange")
-	tradeType := c.QueryParam("trade_type")
+	req := struct {
+		Exchange  string `query:"exchange" validate:"required"`
+		TradeType string `query:"trade_type" validate:"required"`
+	}{
+		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		TradeType: "spot",
+	}
+	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
+		req.TradeType = t
+	}
+	errs := validateStruct(req)
+	if len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid query parameters", errs)
+	}
 
 	logAPI.Debug().
-		Str("exchange", exchangeStr).
-		Str("trade_type", tradeType).
+		Str("exchange", req.Exchange).
+		Str("trade_type", req.TradeType).
 		Msg("GetTickers params")
 
-	if exchangeStr == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange is required")
-	}
-
-	if tradeType == "" {
-		tradeType = "spot"
-	}
-
-	tickers, err := h.tickerSyncService.GetTickers(c.Request().Context(), exchangeStr, tradeType)
+	tickers, err := h.tickerSyncService.GetTickers(c.Request().Context(), req.Exchange, req.TradeType)
 	if err != nil {
 		logAPI.Error().
 			Err(err).
-			Str("exchange", exchangeStr).
-			Str("trade_type", tradeType).
+			Str("exchange", req.Exchange).
+			Str("trade_type", req.TradeType).
 			Msg("Failed to get tickers")
 		return Error(c, http.StatusInternalServerError, ErrCodeInternal, err.Error())
 	}
 
 	logAPI.Debug().
-		Str("exchange", exchangeStr).
-		Str("trade_type", tradeType).
+		Str("exchange", req.Exchange).
+		Str("trade_type", req.TradeType).
 		Int("count", len(tickers)).
 		Msg("GetTickers success")
 
 	return Success(c, map[string]interface{}{
-		"exchange":  exchangeStr,
-		"tradeType": tradeType,
+		"exchange":  req.Exchange,
+		"tradeType": req.TradeType,
 		"count":     len(tickers),
 		"tickers":   tickers,
 	})
@@ -859,23 +991,28 @@ func (h *Handler) GetTickers(c echo.Context) error {
 // GetSymbolSyncStatus 获取交易对同步状态
 // GET /api/sync/status?exchange=binance&symbol=BTC-USDT&trade_type=spot
 func (h *Handler) GetSymbolSyncStatus(c echo.Context) error {
-	exchangeStr := c.QueryParam("exchange")
-	symbol := c.QueryParam("symbol")
-	tradeType := c.QueryParam("trade_type")
-
-	if exchangeStr == "" || symbol == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange and symbol are required")
+	req := struct {
+		Exchange  string `query:"exchange" validate:"required"`
+		Symbol    string `query:"symbol" validate:"required"`
+		TradeType string `query:"trade_type" validate:"required"`
+	}{
+		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		Symbol:    strings.TrimSpace(c.QueryParam("symbol")),
+		TradeType: "spot",
 	}
-
-	if tradeType == "" {
-		tradeType = "spot"
+	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
+		req.TradeType = t
+	}
+	errs := validateStruct(req)
+	if len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid query parameters", errs)
 	}
 
 	if h.repo == nil {
 		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "database not configured")
 	}
 
-	status, err := h.repo.GetSymbolSyncStatus(c.Request().Context(), exchangeStr, symbol, tradeType)
+	status, err := h.repo.GetSymbolSyncStatus(c.Request().Context(), req.Exchange, req.Symbol, req.TradeType)
 	if err != nil {
 		return Error(c, http.StatusInternalServerError, ErrCodeInternal, err.Error())
 	}
@@ -890,24 +1027,29 @@ func (h *Handler) GetSymbolSyncStatus(c echo.Context) error {
 // GetAllSymbolsSyncStatus 获取所有交易对的同步状态
 // GET /api/sync/status/all?exchange=binance&trade_type=spot
 func (h *Handler) GetAllSymbolsSyncStatus(c echo.Context) error {
-	exchangeStr := c.QueryParam("exchange")
-	tradeType := c.QueryParam("trade_type")
-
-	if exchangeStr == "" {
-		return Error(c, http.StatusBadRequest, ErrCodeBadRequest, "exchange is required")
+	req := struct {
+		Exchange  string `query:"exchange" validate:"required"`
+		TradeType string `query:"trade_type"`
+	}{
+		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		TradeType: strings.TrimSpace(c.QueryParam("trade_type")),
+	}
+	errs := validateStruct(req)
+	if len(errs) > 0 {
+		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid query parameters", errs)
 	}
 
 	if h.repo == nil {
 		return Error(c, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "database not configured")
 	}
 
-	statuses, err := h.repo.GetAllSymbolsSyncStatus(c.Request().Context(), exchangeStr, tradeType)
+	statuses, err := h.repo.GetAllSymbolsSyncStatus(c.Request().Context(), req.Exchange, req.TradeType)
 	if err != nil {
 		return Error(c, http.StatusInternalServerError, ErrCodeInternal, err.Error())
 	}
 
 	return Success(c, map[string]interface{}{
-		"exchange": exchangeStr,
+		"exchange": req.Exchange,
 		"count":    len(statuses),
 		"statuses": statuses,
 	})
