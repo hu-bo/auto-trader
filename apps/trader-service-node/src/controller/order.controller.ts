@@ -45,7 +45,10 @@ export class OrderController {
 
   private requireGrpcSuccess(resp: any, fallbackMessage: string): void {
     if (!resp?.success) {
-      throw new httpError.BadRequestError(resp?.error?.message || fallbackMessage);
+      const errMsg = resp?.error?.message;
+      const errCode = resp?.error?.code;
+      const detail = errMsg || (errCode ? `error code: ${errCode}` : null) || fallbackMessage;
+      throw new httpError.BadRequestError(detail);
     }
   }
 

@@ -839,7 +839,11 @@ func (a *TradeAdapter) CancelStrategyOrder(ctx context.Context, symbol string, a
 		return core.Err[core.StrategyOrder](core.ErrorInfo{Code: core.ErrorCancelStrategyOrder, Message: "empty response", Raw: string(raw)})
 	}
 	if resp[0].SCode != "0" {
-		return core.Err[core.StrategyOrder](core.ErrorInfo{Code: resp[0].SCode, Message: resp[0].SMsg, Raw: resp[0]})
+		msg := resp[0].SMsg
+		if msg == "" || msg == resp[0].SCode {
+			msg = fmt.Sprintf("cancel algo order failed (sCode=%s)", resp[0].SCode)
+		}
+		return core.Err[core.StrategyOrder](core.ErrorInfo{Code: resp[0].SCode, Message: msg, Raw: resp[0]})
 	}
 
 	// OKX may return empty details for a just-cancelled order; treat that as success with a stub.
