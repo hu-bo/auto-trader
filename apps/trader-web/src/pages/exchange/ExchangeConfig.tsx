@@ -93,7 +93,7 @@ const ExchangeConfig: React.FC = () => {
       updateMutation.mutate({
         id: editingExchange.id,
         ...rest,
-        exchangeType: editingExchange.exchangeType.toLowerCase() as ExchangeType,
+        exchangeType: values.exchangeType.toLowerCase() as ExchangeType,
       })
     } else {
       createMutation.mutate(values)

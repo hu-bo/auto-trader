@@ -86,6 +86,7 @@ export class ExchangeController {
     const userid = await this.getUserid();
     const exchange = await this.exchangeService.update(userid, params.id, {
       name: body?.name ?? undefined,
+      exchangeType: body?.exchangeType ?? undefined,
       apiKey: body?.apiKey ?? undefined,
       apiSecret: body?.apiSecret ?? undefined,
       passphrase: body?.passphrase ?? undefined,

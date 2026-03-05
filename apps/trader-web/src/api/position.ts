@@ -81,7 +81,7 @@ export const positionApi = {
     mapPositionList(requestData.get<RawPositionListResponse>('/positions', params as unknown as Record<string, unknown>)),
 
   // 同步持仓
-  sync: (exchangeId: string) =>
+  sync: (exchangeId: number) =>
     mapPositionList(requestData.post<RawPositionListResponse>('/positions/sync', { exchangeId })),
 
   // 平仓

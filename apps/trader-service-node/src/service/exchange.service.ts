@@ -1,4 +1,5 @@
 import { Config, Provide, httpError } from '@midwayjs/core';
+import { isNil } from 'lodash-es';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import type { Repository } from 'typeorm';
 import { UserExchange } from '../entity/user-exchange.entity.js';
@@ -17,6 +18,7 @@ type ExchangeCreateParams = {
 };
 
 type ExchangeUpdateParams = {
+  exchangeType?: string | null;
   name?: string | null;
   apiKey?: string | null;
   apiSecret?: string | null;
@@ -89,19 +91,22 @@ export class ExchangeService {
     const encryptor = this.requireEncryptor();
     const exchange = await this.get(userid, exchangeId);
 
-    if (patch.name !== undefined && patch.name !== null) exchange.name = patch.name;
-    if (patch.apiKey !== undefined && patch.apiKey !== null) {
+    if (!isNil(patch.name)) exchange.name = patch.name;
+    if (!isNil(patch.apiKey)) {
       exchange.apiKeyEncrypted = encryptor.encrypt(patch.apiKey);
     }
-    if (patch.apiSecret !== undefined && patch.apiSecret !== null) {
+    if (!isNil(patch.apiSecret)) {
       exchange.apiSecretEncrypted = encryptor.encrypt(patch.apiSecret);
+    }
+    if (!isNil(patch.exchangeType)) {
+      exchange.exchangeType = patch.exchangeType;
     }
     if (patch.passphrase !== undefined) {
       exchange.passphraseEncrypted =
         patch.passphrase && patch.passphrase.trim() ? encryptor.encrypt(patch.passphrase) : null;
     }
-    if (patch.isTestnet !== undefined && patch.isTestnet !== null) exchange.isTestnet = patch.isTestnet;
-    if (patch.isActive !== undefined && patch.isActive !== null) exchange.isActive = patch.isActive;
+    if (!isNil(patch.isTestnet)) exchange.isTestnet = patch.isTestnet;
+    if (!isNil(patch.isActive)) exchange.isActive = patch.isActive;
 
     return await repo.save(exchange);
   }

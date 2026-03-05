@@ -21,7 +21,7 @@ export interface Position {
 }
 
 export interface PositionQuery {
-  exchangeId: string
+  exchangeId: number
   symbol?: string
 }
 

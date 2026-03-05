@@ -23,7 +23,7 @@ interface HeaderProps {
 }
 const defalutExchanges: Exchange[] = [
   {
-    id: '1',
+    id: 1,
     name: 'Binance',
     exchangeType: 'binance' as const,
     isTestnet: false,
@@ -31,7 +31,7 @@ const defalutExchanges: Exchange[] = [
     userId: '',
   },
   {
-    id: '2',
+    id: 2,
     name: 'OKX',
     exchangeType: 'okx' as const,
     isTestnet: false,
@@ -44,47 +44,47 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const [searchParams, setSearchParams] = useSearchParams()
   const { user, logout } = useAuth()
   const { theme, toggleTheme, selectedExchange, setSelectedExchange } = useAppStore()
-  const [exchangeOptions, setExchangeOptions] = React.useState<Exchange[]>(defalutExchanges)
-  const { data: exchanges } = useQuery({
-    queryKey: ['exchanges'],
-    queryFn: exchangeApi.list,
-  })
+  const [ exchangeOptions, setExchangeOptions] = React.useState<Exchange[]>([])
 
   // On mount: sync URL query -> store (if URL has exchangeId and store doesn't match)
   useEffect(() => {
-    console.log(exchanges)
-    if (!exchanges || exchanges.length === 0) {
-      setSelectedExchange(defalutExchanges[0])
-      // setSearchParams((prev) => {
-      //   prev.set('exchangeId', defalutExchanges[0].id)
-      //   prev.set('exchangeType', defalutExchanges[0].exchangeType)
-      //   return prev
-      // }, { replace: true })
-      return
-    }
-    const urlExchangeId = searchParams.get('exchangeId')
-    if (urlExchangeId && urlExchangeId !== selectedExchange?.id) {
-      const found = exchanges.find((e) => e.id === urlExchangeId)
-      if (found) {
-        setSelectedExchange(found)
+    exchangeApi.list().then((exchanges) => {
+      // 默认数据
+      if (!exchanges || exchanges.length === 0) {
+        setExchangeOptions(defalutExchanges)
+        setSelectedExchange(defalutExchanges[0])
+        setSearchParams((prev) => {
+          prev.set('exchangeId', String(defalutExchanges[0].id))
+          prev.set('exchangeType', defalutExchanges[0].exchangeType)
+          return prev
+        }, { replace: true })
+        return
       }
-    } else if (!urlExchangeId && selectedExchange) {
-      // Store has selection but URL doesn't — sync URL
-      setSearchParams((prev) => {
-        prev.set('exchangeId', selectedExchange.id)
-        prev.set('exchangeType', selectedExchange.exchangeType)
-        return prev
-      }, { replace: true })
-    }
-    setExchangeOptions(exchanges)
-  }, [exchanges])
+      setExchangeOptions(exchanges)
+      const urlExchangeId = searchParams.get('exchangeId')
+      const found = exchanges.find((e) => e.id === Number(urlExchangeId))
+      let select = found ? found : exchanges[0]
+      setSelectedExchange(select)
+
+      if (Number(urlExchangeId) != select.id) {
+        setSearchParams((prev) => {
+          prev.set('exchangeId', String(select.id))
+          prev.set('exchangeType', select.exchangeType)
+          return prev
+        }, { replace: true })
+      }
+      return []
+    })
+   
+  }, [])
 
   const handleExchangeChange = (value: string | number | any[] | Record<string, any> | undefined) => {
     const exchange = exchangeOptions?.find((e) => e.id === value)
     if (exchange) {
       setSelectedExchange(exchange)
       setSearchParams((prev) => {
-        prev.set('exchangeId', exchange.id)
+        prev.set('exchangeId', String(exchange.id))
+        prev.set('exchangeType', exchange.exchangeType)
         return prev
       }, { replace: true })
     }

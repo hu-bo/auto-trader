@@ -13,8 +13,8 @@ export const exchangeApi = {
     requestData.put<Exchange>(`/exchanges/${id}`, data),
 
   // 删除交易所
-  delete: (id: string) => requestData.delete<null>(`/exchanges/${id}`),
+  delete: (id: number) => requestData.delete<null>(`/exchanges/${id}`),
 
   // 测试交易所连接
-  test: (id: string) => requestData.post<ExchangeTestResult>(`/exchanges/${id}/test`),
+  test: (id: number) => requestData.post<ExchangeTestResult>(`/exchanges/${id}/test`),
 }

@@ -20,6 +20,7 @@
     "ai": "^4.0.0",
     "axios": "^1.7.8",
     "joi": "^17.13.3",
+    "lodash-es": "^4.17.23",
     "nanoid": "^5.1.6",
     "nats": "^2.29.3",
     "pg": "^8.18.0",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@midwayjs/mock": "^4.0.0-beta.7",
+    "@types/lodash-es": "^4.17.12",
     "@types/mocha": "^10.0.1",
     "@types/node": "20",
     "c8": "^8.0.1",
