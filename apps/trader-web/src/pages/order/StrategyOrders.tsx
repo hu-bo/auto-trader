@@ -167,6 +167,7 @@ const StrategyOrders: React.FC = () => {
           </Button>
           {record.is_running ? (
             <Popconfirm
+              position="leftBottom"
               title="确定要停止此策略吗？"
               onConfirm={() => stopMutation.mutate(record.id)}
             >
@@ -186,6 +187,7 @@ const StrategyOrders: React.FC = () => {
           )}
           {!record.is_running && (
             <Popconfirm
+              position="leftBottom"
               title="确定要删除此策略订单吗？"
               onConfirm={() => deleteMutation.mutate(record.id)}
             >

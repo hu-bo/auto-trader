@@ -136,6 +136,7 @@ const StrategyList: React.FC = () => {
             </Button>
           )}
           <Popconfirm
+            position="leftBottom"
             title="确定要删除此策略订单吗？"
             onConfirm={() => deleteMutation.mutate(record.id)}
           >

@@ -122,6 +122,7 @@ const Positions: React.FC = () => {
       width: 100,
       render: (_: unknown, record: Position) => (
         <Popconfirm
+          position="leftBottom"
           title="确定要市价平仓吗？"
           onConfirm={() =>
             closeMutation.mutate({
@@ -130,9 +131,11 @@ const Positions: React.FC = () => {
             })
           }
         >
-          <Button size="small" type="danger" theme="light">
+          <span>
+            <Button size="small" type="danger" theme="light">
             平仓
-          </Button>
+            </Button>
+          </span>
         </Popconfirm>
       ),
     },

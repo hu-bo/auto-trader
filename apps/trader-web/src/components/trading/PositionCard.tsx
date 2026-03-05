@@ -131,6 +131,7 @@ export const PositionCard: React.FC<PositionCardProps> = ({ symbol }) => {
                 {formatCurrency(position.unrealizedPnl)}
               </div>
               <Popconfirm
+                position="leftBottom"
                 title="确定要平仓吗？"
                 onConfirm={() =>
                   closeMutation.mutate({

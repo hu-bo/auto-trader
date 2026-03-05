@@ -52,13 +52,14 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
   // On mount: sync URL query -> store (if URL has exchangeId and store doesn't match)
   useEffect(() => {
-    if (!exchanges?.length) {
+    console.log(exchanges)
+    if (!exchanges || exchanges.length === 0) {
       setSelectedExchange(defalutExchanges[0])
-      setSearchParams((prev) => {
-        prev.set('exchangeId', defalutExchanges[0].id)
-        prev.set('exchangeType', defalutExchanges[0].exchangeType)
-        return prev
-      }, { replace: true })
+      // setSearchParams((prev) => {
+      //   prev.set('exchangeId', defalutExchanges[0].id)
+      //   prev.set('exchangeType', defalutExchanges[0].exchangeType)
+      //   return prev
+      // }, { replace: true })
       return
     }
     const urlExchangeId = searchParams.get('exchangeId')

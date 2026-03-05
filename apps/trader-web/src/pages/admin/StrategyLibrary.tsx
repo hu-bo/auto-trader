@@ -338,6 +338,7 @@ const StrategyLibrary: React.FC = () => {
             编辑
           </Button>
           <Popconfirm
+            position="leftBottom"
             title="确定要删除此策略吗？"
             onConfirm={() => deleteMutation.mutate(record.id)}
           >
