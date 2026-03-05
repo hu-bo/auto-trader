@@ -842,7 +842,17 @@ func (a *TradeAdapter) CancelStrategyOrder(ctx context.Context, symbol string, a
 		return core.Err[core.StrategyOrder](core.ErrorInfo{Code: resp[0].SCode, Message: resp[0].SMsg, Raw: resp[0]})
 	}
 
-	return a.GetStrategyOrder(ctx, algoID, tradeType)
+	// OKX may return empty details for a just-cancelled order; treat that as success with a stub.
+	res := a.GetStrategyOrder(ctx, algoID, tradeType)
+	if !res.Ok {
+		return core.Ok(core.StrategyOrder{
+			AlgoID:    algoID,
+			Symbol:    symbol,
+			TradeType: tradeType,
+			Status:    core.StrategyOrderStatusCanceled,
+		})
+	}
+	return res
 }
 
 type getAlgoOrderDetailsParams struct {
