@@ -1052,15 +1052,12 @@ func (s *ExchangeService) CancelStrategyOrder(ctx context.Context, req *exchange
 
 	res := adapter.CancelStrategyOrder(ctx, req.Symbol, req.AlgoId, tradeType)
 	if !res.Ok {
-		// Ignore "not found" errors after cancel: OKX may return empty details for already-cancelled orders.
-		// Treat it as a successful cancel with a minimal order stub.
-		if res.Error.Code == core.ErrorStrategyOrderNotFound {
-			svcLog.Warn().
-				Str("algo_id", req.AlgoId).
-				Str("symbol", req.Symbol).
-				Msg("CancelStrategyOrder: order not found after cancel, treating as success")
-			return &exchangepb.CancelStrategyOrderResponse{Success: true}, nil
-		}
+		svcLog.Error().
+			Str("algo_id", req.AlgoId).
+			Str("symbol", req.Symbol).
+			Str("error_code", res.Error.Code).
+			Str("error_message", res.Error.Message).
+			Msg("CancelStrategyOrder: failed")
 		return &exchangepb.CancelStrategyOrderResponse{Success: false, Error: contract.Error(res.Error.Code, res.Error.Message)}, nil
 	}
 
