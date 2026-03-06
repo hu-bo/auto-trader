@@ -6,12 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 # Runtime wheels are expected in the release artifact.
-COPY wheels/hquant-*.whl /tmp/
-COPY wheels/hquant_logger-*.whl /tmp/
-COPY dist/strategy_engine-*.whl /tmp/
+COPY wheels/*.whl /tmp/
+COPY dist/*.whl /tmp/
 
-RUN pip install --no-cache-dir /tmp/hquant-*.whl /tmp/hquant_logger-*.whl /tmp/strategy_engine-*.whl && \
-    rm -rf /tmp/*
+RUN pip install --no-cache-dir /tmp/*.whl
 
 EXPOSE 9004
 EXPOSE 9005

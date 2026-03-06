@@ -10,111 +10,152 @@ volumes:
   - name: pip-cache
     host:
       path: /var/lib/drone-cache/pip
-  - name: cargo-cache
+
+  - name: cargo-registry
     host:
-      path: /var/lib/drone-cache/cargo
+      path: /var/lib/drone-cache/cargo/registry
+
+  - name: cargo-git
+    host:
+      path: /var/lib/drone-cache/cargo/git
+
 
 steps:
 
 # -------------------------------------------------
-# 1️⃣ 构建 Rust 扩展 (hquant-py)1
+# 1️⃣ 构建 Rust 扩展 (hquant-py)
 # -------------------------------------------------
-  - name: build-hquant
-    image: ghcr.io/pyo3/maturin:latest
-    environment:
-      CARGO_HOME: /root/.cargo
-    volumes:
-      - name: cargo-cache
-        path: /root/.cargo/registry
-      - name: cargo-cache
-        path: /root/.cargo/git
-    commands:
-      - echo "== Building hquant wheel =="
-      - cd packages/hquant-py
-      - maturin build --release --strip -i /opt/python/cp312-cp312/bin/python -o /drone/src/wheels 
-      - ls -lah /drone/src/wheels
+- name: build-hquant
+  image: ghcr.io/pyo3/maturin:latest
+  environment:
+    CARGO_HOME: /root/.cargo
+  volumes:
+    - name: cargo-registry
+      path: /root/.cargo/registry
+    - name: cargo-git
+      path: /root/.cargo/git
+  commands:
+    - set -e
+    - echo "== Building hquant wheel =="
+
+    - cd packages/hquant-py
+
+    - maturin build \
+        --release \
+        --strip \
+        -i /opt/python/cp312-cp312/bin/python \
+        -o /drone/src/wheels
+
+    - ls -lah /drone/src/wheels
+
 
 # -------------------------------------------------
 # 2️⃣ 构建 Python 服务
 # -------------------------------------------------
-  - name: build-service
-    image: python:3.12-slim
-    environment:
-      POETRY_VERSION: "1.8.3"
-    volumes:
-      - name: pip-cache
-        path: /root/.cache
-    commands:
-      - echo "== Installing build deps =="
-      - apt-get update && apt-get install -y --no-install-recommends \
-          build-essential git curl && \
-        rm -rf /var/lib/apt/lists/*
+- name: build-service
+  image: python:3.12-slim
+  environment:
+    POETRY_VERSION: "1.8.3"
+  volumes:
+    - name: pip-cache
+      path: /root/.cache/pip
+  commands:
+    - set -e
+    - echo "== Installing build deps =="
 
-      - pip install --no-cache-dir "poetry==$POETRY_VERSION"
+    - apt-get update
+    - apt-get install -y --no-install-recommends build-essential git curl
+    - rm -rf /var/lib/apt/lists/*
 
-      - echo "== Install prebuilt hquant wheel =="
-      - pip install wheels/hquant-*.whl
-      - pip install ./packages/logger-py
-      - pip wheel ./packages/logger-py -w /drone/src/wheels
+    - pip install --upgrade pip
+    - pip install "poetry==$POETRY_VERSION"
 
-      - echo "== Install local path packages =="
-      - cd apps/strategy-engine
-      - poetry install --only main --no-interaction --no-ansi --no-directory
+    - mkdir -p wheels
 
-      - echo "== Run tests (if exist) =="
-      - poetry run pytest tests/ || true
+    - echo "== Install prebuilt hquant wheel =="
+    - pip install wheels/hquant-*.whl
 
-      - echo "== Build service wheel =="
-      - poetry build -f wheel -n
+    - echo "== Build logger wheel =="
+    - pip wheel ./packages/logger-py -w wheels
 
-      - echo "== Package release artifact =="
-      - cd /drone/src
-      - mkdir -p release/strategy-engine/dist release/strategy-engine/wheels
-      - cp apps/strategy-engine/dist/strategy_engine-*.whl release/strategy-engine/dist/
-      - cp wheels/hquant-*.whl release/strategy-engine/wheels/
-      - cp wheels/hquant_logger-*.whl release/strategy-engine/wheels/
-      - cp apps/strategy-engine/Dockerfile release/strategy-engine/
-      - cp apps/strategy-engine/docker-compose.yaml release/strategy-engine/
-      - cp apps/strategy-engine/.env.example release/strategy-engine/
-      - tar czf strategy-engine.tar.gz -C release/strategy-engine .
+    - echo "== Install dependencies =="
+    - cd apps/strategy-engine
+    - poetry install --only main --no-interaction --no-ansi
+
+    - echo "== Run tests (if exist) =="
+    - poetry run pytest tests/ || true
+
+    - echo "== Build strategy-engine wheel =="
+    - poetry build -f wheel -n
+
+    - echo "== Prepare release artifact =="
+
+    - cd /drone/src
+
+    - mkdir -p release/strategy-engine/dist
+    - mkdir -p release/strategy-engine/wheels
+
+    - cp apps/strategy-engine/dist/strategy_engine-*.whl release/strategy-engine/dist/
+    - cp wheels/hquant-*.whl release/strategy-engine/wheels/
+    - cp wheels/hquant_logger-*.whl release/strategy-engine/wheels/
+
+    - cp apps/strategy-engine/Dockerfile release/strategy-engine/
+    - cp apps/strategy-engine/docker-compose.yaml release/strategy-engine/
+    - cp apps/strategy-engine/.env.example release/strategy-engine/
+
+    - tar czf strategy-engine.tar.gz -C release/strategy-engine .
+
+    - echo "== Wheels =="
+    - ls -lah wheels
+
+    - echo "== Release package =="
+    - ls -lah strategy-engine.tar.gz
+
 
 # -------------------------------------------------
-# 3️⃣ SCP 上传1
+# 3️⃣ SCP 上传
 # -------------------------------------------------
-  - name: scp
-    image: appleboy/drone-scp
-    settings:
-      debug: true
-      source:
-        - strategy-engine.tar.gz
-      host:
-        from_secret: CURRENT_HOST
-      username: root
-      port: 22
-      password:
-        from_secret: SSH_PWD
-      target: /temp
+- name: scp
+  image: appleboy/drone-scp
+  settings:
+    debug: true
+    source:
+      - strategy-engine.tar.gz
+    host:
+      from_secret: CURRENT_HOST
+    username: root
+    port: 22
+    password:
+      from_secret: SSH_PWD
+    target: /temp
+
 
 # -------------------------------------------------
 # 4️⃣ 远程部署
 # -------------------------------------------------
-  - name: deploy
-    image: appleboy/drone-ssh
-    settings:
-      host:
-        from_secret: CURRENT_HOST
-      username: root
-      password:
-        from_secret: SSH_PWD
-      port: 22
-      command_timeout: 10m
-      script:
-        - export APP_NAME=strategy-engine
-        - mkdir -p /data/app/$APP_NAME
-        - rm -rf /data/app/$APP_NAME/*
-        - tar xzf /temp/strategy-engine.tar.gz -C /data/app/$APP_NAME
-        - cd /data/app/$APP_NAME
-        - ls -la
-        - docker-compose -f docker-compose.yaml up -d --build --force-recreate
-        - sleep 2
-        - docker logs --tail 200 strategy-engine
+- name: deploy
+  image: appleboy/drone-ssh
+  settings:
+    host:
+      from_secret: CURRENT_HOST
+    username: root
+    password:
+      from_secret: SSH_PWD
+    port: 22
+    command_timeout: 10m
+    script:
+      - export APP_NAME=strategy-engine
+
+      - mkdir -p /data/app/$APP_NAME
+      - rm -rf /data/app/$APP_NAME/*
+
+      - tar xzf /temp/strategy-engine.tar.gz -C /data/app/$APP_NAME
+
+      - cd /data/app/$APP_NAME
+      - ls -la
+
+      - docker-compose -f docker-compose.yaml up -d --build --force-recreate
+
+      - sleep 3
+
+      - docker logs --tail 200 strategy-engine
