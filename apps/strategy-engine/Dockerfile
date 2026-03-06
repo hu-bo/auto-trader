@@ -8,6 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Runtime wheels are expected in the release artifact.
 COPY wheels/*.whl /tmp/
 COPY dist/*.whl /tmp/
+COPY packages/ /app/packages/
 
 RUN pip install --no-cache-dir /tmp/*.whl
 
