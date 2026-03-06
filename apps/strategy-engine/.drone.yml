@@ -115,7 +115,6 @@ steps:
         - tar xzf /temp/strategy-engine.tar.gz -C /data/app/$APP_NAME
         - cd /data/app/$APP_NAME
         - ls -la
-        - docker network inspect shared_network >/dev/null 2>&1 || docker network create shared_network
         - docker-compose -f docker-compose.yaml up -d --build --force-recreate
         - sleep 2
         - docker logs --tail 200 strategy-engine

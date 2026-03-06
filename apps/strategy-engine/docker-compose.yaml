@@ -14,23 +14,6 @@ services:
       retries: 3
     networks:
       - shared_network
-
-  redis:
-    image: redis:7-alpine
-    container_name: strategy-engine-redis
-    restart: unless-stopped
-    ports:
-      - "16000:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - shared_network
-
   strategy-engine:
     build:
       context: .
