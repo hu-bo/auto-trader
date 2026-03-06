@@ -1,7 +1,7 @@
 export type ExchangeType = 'binance' | 'okx' | 'bybit' | 'bitget' | 'gate'
 
 export interface Exchange {
-  id: number
+  id: string
   userId: string
   exchangeType: ExchangeType
   name: string

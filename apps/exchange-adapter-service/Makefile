@@ -8,7 +8,7 @@ tools:
 
 proto:
 	mkdir -p gen/exchange
-	protoc -I proto \
+	protoc -I ../../packages/contracts/proto \
 		--go_out=gen/exchange --go_opt=paths=source_relative \
 		--go-grpc_out=gen/exchange --go-grpc_opt=paths=source_relative \
 		exchange.proto

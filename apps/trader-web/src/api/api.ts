@@ -100,7 +100,7 @@ export const request = {
 
 // 便捷方法 - 直接返回 data 字段，用于 React Query 等场景
 export const requestData = {
-  async get<T>(url: string, params?: Record<string, unknown>): Promise<T> {
+  async get<T>(url: string, params?: Record<string, any>): Promise<T> {
     const response = await request.get<T>(url, params)
     return response.data as T
   },

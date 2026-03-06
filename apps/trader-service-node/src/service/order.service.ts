@@ -8,6 +8,7 @@ type OrderListParams = {
   userid: number;
   exchangeId: number;
   symbol?: string;
+  status?: OrderStatus;
   limit?: number;
   offset?: number;
 };
@@ -27,15 +28,19 @@ export class OrderService {
     return this.orderRepo;
   }
 
-  async listPending(params: OrderListParams): Promise<{ orders: Order[]; total: number }> {
+  async list(params: OrderListParams): Promise<{ orders: Order[]; total: number }> {
     const repo = this.requireRepo();
     const where: Record<string, unknown> = {
       userid: params.userid,
       exchangeId: params.exchangeId,
-      status: OrderStatus.NEW,
+      // status: OrderStatus.NEW,
     };
     if (params.symbol) {
       where.symbol = params.symbol;
+    }
+    if (params.status) {
+      where.status = params.status;
+    
     }
     const [orders, total] = await repo.findAndCount({
       where,

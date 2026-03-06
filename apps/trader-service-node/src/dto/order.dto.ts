@@ -1,5 +1,6 @@
 import { Rule } from '@midwayjs/validation';
 import Joi from 'joi';
+import { OrderStatus } from '../entity/order.entity.js';
 
 export class OrderIdParamDTO {
   @Rule(Joi.string().trim().min(1).required())
@@ -16,7 +17,7 @@ export class ListOrdersQueryDTO extends OrderTokenQueryDTO {
   symbol?: string;
 
   @Rule(Joi.string().trim().min(1).optional())
-  status?: string;
+  status?: OrderStatus;
 
   @Rule(Joi.number().integer().min(0).optional())
   limit?: number;

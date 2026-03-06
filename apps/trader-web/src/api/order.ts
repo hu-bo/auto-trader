@@ -9,7 +9,7 @@ interface OrderListResponse {
 export const orderApi = {
   // 获取订单列表
   list: (params: OrderQuery) =>
-    requestData.get<OrderListResponse>('/orders', params as Record<string, unknown>),
+    requestData.get<OrderListResponse>('/orders', params),
 
   // 获取订单详情
   get: (orderId: string, exchangeId: string) =>

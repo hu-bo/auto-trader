@@ -422,6 +422,25 @@ func wrapAPIError(fallbackCode string, err error) core.ErrorInfo {
 			code = fallbackCode
 		}
 		msg := apiErr.Message
+		if msg == "" && len(apiErr.Raw) > 0 {
+			// Top-level msg is empty for batch endpoints; extract sCode/sMsg from data[0].
+			var envelope struct {
+				Data []struct {
+					SCode string `json:"sCode"`
+					SMsg  string `json:"sMsg"`
+				} `json:"data"`
+			}
+			if json.Unmarshal(apiErr.Raw, &envelope) == nil && len(envelope.Data) > 0 {
+				d := envelope.Data[0]
+				if d.SCode != "" && d.SMsg != "" {
+					msg = "[" + d.SCode + "] " + d.SMsg
+				} else if d.SMsg != "" {
+					msg = d.SMsg
+				} else if d.SCode != "" {
+					msg = d.SCode
+				}
+			}
+		}
 		if msg == "" {
 			msg = apiErr.Error()
 		}

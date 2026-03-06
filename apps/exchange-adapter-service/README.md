@@ -127,7 +127,7 @@ go test ./...
 
 ### Proto 代码生成
 
-当修改 `proto/exchange.proto` 后：
+当修改 `packages/contracts/proto/exchange.proto` 后：
 
 ```bash
 # 首次：安装 protoc 插件

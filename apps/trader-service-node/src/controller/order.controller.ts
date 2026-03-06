@@ -93,9 +93,10 @@ export class OrderController {
   @Get('/')
   async list(@Query() query: ListOrdersQueryDTO) {
     const user = await this.userService.getOrCreateCurrentUser(this.ctx.state.user);
-    const result = await this.orderService.listPending({
+    const result = await this.orderService.list({
       userid: user.id,
       exchangeId: query.exchangeId,
+      status: query.status,
       symbol: query.symbol,
       limit: query.limit,
       offset: query.offset,
@@ -338,7 +339,12 @@ export class OrderController {
           token,
           orderId: order.exchangeOrderId,
         });
-    console.log(this.isStrategyAlgoOrder(order), resp)
+    if (resp.error) {
+      if (resp.error.code == 'ORDER_NOT_FOUND') {
+        await this.orderService.updateByExchangeOrderId(order.exchangeOrderId, order.exchangeId, { status: OrderStatus.CANCELED });
+        return apiOk(resp, '取消订单不存在或者已取消');
+      }
+    }
     this.requireGrpcSuccess(resp, '取消订单失败');
     return apiOk(resp);
   }

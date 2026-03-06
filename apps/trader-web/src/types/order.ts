@@ -44,6 +44,7 @@ export interface OrderQuery {
   status?: OrderStatus
   limit?: number
   offset?: number
+  
 }
 
 export interface CancelOrderParams {

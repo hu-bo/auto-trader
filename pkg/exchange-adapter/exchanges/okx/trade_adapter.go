@@ -14,6 +14,7 @@ import (
 	okxapi "github.com/pkg/okx-api"
 	okxtypes "github.com/pkg/okx-api/types"
 	okxrest "github.com/pkg/okx-api/types/rest"
+	okxutil "github.com/pkg/okx-api/util"
 )
 
 type TradeAdapterOptions struct {
@@ -828,7 +829,21 @@ func (a *TradeAdapter) CancelStrategyOrder(ctx context.Context, symbol string, a
 
 	raw, err := a.client.CancelAlgoOrder(ctx, []cancelAlgoOrderItem{{InstID: instID, AlgoID: algoID}})
 	if err != nil {
-		return core.Err[core.StrategyOrder](wrapAPIError(core.ErrorCancelStrategyOrder, err))
+		ei := wrapAPIError(core.ErrorCancelStrategyOrder, err)
+		if apiErr, ok := err.(*okxutil.APIError); ok {
+			var envelope struct {
+				Data []struct {
+					SCode string `json:"sCode"`
+					SMsg  string `json:"sMsg"`
+				} `json:"data"`
+			}
+			if json.Unmarshal(apiErr.Raw, &envelope) == nil && len(envelope.Data) > 0 {
+				if envelope.Data[0].SCode == "51400" {
+					ei.Code = core.ErrorOrderNotFound
+				}
+			}
+		}
+		return core.Err[core.StrategyOrder](ei)
 	}
 
 	var resp []okxAlgoOrderResult
@@ -838,14 +853,6 @@ func (a *TradeAdapter) CancelStrategyOrder(ctx context.Context, symbol string, a
 	if len(resp) == 0 {
 		return core.Err[core.StrategyOrder](core.ErrorInfo{Code: core.ErrorCancelStrategyOrder, Message: "empty response", Raw: string(raw)})
 	}
-	if resp[0].SCode != "0" {
-		msg := resp[0].SMsg
-		if msg == "" || msg == resp[0].SCode {
-			msg = fmt.Sprintf("cancel algo order failed (sCode=%s)", resp[0].SCode)
-		}
-		return core.Err[core.StrategyOrder](core.ErrorInfo{Code: resp[0].SCode, Message: msg, Raw: resp[0]})
-	}
-
 	// OKX may return empty details for a just-cancelled order; treat that as success with a stub.
 	res := a.GetStrategyOrder(ctx, algoID, tradeType)
 	if !res.Ok {
