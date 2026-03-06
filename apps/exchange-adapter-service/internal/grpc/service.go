@@ -169,6 +169,7 @@ func (s *ExchangeService) InvalidateToken(ctx context.Context, req *exchangepb.I
 }
 
 func (s *ExchangeService) PlaceOrder(ctx context.Context, req *exchangepb.PlaceOrderRequest) (*exchangepb.PlaceOrderResponse, error) {
+
 	if req == nil {
 		return &exchangepb.PlaceOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, "request is nil")}, nil
 	}
@@ -177,7 +178,11 @@ func (s *ExchangeService) PlaceOrder(ctx context.Context, req *exchangepb.PlaceO
 	if err != nil {
 		return &exchangepb.PlaceOrderResponse{Success: false, Error: contract.Error(sessionErrorCode(err), err.Error())}, nil
 	}
-
+	svcLog.Info().
+		Str("token", req.Token).
+		Bool("demonet", cfg.Demonet).
+		Str("trade_type", req.TradeType.String()).
+		Msg("PlaceOrder")
 	tradeType, err := contract.ProtoTradeTypeToCoreRequired(req.TradeType)
 	if err != nil {
 		return &exchangepb.PlaceOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, err.Error())}, nil
@@ -953,10 +958,10 @@ func (s *ExchangeService) PlaceStrategyOrders(ctx context.Context, req *exchange
 			orderPrice = &op
 		}
 
-		reduceOnly := false
-		if oreq.ReduceOnly != nil {
-			reduceOnly = oreq.GetReduceOnly()
-		}
+		// reduceOnly := false
+		// if oreq.ReduceOnly != nil {
+		// 	reduceOnly = oreq.GetReduceOnly()
+		// }
 
 		clientAlgoID := ""
 		if oreq.ClientAlgoId != nil {
@@ -987,9 +992,9 @@ func (s *ExchangeService) PlaceStrategyOrders(ctx context.Context, req *exchange
 			TriggerPrice:     oreq.TriggerPrice,
 			TriggerPriceType: triggerPriceType,
 			OrderPrice:       orderPrice,
-			ReduceOnly:       reduceOnly,
-			ClientAlgoID:     clientAlgoID,
-			AttachedOrders:   attached,
+			// ReduceOnly:       reduceOnly,
+			ClientAlgoID:   clientAlgoID,
+			AttachedOrders: attached,
 		})
 	}
 

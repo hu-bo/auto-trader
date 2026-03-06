@@ -311,8 +311,8 @@ func (a *TradeAdapter) placeFuturesOrder(ctx context.Context, params core.PlaceO
 
 	if params.PositionSide != nil {
 		req.PositionSide = positionSideToBinance(*params.PositionSide)
-	}
-	if params.ReduceOnly {
+	} else if params.ReduceOnly {
+		// reduceOnly is only valid in one-way mode; Binance rejects it when positionSide is set.
 		req.ReduceOnly = "true"
 	}
 
@@ -538,8 +538,9 @@ func (a *TradeAdapter) PlaceStrategyOrder(ctx context.Context, params core.Strat
 
 	if params.PositionSide != nil {
 		req.PositionSide = positionSideToBinance(*params.PositionSide)
-	}
-	if params.ReduceOnly {
+	} else if params.ReduceOnly {
+		// reduceOnly is only valid in one-way mode (no positionSide set).
+		// Binance returns -1106 if both positionSide and reduceOnly are sent.
 		req.ReduceOnly = "true"
 	}
 	if params.ClientAlgoID != "" {

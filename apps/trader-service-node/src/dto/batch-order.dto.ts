@@ -11,6 +11,9 @@ export class PlaceBatchStrategyOrderBodyDTO {
   @Rule(Joi.array().items(Joi.string().trim().min(1)).min(1).required())
   symbols!: string[];
 
+  @Rule(Joi.number().integer().positive().required())
+  leverage!: number;
+  
   @Rule(Joi.string().trim().valid('buy_long', 'sell_short').required())
   direction!: string;
 

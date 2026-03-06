@@ -269,7 +269,7 @@ export class ExchangeGrpcClient {
       quantity: params.quantity,
     };
     if (params.price != null) req.price = params.price;
-    if (params.positionSide != null) req.position_side = mapPositionSide(params.positionSide);
+    if (params.positionSide != null) req.position_side = params.positionSide;
     if (params.leverage != null) req.leverage = params.leverage;
     if (params.clientOrderId != null) req.client_order_id = params.clientOrderId;
     if (params.reduceOnly != null) req.reduce_only = params.reduceOnly;
