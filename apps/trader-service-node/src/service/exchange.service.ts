@@ -12,19 +12,19 @@ type ExchangeCreateParams = {
   name: string;
   apiKey: string;
   apiSecret: string;
-  passphrase?: string | null;
+  passphrase?: string;
   isTestnet?: boolean;
   isActive?: boolean;
 };
 
 type ExchangeUpdateParams = {
-  exchangeType?: string | null;
-  name?: string | null;
-  apiKey?: string | null;
-  apiSecret?: string | null;
-  passphrase?: string | null;
-  isTestnet?: boolean | null;
-  isActive?: boolean | null;
+  exchangeType?: string;
+  name?: string;
+  apiKey?: string;
+  apiSecret?: string;
+  passphrase?: string;
+  isTestnet?: boolean;
+  isActive?: boolean;
 };
 
 @Provide()

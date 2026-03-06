@@ -68,7 +68,7 @@ export class ExchangeController {
       name: body.name,
       apiKey: body.apiKey,
       apiSecret: body.apiSecret,
-      passphrase: body.passphrase ?? null,
+      passphrase: body.passphrase ?? undefined,
       isTestnet: body.isTestnet ?? false,
       isActive: body.isActive ?? true,
     });

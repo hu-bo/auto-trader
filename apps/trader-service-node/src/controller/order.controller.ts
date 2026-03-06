@@ -171,7 +171,7 @@ export class OrderController {
     const offsetMultiplier = 1 + body.priceOffsetPercent / 100;
     const orders: Array<{
       symbol: string; tradeType: string; side: string; strategyType: string;
-      quantity: number; triggerPrice: number; positionSide: string;
+      quantity: number; triggerPrice: number; positionSide?: string;
       triggerPriceType: string; reduceOnly: boolean;
       tpTriggerPrice?: number;
     }> = [];
@@ -195,33 +195,36 @@ export class OrderController {
         continue;
       };
 
-      if (body.direction === 'buy_long') {
-        orders.push({
-          symbol,
-          tradeType: grpcTradeType,
-          side: 'sell',
-          positionSide: 'long',
-          strategyType: 'stop-loss',
-          quantity,
-          triggerPrice: tp(entryPrice * (1 - Math.abs(body.stopLossPercent) / 100), symbol),
-          triggerPriceType: 'last',
-          reduceOnly: true,
-          tpTriggerPrice: tp(entryPrice * (1 + body.takeProfitPercent / 100), symbol),
-        });
-      } else {
-        orders.push({
-          symbol,
-          tradeType: grpcTradeType,
-          side: 'buy',
-          positionSide: 'short',
-          strategyType: 'stop-loss',
-          quantity,
-          triggerPrice: tp(entryPrice * (1 + Math.abs(body.stopLossPercent) / 100), symbol),
-          triggerPriceType: 'last',
-          reduceOnly: true,
-          tpTriggerPrice: tp(entryPrice * (1 - body.takeProfitPercent / 100), symbol),
-        });
+      // determine order side and optional position side
+      const side = body.side; // 'buy' or 'sell'
+      let posSide: string | undefined = undefined;
+      if (body.tradeType === 'usdm-algo' || body.tradeType === 'futures') {
+        // futures/api may ignore positionSide but we keep for compatibility
+        posSide = body.positionSide;
       }
+
+      orders.push({
+        symbol,
+        tradeType: grpcTradeType,
+        side,
+        positionSide: posSide,
+        strategyType: 'stop-loss',
+        quantity,
+        triggerPrice: tp(
+          side === 'buy'
+            ? entryPrice * (1 - Math.abs(body.stopLossPercent) / 100)
+            : entryPrice * (1 + Math.abs(body.stopLossPercent) / 100),
+          symbol
+        ),
+        triggerPriceType: 'last',
+        reduceOnly: false, // opening order by default
+        tpTriggerPrice: tp(
+          side === 'buy'
+            ? entryPrice * (1 + body.takeProfitPercent / 100)
+            : entryPrice * (1 - body.takeProfitPercent / 100),
+          symbol
+        ),
+      });
     }
 
     if (orders.length === 0) {
@@ -258,7 +261,7 @@ export class OrderController {
           status: OrderStatus.NEW,
           quantity: String(orders[i].quantity),
           price: String(orders[i].triggerPrice),
-          positionSide: orders[i].positionSide,
+          positionSide: orders[i].positionSide ?? null,
           reduceOnly: orders[i].reduceOnly,
         });
       }
@@ -340,12 +343,13 @@ export class OrderController {
           orderId: order.exchangeOrderId,
         });
     if (resp.error) {
-      if (resp.error.code == 'ORDER_NOT_FOUND') {
+      if (resp.error.code == 'ORDER_NOT_FOUND' || resp.error.message?.includes('-2011')) {
         await this.orderService.updateByExchangeOrderId(order.exchangeOrderId, order.exchangeId, { status: OrderStatus.CANCELED });
         return apiOk(resp, '取消订单不存在或者已取消');
       }
+      this.requireGrpcSuccess(resp, '取消订单失败');
     }
-    this.requireGrpcSuccess(resp, '取消订单失败');
+    await this.orderService.updateByExchangeOrderId(order.exchangeOrderId, order.exchangeId, { status: OrderStatus.CANCELED });
     return apiOk(resp);
   }
 }

@@ -11,11 +11,16 @@ export class PlaceBatchStrategyOrderBodyDTO {
   @Rule(Joi.array().items(Joi.string().trim().min(1)).min(1).required())
   symbols!: string[];
 
-  @Rule(Joi.number().integer().positive().required())
-  leverage!: number;
+  // leveraged only applies to futures; spot orders may omit
+  @Rule(Joi.number().integer().positive().optional())
+  leverage?: number;
   
-  @Rule(Joi.string().trim().valid('buy_long', 'sell_short').required())
-  direction!: string;
+  @Rule(Joi.string().trim().valid('buy', 'sell').required())
+  side!: string;
+
+  // optional for futures (usdm-algo) when specifying long vs short position
+  @Rule(Joi.string().trim().valid('long', 'short').optional())
+  positionSide?: string;
 
   @Rule(Joi.number().positive().required())
   amountUSDT!: number;

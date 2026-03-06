@@ -16,6 +16,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui-19/lib/es/table/interface'
 import { useQuery } from '@tanstack/react-query'
 import { marketApi, TickerData } from '@/api/market'
 import { batchOrderApi } from '@/api/batch-order'
+import { BatchStrategyOrderForm } from '@/components/trading/BatchStrategyOrderForm'
 import { useAppStore } from '@/stores/appStore'
 import { useNavigateKeepParams } from '@/hooks'
 import { formatPrice, formatNumber, getPnlColor } from '@/utils/format'
@@ -26,17 +27,15 @@ const BatchTrading: React.FC = () => {
   const navigate = useNavigateKeepParams()
   const { selectedExchange } = useAppStore()
   const exchange = selectedExchange?.exchangeType?.toLowerCase() || 'binance'
-  const marketTradeType = 'futures'
-  const strategyTradeType = 'usdm-algo'
+
+  const [marketTradeType, setMarketTradeType] = useState<'futures' | 'spot'>('futures')
+  const strategyTradeType = useMemo(() => {
+    if (marketTradeType === 'futures') return 'usdm-algo'
+    return 'spot'
+  }, [marketTradeType])
   const [filterMode, setFilterMode] = useState<FilterMode>('gainers')
   const [topN, setTopN] = useState(20)
   const [selectedRowKeys, setSelectedRowKeys] = useState<(string | number)[]>([])
-  const [direction, setDirection] = useState<'buy_long' | 'sell_short'>('buy_long')
-  const [amountUSDT, setAmountUSDT] = useState<number>(100)
-  const [priceOffsetPercent, setPriceOffsetPercent] = useState<number>(1)
-  const [stopLossPercent, setStopLossPercent] = useState<number>(5)
-  const [takeProfitPercent, setTakeProfitPercent] = useState<number>(10)
-  const [leverage, setLeverage] = useState<number>(10)
   const [submitting, setSubmitting] = useState(false)
 
   const { data: tickerData, isLoading } = useQuery({
@@ -98,13 +97,9 @@ const BatchTrading: React.FC = () => {
     },
   }
 
-  const handleSubmit = async () => {
+  const handleFormSubmit = async (params: any) => {
     if (selectedRowKeys.length === 0) {
       Toast.warning({ content: '请至少选择一个交易对' })
-      return
-    }
-    if (amountUSDT <= 0) {
-      Toast.warning({ content: '金额必须大于0' })
       return
     }
 
@@ -122,7 +117,7 @@ const BatchTrading: React.FC = () => {
 
       const duplicateResult = await batchOrderApi.checkDuplicates({
         exchangeId,
-        tradeType: strategyTradeType,
+        tradeType: params.tradeType,
       })
 
       const openSymbols = new Set(
@@ -131,18 +126,12 @@ const BatchTrading: React.FC = () => {
       const duplicateSymbols = symbols.filter((s) => openSymbols.has(s))
 
       const placeOrders = async () => {
-        const result = await batchOrderApi.placeBatchStrategy({
+        const payload = {
+          ...params,
           exchangeId,
-          tradeType: strategyTradeType,
           symbols,
-          direction,
-          amountUSDT,
-          priceOffsetPercent,
-          stopLossPercent,
-          takeProfitPercent,
-          ...(marketTradeType === 'futures' ? { leverage } : {}),
-        })
-
+        }
+        const result = await batchOrderApi.placeBatchStrategy(payload)
         Modal.info({
           title: '批量下单结果',
           content: `成功: ${result.success_count}, 失败: ${result.failed_count}`,
@@ -215,7 +204,19 @@ const BatchTrading: React.FC = () => {
           >
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
               <Tag size="large" color="blue">{exchange.toUpperCase()}</Tag>
-              <Tag size="large" color="cyan">USDM-ALGO</Tag>
+              <RadioGroup
+                value={marketTradeType}
+                onChange={(e) => {
+                  setMarketTradeType(e.target.value)
+                  // reset selection when switching type
+                  setSelectedRowKeys([])
+                }}
+                type="button"
+              >
+                <Radio value="futures">期货</Radio>
+                <Radio value="spot">现货</Radio>
+              </RadioGroup>
+              <Tag size="large" color="cyan">{strategyTradeType.toUpperCase()}</Tag>
               <RadioGroup
                 value={filterMode}
                 onChange={(e) => {
@@ -256,110 +257,11 @@ const BatchTrading: React.FC = () => {
 
         {/* Right: Order config */}
         <div style={{ width: 320, flexShrink: 0 }} className="batch-trading-right">
-          <Card
-            title="下单配置"
-            headerStyle={{ padding: '12px 16px' }}
-            bodyStyle={{ padding: 16 }}
-          >
-            <div style={fieldStyle}>
-              <div style={labelStyle}>方向</div>
-              <RadioGroup
-                value={direction}
-                onChange={(e) => setDirection(e.target.value)}
-                type="button"
-                style={{ width: '100%' }}
-              >
-                <Radio value="buy_long" style={{ flex: 1, textAlign: 'center' }}>
-                  做多
-                </Radio>
-                <Radio value="sell_short" style={{ flex: 1, textAlign: 'center' }}>
-                  做空
-                </Radio>
-              </RadioGroup>
-            </div>
-
-            {marketTradeType === 'futures' && (
-              <div style={fieldStyle}>
-                <div style={labelStyle}>杠杆倍数</div>
-                <InputNumber
-                  value={leverage}
-                  onChange={(v) => setLeverage(v as number)}
-                  min={1}
-                  max={125}
-                  step={1}
-                  style={{ width: '100%' }}
-                  suffix="x"
-                />
-              </div>
-            )}
-
-            <div style={fieldStyle}>
-              <div style={labelStyle}>金额 (USDT)</div>
-              <InputNumber
-                value={amountUSDT}
-                onChange={(v) => setAmountUSDT(v as number)}
-                min={1}
-                style={{ width: '100%' }}
-              />
-            </div>
-
-            <div style={fieldStyle}>
-              <div style={labelStyle}>
-                价格偏移 %
-                <Typography.Text type="tertiary" size="small" style={{ marginLeft: 4 }}>
-                  (入场价 = 现价 x (1+N%))
-                </Typography.Text>
-              </div>
-              <InputNumber
-                value={priceOffsetPercent}
-                onChange={(v) => setPriceOffsetPercent(v as number)}
-                min={-50}
-                max={50}
-                step={0.1}
-                style={{ width: '100%' }}
-                suffix="%"
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: 12, ...fieldStyle }}>
-              <div style={{ flex: 1 }}>
-                <div style={labelStyle}>止损 %</div>
-                <InputNumber
-                  value={stopLossPercent}
-                  onChange={(v) => setStopLossPercent(v as number)}
-                  min={0.1}
-                  max={100}
-                  step={0.5}
-                  style={{ width: '100%' }}
-                  suffix="%"
-                />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={labelStyle}>止盈 %</div>
-                <InputNumber
-                  value={takeProfitPercent}
-                  onChange={(v) => setTakeProfitPercent(v as number)}
-                  min={0.1}
-                  max={1000}
-                  step={0.5}
-                  style={{ width: '100%' }}
-                  suffix="%"
-                />
-              </div>
-            </div>
-
-            <Button
-              type="primary"
-              theme="solid"
-              loading={submitting}
-              onClick={handleSubmit}
-              disabled={selectedRowKeys.length === 0}
-              block
-              style={{ marginTop: 8 }}
-            >
-              批量下单 ({selectedRowKeys.length} 个条件单)
-            </Button>
-          </Card>
+          <BatchStrategyOrderForm
+            initialTradeMode={marketTradeType}
+            loading={submitting}
+            onSubmit={handleFormSubmit}
+          />
         </div>
       </div>
 

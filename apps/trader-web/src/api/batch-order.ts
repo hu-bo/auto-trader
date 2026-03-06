@@ -4,7 +4,8 @@ export interface PlaceBatchStrategyParams {
   exchangeId: number
   tradeType: string
   symbols: string[]
-  direction: 'buy_long' | 'sell_short'
+  side: 'buy' | 'sell'                // 方向
+  positionSide?: 'long' | 'short'    // 合约可选，现货忽略
   amountUSDT: number
   priceOffsetPercent: number
   stopLossPercent: number
