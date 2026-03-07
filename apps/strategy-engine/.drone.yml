@@ -76,7 +76,7 @@ steps:
       - cp apps/strategy-engine/Dockerfile release/strategy-engine/
       - cp apps/strategy-engine/docker-compose.yaml release/strategy-engine/
       - cp apps/strategy-engine/.env.example release/strategy-engine/
-      - cp -r packages/* release/strategy-engine/
+      - cp packages release/strategy-engine/
       - tar czf strategy-engine.tar.gz -C release/strategy-engine .
 
 # -------------------------------------------------
