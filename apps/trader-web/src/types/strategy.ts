@@ -9,7 +9,6 @@ export interface Strategy {
   tag: StrategyTag
   code: string
   params: Record<string, unknown>
-  version: string
   status: StrategyStatus
   isPublic: boolean
   createdAt: string
@@ -22,7 +21,6 @@ export interface StrategyCreate {
   tag?: StrategyTag
   code?: string
   params?: Record<string, unknown>
-  version?: string
   status?: StrategyStatus
   isPublic?: boolean
 }
@@ -33,7 +31,6 @@ export interface StrategyUpdate {
   tag?: StrategyTag
   code?: string
   params?: Record<string, unknown>
-  version?: string
   status?: StrategyStatus
   isPublic?: boolean
 }
@@ -48,18 +45,26 @@ export interface RiskConfig {
   maxLeverage?: number
 }
 
+export interface RiskConfigPreset {
+  id: string
+  name: string
+  riskConfig: RiskConfig
+  createdAt: string
+  updatedAt: string
+}
+
 // 策略订单
 export interface StrategyOrder {
   id: string
   user_id: string
   strategy_id: string
   strategy_name: string
+  strategy_params: Record<string, unknown>
   exchange_id: string
   exchange_name: string
   exchange_type: string
   trade_type: string
   symbols: string[]
-  parameters: Record<string, unknown>
   risk_config: RiskConfig
   live: boolean
   is_running: boolean
@@ -74,14 +79,13 @@ export interface StrategyOrderCreate {
   exchangeId: string
   tradeType?: string
   symbols: string[]
-  parameters?: Record<string, unknown>
   riskConfig?: RiskConfig
   live?: boolean
 }
 
 export interface StrategyOrderUpdate {
+  strategyId?: string
   symbols?: string[]
-  parameters?: Record<string, unknown>
   riskConfig?: RiskConfig
   live?: boolean
 }

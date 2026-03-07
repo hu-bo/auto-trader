@@ -35,9 +35,6 @@ export class Strategy {
   @Column({ type: 'jsonb', default: {} })
   params!: Record<string, unknown>;
 
-  @Column({ type: 'varchar', length: 32, default: 'v1' })
-  version!: string;
-
   @Column({ type: 'varchar', length: 16, default: 'inactive' })
   status!: string;
 

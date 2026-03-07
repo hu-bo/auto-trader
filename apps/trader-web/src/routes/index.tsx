@@ -15,11 +15,12 @@ const Positions = lazy(() => import('@/pages/position/Positions'))
 const Orders = lazy(() => import('@/pages/order/Orders'))
 const StrategyOrders = lazy(() => import('@/pages/order/StrategyOrders'))
 const StrategyDebugger = lazy(() => import('@/pages/strategy/StrategyDebugger'))
-const BatchTrading = lazy(() => import('@/pages/batch/BatchTrading'))
 const ExchangeConfig = lazy(() => import('@/pages/exchange/ExchangeConfig'))
 const Settings = lazy(() => import('@/pages/settings/Settings'))
 const UserManage = lazy(() => import('@/pages/admin/UserManage'))
 const StrategyLibrary = lazy(() => import('@/pages/admin/StrategyLibrary'))
+const Onboarding = lazy(() => import('@/pages/onboarding/Onboarding'))
+const RiskConfig = lazy(() => import('@/pages/risk/RiskConfig'))
 
 const LazyPage = ({ children }: { children: React.ReactNode }) => (
   <Suspense fallback={<Loading />}>{children}</Suspense>
@@ -58,6 +59,14 @@ export const router = createBrowserRouter([
         element: (
           <LazyPage>
             <Dashboard />
+          </LazyPage>
+        ),
+      },
+      {
+        path: 'onboarding',
+        element: (
+          <LazyPage>
+            <Onboarding />
           </LazyPage>
         ),
       },
@@ -102,14 +111,6 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'batch-trading',
-        element: (
-          <LazyPage>
-            <BatchTrading />
-          </LazyPage>
-        ),
-      },
-      {
         path: 'strategy-debugger',
         element: (
           <LazyPage>
@@ -124,7 +125,15 @@ export const router = createBrowserRouter([
             <ExchangeConfig />
           </LazyPage>
         ),
-      }, 
+      },
+      {
+        path: 'risk-config',
+        element: (
+          <LazyPage>
+            <RiskConfig />
+          </LazyPage>
+        ),
+      },
       {
         path: 'strategy-library',
         element: (

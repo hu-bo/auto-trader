@@ -1,273 +1,233 @@
-import React, { useState, useMemo } from 'react'
-import {
-  RadioGroup,
-  Radio,
-  InputNumber,
-  Button,
-  Card,
-  Typography,
-} from '@douyinfe/semi-ui-19'
+import React from 'react'
+import { Button, Form, Row, Col, RadioGroup, Radio } from '@douyinfe/semi-ui-19'
+import { BaseOrderFields } from './BaseOrderFields'
 import type { PlaceBatchStrategyParams } from '@/api/batch-order'
+import { useTradingFormState } from '@/hooks'
+import type { OrderSide, PositionSide, OrderType, TradeType } from '@/types'
+import { getTradeActionPair, type FuturesActionMode, type FuturesPositionSide } from './tradeAction'
 
 type TradeMode = 'futures' | 'spot'
-type OrderSide = 'buy' | 'sell'
-type PositionSideType = 'long' | 'short'
+
+interface BatchTradingFormJson {
+  tradeType: TradeMode
+  side: OrderSide
+  orderType: OrderType
+  positionSide: PositionSide
+  leverage: number
+  amountUSDT: number
+  priceOffsetPercent: number
+  stopLossPercent: number
+  takeProfitPercent: number
+  quantity: number
+  price?: number
+  symbols: string[]
+}
 
 export interface BatchStrategyOrderFormProps {
-  /** 初始交易类型 */
-  initialTradeMode?: TradeMode
-  /** 是否在紧凑模式下 */
-  compact?: boolean
-  /** 提交时的回调，需传入 exchangeId 和 symbols */
+  /** 交易类型，由外部传入，不可变 */
+  tradeType: TradeMode
   onSubmit?: (params: PlaceBatchStrategyParams) => Promise<void>
-  /** 是否处于提交状态 */
   loading?: boolean
 }
 
 export const BatchStrategyOrderForm: React.FC<BatchStrategyOrderFormProps> = ({
-  initialTradeMode = 'futures',
-  compact = false,
+  tradeType,
   onSubmit,
   loading = false,
 }) => {
-  // Trade mode selection (futures / spot)
-  const [tradeMode, setTradeMode] = useState<TradeMode>(initialTradeMode)
+  const [futuresActionMode, setFuturesActionMode] = React.useState<FuturesActionMode>('open')
+  const [submittingAction, setSubmittingAction] = React.useState<string | null>(null)
 
-  // Derive strategy trade type from trade mode
-  const strategyTradeType = useMemo(() => {
-    if (tradeMode === 'futures') return 'usdm-algo'
-    return 'spot'
-  }, [tradeMode])
+  const { values, onChange, setField, reset, setFormApi, formApiRef } = useTradingFormState<BatchTradingFormJson>({
+    tradeType,
+    side: 'buy',
+    orderType: 'algo',
+    positionSide: 'long',
+    leverage: 10,
+    amountUSDT: 100,
+    priceOffsetPercent: 1,
+    stopLossPercent: 5,
+    takeProfitPercent: 10,
+    quantity: 0,
+    price: undefined,
+    symbols: [],
+  })
 
-  // Direction selection
-  const [side, setSide] = useState<OrderSide>('buy')
-  const [positionSide, setPositionSide] = useState<PositionSideType>('long')
+  const submitBySide = async (
+    actionKey: string,
+    side: OrderSide,
+    positionSide?: FuturesPositionSide,
+  ) => {
+    if (!onSubmit) return
 
-  // Amount and parameters
-  const [amountUSDT, setAmountUSDT] = useState<number>(100)
-  const [priceOffsetPercent, setPriceOffsetPercent] = useState<number>(1)
-  const [stopLossPercent, setStopLossPercent] = useState<number>(5)
-  const [takeProfitPercent, setTakeProfitPercent] = useState<number>(10)
-  const [leverage, setLeverage] = useState<number>(10)
+    const formApi = formApiRef.current
+    let submitValues: Record<string, unknown> = {}
 
-  const handleTradeModeChange = (mode: TradeMode) => {
-    setTradeMode(mode)
-    setPositionSide('long')
-  }
-
-  const handleSubmit = async () => {
-    if (!onSubmit) {
-      return
-    }
-
-    if (amountUSDT <= 0) {
-      return
-    }
-
-    const payload: any = {
-      side,
-      amountUSDT,
-      priceOffsetPercent,
-      stopLossPercent,
-      takeProfitPercent,
-    }
-
-    if (tradeMode === 'futures') {
-      payload.leverage = leverage
-      if (strategyTradeType !== 'usdm-algo') {
-        payload.positionSide = positionSide
+    try {
+      if (formApi?.validate) {
+        submitValues = (await formApi.validate()) as Record<string, unknown>
       }
+    } catch {
+      return
     }
 
-    await onSubmit({
-      exchangeId: 0, // will be set by caller
-      tradeType: strategyTradeType,
-      symbols: [], // will be set by caller
-      ...payload,
-    })
+    const amountUSDT = Number(submitValues.amountUSDT ?? values.amountUSDT)
+    if (!Number.isFinite(amountUSDT) || amountUSDT <= 0) return
+
+    const payload: PlaceBatchStrategyParams = {
+      exchangeId: 0,
+      tradeType,
+      symbols: [],
+      side,
+      orderType: 'algo',
+      amountUSDT,
+      priceOffsetPercent: Number(submitValues.priceOffsetPercent ?? values.priceOffsetPercent),
+      stopLossPercent: Number(submitValues.stopLossPercent ?? values.stopLossPercent),
+      takeProfitPercent: Number(submitValues.takeProfitPercent ?? values.takeProfitPercent),
+    }
+
+    if (tradeType === 'futures' && positionSide) {
+      payload.positionSide = positionSide
+      payload.leverage = Number(values.leverage)
+    }
+
+    setField('side', side)
+    if (positionSide) setField('positionSide', positionSide)
+
+    setSubmittingAction(actionKey)
+    try {
+      await onSubmit(payload)
+      reset()
+    } finally {
+      setSubmittingAction(null)
+    }
   }
 
-  const labelStyle: React.CSSProperties = {
-    fontSize: 13,
-    color: 'var(--semi-color-text-2)',
-    marginBottom: 4,
-    fontWeight: 500,
-  }
+  const isSubmitting = loading || !!submittingAction
 
-  const fieldStyle: React.CSSProperties = {
-    marginBottom: 16,
-  }
+  const renderSubmitButtons = () => {
+    const { left: leftAction, right: rightAction } = getTradeActionPair(
+      tradeType as TradeType,
+      futuresActionMode,
+    )
 
-  const isBuy = side === 'buy'
+    return (
+      <Row gutter={8} style={{ marginTop: 12 }}>
+        <Col span={12}>
+          <Button
+            theme="solid"
+            type="primary"
+            block
+            loading={loading || submittingAction === leftAction.key}
+            disabled={isSubmitting && submittingAction !== leftAction.key}
+            style={{ height: 44, background: '#10b981', borderColor: '#10b981' }}
+            onClick={() => submitBySide(leftAction.key, leftAction.side, leftAction.positionSide)}
+          >
+            {leftAction.label}
+          </Button>
+        </Col>
+        <Col span={12}>
+          <Button
+            theme="solid"
+            type="danger"
+            block
+            loading={loading || submittingAction === rightAction.key}
+            disabled={isSubmitting && submittingAction !== rightAction.key}
+            style={{ height: 44, background: '#ef4444', borderColor: '#ef4444' }}
+            onClick={() => submitBySide(rightAction.key, rightAction.side, rightAction.positionSide)}
+          >
+            {rightAction.label}
+          </Button>
+        </Col>
+      </Row>
+    )
+  }
 
   return (
-    <Card
-      title="下单配置"
-      headerStyle={{ padding: '12px 16px' }}
-      bodyStyle={{ padding: 16 }}
-      className="batch-strategy-order-form"
+    <BaseOrderFields
+      onFormApi={setFormApi}
+      values={{
+        tradeType: values.tradeType,
+        side: values.side,
+        positionSide: values.positionSide,
+        leverage: values.leverage,
+        orderType: 'algo',
+      }}
+      onChange={(changed) => onChange(changed)}
+      tradeTypeLocked
+      hideSide
+      hidePositionSide
+      hideOrderType
+      submitButton={
+        renderSubmitButtons()
+      }
     >
-      {/* 交易类型选择 */}
-      <div style={fieldStyle}>
-        <div style={labelStyle}>交易类型</div>
-        <RadioGroup
-          value={tradeMode}
-          onChange={(e) => handleTradeModeChange(e.target.value as TradeMode)}
-          type="button"
-          style={{ width: '100%' }}
-        >
-          <Radio value="spot" style={{ flex: 1, textAlign: 'center' }}>
-            现货
-          </Radio>
-          <Radio value="futures" style={{ flex: 1, textAlign: 'center' }}>
-            期货
-          </Radio>
-        </RadioGroup>
-      </div>
-
-      {/* 方向选择 */}
-      <div style={fieldStyle}>
-        <div style={labelStyle}>方向</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button
-            block
-            theme="light"
-            onClick={() => setSide('buy')}
-            style={{
-              background: isBuy ? 'rgba(16, 185, 129, 0.1)' : undefined,
-              borderColor: isBuy ? '#10b981' : undefined,
-              color: isBuy ? '#10b981' : undefined,
-              fontWeight: 500,
-            }}
-          >
-            买入
-          </Button>
-          <Button
-            block
-            theme="light"
-            onClick={() => setSide('sell')}
-            style={{
-              background: !isBuy ? 'rgba(239, 68, 68, 0.1)' : undefined,
-              borderColor: !isBuy ? '#ef4444' : undefined,
-              color: !isBuy ? '#ef4444' : undefined,
-              fontWeight: 500,
-            }}
-          >
-            卖出
-          </Button>
-        </div>
-      </div>
-
-      {/* 持仓方向（仅期货） */}
-      {tradeMode === 'futures' && strategyTradeType !== 'usdm-algo' && (
-        <div style={fieldStyle}>
-          <div style={labelStyle}>持仓方向</div>
+      {tradeType === 'futures' && (
+        <Form.Slot label="方向">
           <RadioGroup
-            value={positionSide}
-            onChange={(e) => setPositionSide(e.target.value as PositionSideType)}
+            value={futuresActionMode}
             type="button"
             style={{ width: '100%' }}
+            onChange={(e) => setFuturesActionMode(e.target.value as FuturesActionMode)}
           >
-            <Radio value="long" style={{ flex: 1, textAlign: 'center' }}>
-              多头
-            </Radio>
-            <Radio value="short" style={{ flex: 1, textAlign: 'center' }}>
-              空头
-            </Radio>
+            <Radio value="open" style={{ flex: 1, textAlign: 'center' }}>开仓</Radio>
+            <Radio value="close" style={{ flex: 1, textAlign: 'center' }}>平仓</Radio>
           </RadioGroup>
-        </div>
+        </Form.Slot>
       )}
-
-      {/* 杠杆（仅期货） */}
-      {tradeMode === 'futures' && (
-        <div style={fieldStyle}>
-          <div style={labelStyle}>杠杆倍数</div>
-          <InputNumber
-            value={leverage}
-            onChange={(v) => setLeverage(v as number)}
-            min={1}
-            max={125}
-            step={1}
-            style={{ width: '100%' }}
-            suffix="x"
-          />
-        </div>
-      )}
-
-      {/* 金额 */}
-      <div style={fieldStyle}>
-        <div style={labelStyle}>金额 (USDT)</div>
-        <InputNumber
-          value={amountUSDT}
-          onChange={(v) => setAmountUSDT(v as number)}
-          min={1}
-          style={{ width: '100%' }}
-        />
-      </div>
-
-      {/* 价格偏移 */}
-      <div style={fieldStyle}>
-        <div style={labelStyle}>
-          价格偏移 %
-          <Typography.Text type="tertiary" size="small" style={{ marginLeft: 4 }}>
-            (入场价 = 现价 x (1+N%))
-          </Typography.Text>
-        </div>
-        <InputNumber
-          value={priceOffsetPercent}
-          onChange={(v) => setPriceOffsetPercent(v as number)}
+      <Form.InputNumber
+        field="amountUSDT"
+        label="金额"
+        min={1}
+        style={{ width: '100%' }}
+        rules={[{ required: true, message: '请输入金额' }]}
+        addonAfter="USDT"
+      />
+      {/* OrderForm 特有字段：订单类型、价格、数量 */}
+      {
+        (values.orderType === 'algo' || values.orderType === 'limit') &&
+        <Form.InputNumber
+          field="priceOffsetPercent"
+          label="价格偏移"
           min={-50}
           max={50}
-          step={0.1}
-          style={{ width: '100%' }}
+          step={1}
           suffix="%"
+          style={{ width: '100%' }}
+          rules={[{ required: true, message: '请输入价格偏移' }]}
+          helpText="0为实时价格，正数是高于价格，负数是低于价格（买入常用负数，卖出常用正数）"
         />
-      </div>
 
-      {/* 止损、止盈 */}
-      <div style={{ display: 'flex', gap: 12, ...fieldStyle }}>
-        <div style={{ flex: 1 }}>
-          <div style={labelStyle}>止损 %</div>
-          <InputNumber
-            value={stopLossPercent}
-            onChange={(v) => setStopLossPercent(v as number)}
-            min={0.1}
-            max={100}
-            step={0.5}
-            style={{ width: '100%' }}
-            suffix="%"
-          />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={labelStyle}>止盈 %</div>
-          <InputNumber
-            value={takeProfitPercent}
-            onChange={(v) => setTakeProfitPercent(v as number)}
-            min={0.1}
-            max={1000}
-            step={0.5}
-            style={{ width: '100%' }}
-            suffix="%"
-          />
-        </div>
-      </div>
-
-      {/* 提交按钮 */}
-      <Button
-        theme="solid"
-        type={isBuy ? 'primary' : 'danger'}
-        loading={loading}
-        onClick={handleSubmit}
-        block
-        style={{
-          marginTop: 8,
-          height: 44,
-          background: isBuy ? '#10b981' : '#ef4444',
-          borderColor: isBuy ? '#10b981' : '#ef4444',
-        }}
-      >
-        确认下单
-      </Button>
-    </Card>
+      }
+      {
+        values.orderType === 'algo' &&
+        <Row>
+          <Col span={12} offset={0}>
+            <Form.InputNumber
+              field="takeProfitPercent"
+              label="止盈 %"
+              min={0.1}
+              max={1000}
+              step={0.5}
+              suffix="%"
+              style={{ width: '100%' }}
+              rules={[{ required: true, message: '请输入止盈比例' }]}
+            />
+          </Col>
+          <Col span={12} >
+            <Form.InputNumber
+              field="stopLossPercent"
+              label="止损 %"
+              min={0.1}
+              max={100}
+              step={0.5}
+              suffix="%"
+              style={{ width: '100%' }}
+              rules={[{ required: true, message: '请输入止损比例' }]}
+            />
+          </Col>
+        </Row>
+      }
+    </BaseOrderFields>
   )
 }

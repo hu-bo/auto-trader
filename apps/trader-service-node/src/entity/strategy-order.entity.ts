@@ -5,6 +5,7 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -14,6 +15,8 @@ import { UserExchange as UserExchangeEntity } from './user-exchange.entity.js';
 import type { UserExchange } from './user-exchange.entity.js';
 import { User as UserEntity } from './user.entity.js';
 import type { User } from './user.entity.js';
+import { RiskConfig as RiskConfigEntity } from './risk-config.entity.js';
+import type { RiskConfig } from './risk-config.entity.js';
 
 @Entity('strategy_orders')
 @Index(['userid'])
@@ -37,12 +40,6 @@ export class StrategyOrder {
 
   @Column({ type: 'jsonb', default: [] })
   symbols!: string[];
-
-  @Column({ type: 'jsonb', default: {} })
-  parameters!: Record<string, unknown>;
-
-  @Column({ name: 'risk_config', type: 'jsonb', default: {} })
-  riskConfig!: Record<string, unknown>;
 
   @Column({ type: 'boolean', default: false })
   live!: boolean;
@@ -73,5 +70,8 @@ export class StrategyOrder {
   @ManyToOne(() => UserExchangeEntity, { createForeignKeyConstraints: false })
   @JoinColumn({ name: 'exchange_id' })
   exchange!: UserExchange;
+
+  @OneToOne(() => RiskConfigEntity, rc => rc.strategyOrder, { cascade: true, eager: false })
+  riskConfig!: RiskConfig | null;
 
 }

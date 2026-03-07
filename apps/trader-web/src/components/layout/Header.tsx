@@ -10,7 +10,6 @@ import {
   IconSun,
   IconComponent,
 } from '@douyinfe/semi-icons'
-import { useQuery } from '@tanstack/react-query'
 import { useAuth, useNavigateKeepParams } from '@/hooks'
 import { useAppStore } from '@/stores/appStore'
 import { exchangeApi } from '@/api'
@@ -61,12 +60,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         return
       }
       setExchangeOptions(exchanges)
-      const urlExchangeId = searchParams.get('exchangeId')
-      const found = exchanges.find((e) => e.id === Number(urlExchangeId))
+      const urlExchangeId = searchParams.get('exchangeId') ? Number(searchParams.get('exchangeId')) : 0
+      const found = exchanges.find((e) => e.id === urlExchangeId)
       let select = found ? found : exchanges[0]
       setSelectedExchange(select)
 
-      if (Number(urlExchangeId) != select.id) {
+      if (urlExchangeId !== select.id) {
         setSearchParams((prev) => {
           prev.set('exchangeId', String(select.id))
           prev.set('exchangeType', select.exchangeType)
@@ -79,7 +78,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   }, [])
 
   const handleExchangeChange = (value: string | number | any[] | Record<string, any> | undefined) => {
-    const exchange = exchangeOptions?.find((e) => e.id === value)
+    const exchange = exchangeOptions?.find((e) => e.id === Number(value))
     if (exchange) {
       setSelectedExchange(exchange)
       setSearchParams((prev) => {

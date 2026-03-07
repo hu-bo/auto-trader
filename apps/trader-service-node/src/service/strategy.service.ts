@@ -67,7 +67,6 @@ export class StrategyService {
       tag: params.tag ?? 'neutral',
       code: params.code ?? '',
       params: params.params ?? {},
-      version: params.version ?? 'v1',
       status: params.status ?? 'inactive',
       isPublic: params.isPublic,
     });
@@ -101,7 +100,6 @@ export class StrategyService {
     if (patch.tag !== undefined && patch.tag !== null) strategy.tag = patch.tag;
     if (patch.code !== undefined && patch.code !== null) strategy.code = patch.code;
     if (patch.params !== undefined && patch.params !== null) strategy.params = patch.params;
-    if (patch.version !== undefined && patch.version !== null) strategy.version = patch.version;
     if (patch.status !== undefined && patch.status !== null) strategy.status = patch.status;
     if (patch.isPublic !== undefined && patch.isPublic !== null) strategy.isPublic = patch.isPublic;
 

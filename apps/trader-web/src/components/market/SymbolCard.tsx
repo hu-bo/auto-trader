@@ -1,5 +1,5 @@
 import React from 'react'
-import { Typography } from '@douyinfe/semi-ui-19'
+import { Typography, Tag } from '@douyinfe/semi-ui-19'
 import type { TickerData } from '@/api/market'
 
 const { Text } = Typography
@@ -25,6 +25,9 @@ export const SymbolCard: React.FC<SymbolCardProps> = ({ data, onClick }) => {
     ? 'rgba(var(--semi-green-5), 0.08)'
     : 'rgba(var(--semi-red-5), 0.08)'
 
+  const hasStrategies = (data.runningStrategies ?? 0) > 0
+  const hasConditionals = (data.runningConditionals ?? 0) > 0
+
   return (
     <div
       onClick={() => onClick?.(data.symbol)}
@@ -47,10 +50,20 @@ export const SymbolCard: React.FC<SymbolCardProps> = ({ data, onClick }) => {
         e.currentTarget.style.boxShadow = 'none'
       }}
     >
-      {/* 顶部：symbol */}
+      {/* 顶部：symbol + tags */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Text strong style={{ fontSize: 16 }}>{data.symbol}</Text>
+          {hasStrategies && (
+            <Tag size="small" color="blue" style={{ fontSize: 10 }}>
+              策略 {data.runningStrategies}
+            </Tag>
+          )}
+          {hasConditionals && (
+            <Tag size="small" color="orange" style={{ fontSize: 10 }}>
+              条件 {data.runningConditionals}
+            </Tag>
+          )}
         </div>
         <div
           style={{

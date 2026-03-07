@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Card, Row, Col, Typography, Tag, Spin, Empty } from '@douyinfe/semi-ui-19'
 import {
   IconArrowUp,
@@ -8,8 +8,9 @@ import {
   IconGridStroked,
 } from '@douyinfe/semi-icons'
 import { useQuery } from '@tanstack/react-query'
-import { statsApi, strategyOrderApi, positionApi } from '@/api'
+import { statsApi, strategyOrderApi, positionApi, exchangeApi } from '@/api'
 import { useAppStore } from '@/stores/appStore'
+import { useNavigateKeepParams } from '@/hooks'
 import { formatCurrency, formatPercent, getPnlColor } from '@/utils/format'
 import { PnLChart } from '@/components/charts/PnLChart'
 
@@ -84,6 +85,19 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon, trend, color })
 
 const Dashboard: React.FC = () => {
   const { selectedExchange } = useAppStore()
+  const navigate = useNavigateKeepParams()
+
+  // Check if user has exchanges, redirect to onboarding if empty
+  const { data: exchanges, isLoading: loadingExchanges } = useQuery({
+    queryKey: ['exchanges'],
+    queryFn: exchangeApi.list,
+  })
+
+  useEffect(() => {
+    if (!loadingExchanges && exchanges && exchanges.length === 0) {
+      navigate('/onboarding')
+    }
+  }, [loadingExchanges, exchanges, navigate])
 
   const { data: stats, isLoading: loadingStats } = useQuery({
     queryKey: ['stats'],

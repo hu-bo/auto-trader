@@ -141,6 +141,7 @@ export function formatOrderType(type: string): string {
   const typeMap: Record<string, string> = {
     market: '市价',
     limit: '限价',
+    algo: '条件委托',
     stop_market: '止损市价',
     stop_limit: '止损限价',
   }

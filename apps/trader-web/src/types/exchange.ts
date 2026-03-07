@@ -1,7 +1,7 @@
-export type ExchangeType = 'binance' | 'okx' | 'bybit' | 'bitget' | 'gate'
+export type ExchangeType = 'binance' | 'okx' | 'bybit'
 
 export interface Exchange {
-  id: string
+  id: number
   userId: string
   exchangeType: ExchangeType
   name: string
@@ -30,9 +30,3 @@ export interface ExchangeTestResult {
   valid: boolean
   error?: { code: string; message: string }
 }
-
-// 交易类型
-export type TradeType = 'spot' | 'futures'
-
-// 持仓模式
-export type PositionSide = 'long' | 'short' | 'both'

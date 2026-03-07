@@ -11,6 +11,7 @@ import {
   Popconfirm,
   Form,
   Select,
+  Input,
 } from '@douyinfe/semi-ui-19'
 import { IconPlus, IconEdit, IconDelete, IconCopy, IconChevronDown, IconChevronUp } from '@douyinfe/semi-icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -19,7 +20,7 @@ import { StrategyEditor } from '@/components/editor/StrategyEditor'
 import { formatDateTime } from '@/utils/format'
 import type { Strategy, StrategyTag, StrategyStatus } from '@/types'
 
-const { Title, Text } = Typography
+const { Title } = Typography
 
 const DSL_PROMPT = `你是一个量化交易策略 DSL 代码生成器。请根据用户的自然语言描述，生成符合 HQuant DSL 语法的策略代码。
 
@@ -188,6 +189,7 @@ const StrategyLibrary: React.FC = () => {
   const [formApi, setFormApi] = useState<any>(null)
   const [code, setCode] = useState('')
   const [showDslRef, setShowDslRef] = useState(false)
+  const [paramEntries, setParamEntries] = useState<Array<{ key: string; value: string }>>([])
 
   const { data: strategies, isLoading } = useQuery({
     queryKey: ['strategies', 'available'],
@@ -236,26 +238,42 @@ const StrategyLibrary: React.FC = () => {
   const handleEdit = (strategy: Strategy) => {
     setEditingStrategy(strategy)
     setCode(strategy.code || '')
+    const entries = Object.entries(strategy.params || {}).map(([key, value]) => ({
+      key,
+      value: typeof value === 'string' ? value : JSON.stringify(value),
+    }))
+    setParamEntries(entries.length > 0 ? entries : [])
     setModalVisible(true)
   }
 
   const handleCreate = () => {
     setEditingStrategy(null)
     setCode('')
+    setParamEntries([])
     setModalVisible(false)
     setTimeout(() => setModalVisible(true), 0)
   }
 
   const handleSubmit = (values: Record<string, unknown>) => {
+    // Build params from key-value entries
+    const params: Record<string, unknown> = {}
+    for (const entry of paramEntries) {
+      if (!entry.key.trim()) continue
+      try {
+        params[entry.key.trim()] = JSON.parse(entry.value)
+      } catch {
+        params[entry.key.trim()] = entry.value
+      }
+    }
+
     const data = {
       name: values.name as string,
       description: values.description as string,
       tag: values.tag as StrategyTag,
       code: code,
-      version: values.version as string,
       status: values.status as StrategyStatus,
       isPublic: values.isPublic as boolean,
-      params: values.params as Record<string, unknown>,
+      params,
     }
 
     if (editingStrategy) {
@@ -289,11 +307,6 @@ const StrategyLibrary: React.FC = () => {
           {tag === 'long' ? '做多' : tag === 'short' ? '做空' : '中性'}
         </Tag>
       ),
-    },
-    {
-      title: '版本',
-      dataIndex: 'version',
-      width: 80,
     },
     {
       title: '状态',
@@ -402,14 +415,12 @@ const StrategyLibrary: React.FC = () => {
                   description: editingStrategy.description,
                   tag: editingStrategy.tag,
                   code: editingStrategy.code,
-                  version: editingStrategy.version,
                   status: editingStrategy.status,
                   isPublic: editingStrategy.isPublic,
                   params: editingStrategy.params,
                 }
               : {
                   tag: 'neutral',
-                  version: 'v1',
                   status: 'active',
                   isPublic: true,
                   params: {},
@@ -438,13 +449,6 @@ const StrategyLibrary: React.FC = () => {
             <Select.Option value="short">做空</Select.Option>
           </Form.Select>
 
-          <Form.Input
-            field="version"
-            label="版本"
-            placeholder="v1"
-            style={{ width: '100%' }}
-          />
-
           <Form.Select field="status" label="状态" style={{ width: '100%' }}>
             <Select.Option value="active">启用</Select.Option>
             <Select.Option value="inactive">禁用</Select.Option>
@@ -456,6 +460,53 @@ const StrategyLibrary: React.FC = () => {
             checkedText="是"
             uncheckedText="否"
           />
+
+          {/* 策略参数 key-value 编辑器 */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <label style={{ fontWeight: 500 }}>策略参数</label>
+              <Button
+                size="small"
+                icon={<IconPlus />}
+                onClick={() => setParamEntries([...paramEntries, { key: '', value: '' }])}
+              >
+                添加参数
+              </Button>
+            </div>
+            {paramEntries.length === 0 && (
+              <div style={{ color: 'var(--semi-color-text-2)', fontSize: 13 }}>暂无参数，点击添加</div>
+            )}
+            {paramEntries.map((entry, idx) => (
+              <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                <Input
+                  placeholder="参数名，如 period"
+                  value={entry.key}
+                  onChange={(v) => {
+                    const next = [...paramEntries]
+                    next[idx] = { ...next[idx], key: v }
+                    setParamEntries(next)
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <Input
+                  placeholder="值，如 15m 或 42"
+                  value={entry.value}
+                  onChange={(v) => {
+                    const next = [...paramEntries]
+                    next[idx] = { ...next[idx], value: v }
+                    setParamEntries(next)
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  size="small"
+                  type="danger"
+                  icon={<IconDelete />}
+                  onClick={() => setParamEntries(paramEntries.filter((_, i) => i !== idx))}
+                />
+              </div>
+            ))}
+          </div>
 
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>

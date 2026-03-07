@@ -58,4 +58,5 @@ export const STORAGE_KEYS = {
   SELECTED_EXCHANGE: 'selected_exchange',
   TRADING_SYMBOL: 'trading_symbol',
   TRADING_INTERVAL: 'trading_interval',
+  TRADING_TRADE_TYPE: 'trading_trade_type',
 } as const

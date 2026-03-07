@@ -60,7 +60,6 @@ const StrategyConfig: React.FC = () => {
       description: values.description as string,
       tag: values.tag as StrategyTag,
       code: values.code as string,
-      version: values.version as string,
       status: values.status as StrategyStatus,
       isPublic: values.isPublic as boolean,
     }
@@ -98,13 +97,11 @@ const StrategyConfig: React.FC = () => {
                   description: strategy.description,
                   tag: strategy.tag,
                   code: strategy.code,
-                  version: strategy.version,
                   status: strategy.status,
                   isPublic: strategy.isPublic,
                 }
               : {
                   tag: 'neutral',
-                  version: 'v1',
                   status: 'inactive',
                   isPublic: true,
                 }
@@ -136,12 +133,6 @@ const StrategyConfig: React.FC = () => {
             <Select.Option value="short">做空</Select.Option>
           </Form.Select>
 
-          <Form.Input
-            field="version"
-            label="版本"
-            placeholder="v1"
-            style={{ width: '100%' }}
-          />
 
           <Form.Select
             field="status"

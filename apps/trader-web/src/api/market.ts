@@ -53,6 +53,9 @@ export interface TickerData {
   quoteVolume24h: number
   timestamp: number
   updatedAt: number
+  // 正在执行的策略/条件单数量
+  runningStrategies?: number
+  runningConditionals?: number
 }
 
 export interface GetCandlesParams {

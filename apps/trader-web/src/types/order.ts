@@ -1,7 +1,11 @@
-import type { TradeType, PositionSide } from './exchange'
 
+
+// 交易类型
+export type TradeType = 'spot' | 'futures'
+// 持仓模式
+export type PositionSide = 'long' | 'short' | 'both'
 export type OrderSide = 'buy' | 'sell'
-export type OrderType = 'market' | 'limit' | 'stop_market' | 'stop_limit'
+export type OrderType = 'market' | 'limit' | 'stop_market' | 'stop_limit' | 'algo'
 export type OrderStatus = 'new' | 'partially_filled' | 'filled' | 'canceled' | 'rejected' | 'expired'
 
 export interface Order {

@@ -40,13 +40,13 @@ export class StrategyOrderController {
       user_id: order.userid,
       strategy_id: order.strategyId,
       strategy_name: order.strategy?.name || '',
+      strategy_params: order.strategy?.params ?? {},
       exchange_id: order.exchangeId,
       exchange_name: order.exchange?.name || '',
       exchange_type: order.exchange?.exchangeType || '',
       trade_type: order.tradeType,
       symbols: order.symbols ?? [],
-      parameters: order.parameters ?? {},
-      risk_config: order.riskConfig ?? {},
+      risk_config: this.strategyOrderService.riskConfigToDict(order.riskConfig),
       live: order.live,
       is_running: order.isRunning,
       started_at: order.startedAt,
@@ -84,7 +84,6 @@ export class StrategyOrderController {
       exchangeId: body.exchangeId,
       tradeType: body.tradeType,
       symbols: body.symbols,
-      parameters: body.parameters ?? {},
       riskConfig: body.riskConfig ?? {},
       live: body.live ?? false,
     });
@@ -105,8 +104,8 @@ export class StrategyOrderController {
   ) {
     const userid = await this.getUserid();
     const order = await this.strategyOrderService.update(userid, params.id, {
+      strategyId: body?.strategyId ?? undefined,
       symbols: body?.symbols ?? undefined,
-      parameters: body?.parameters ?? undefined,
       riskConfig: body?.riskConfig ?? undefined,
       live: body?.live ?? undefined,
     });

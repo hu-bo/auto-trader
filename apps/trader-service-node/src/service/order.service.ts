@@ -80,4 +80,17 @@ export class OrderService {
       updates as any
     );
   }
+
+  /**
+   * List open strategy/conditional orders for a user (status = NEW, orderType like stop_*)
+   */
+  async listOpenStrategyOrders(userid: number): Promise<Order[]> {
+    const repo = this.requireRepo();
+    const qb = repo.createQueryBuilder('order')
+      .where('order.userid = :userid', { userid })
+      .andWhere('order.status = :status', { status: OrderStatus.NEW })
+      .andWhere("(order.orderType LIKE 'stop_%' OR order.source = 'manual')")
+      .orderBy('order.createdAt', 'DESC');
+    return await qb.getMany();
+  }
 }

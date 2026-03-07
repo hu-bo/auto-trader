@@ -58,14 +58,9 @@ export class OrderController {
     }
   }
 
-  private isStrategyAlgoOrder(order: { tradeType?: string | null; orderType?: string | null; source?: string | null }): boolean {
-    const tradeType = (order.tradeType || '').toLowerCase();
-    if (tradeType === 'usdm-algo') return true;
-
-    const orderType = (order.orderType || '').toLowerCase();
-    if (orderType === 'stop_market' || orderType === 'stop_limit') return true;
-
-    return (order.source || '').toLowerCase() === 'strategy';
+  private isStrategyAlgoOrder(order: { orderType?: string | null; }): boolean {
+    if (order.orderType === 'algo') return true;
+    return false
   }
 
   private async getTokenForExchange(exchangeId: number): Promise<string> {
@@ -198,11 +193,32 @@ export class OrderController {
       // determine order side and optional position side
       const side = body.side; // 'buy' or 'sell'
       let posSide: string | undefined = undefined;
-      if (body.tradeType === 'usdm-algo' || body.tradeType === 'futures') {
+      if (body.tradeType === 'futures') {
         // futures/api may ignore positionSide but we keep for compatibility
         posSide = body.positionSide;
       }
-
+      console.log({
+        symbol,
+        tradeType: grpcTradeType,
+        side,
+        positionSide: posSide,
+        strategyType: 'stop-loss',
+        quantity,
+        triggerPrice: tp(
+          side === 'buy'
+            ? entryPrice * (1 - Math.abs(body.stopLossPercent) / 100)
+            : entryPrice * (1 + Math.abs(body.stopLossPercent) / 100),
+          symbol
+        ),
+        triggerPriceType: 'last',
+        reduceOnly: false, // opening order by default
+        tpTriggerPrice: tp(
+          side === 'buy'
+            ? entryPrice * (1 + body.takeProfitPercent / 100)
+            : entryPrice * (1 - body.takeProfitPercent / 100),
+          symbol
+        ),
+      })
       orders.push({
         symbol,
         tradeType: grpcTradeType,

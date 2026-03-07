@@ -5,6 +5,7 @@ export interface PlaceBatchStrategyParams {
   tradeType: string
   symbols: string[]
   side: 'buy' | 'sell'                // 方向
+  orderType?: 'algo'                  // 条件委托
   positionSide?: 'long' | 'short'    // 合约可选，现货忽略
   amountUSDT: number
   priceOffsetPercent: number

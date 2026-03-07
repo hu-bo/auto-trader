@@ -5,6 +5,7 @@ import type { Repository } from 'typeorm';
 import { StrategyOrder } from '../entity/strategy-order.entity.js';
 import { StrategySubscriptionGrpcClient } from '../grpc/strategy-subscription-grpc.client.js';
 import { SignalNatsService } from './signal-nats.service.js';
+import { StrategyOrderService } from './strategy-order.service.js';
 
 @Autoload()
 @Provide()
@@ -15,6 +16,9 @@ export class StrategySyncService {
 
   @Inject()
   strategyGrpcClient!: StrategySubscriptionGrpcClient;
+
+  // @Inject()
+  // strategyOrderService!: StrategyOrderService;
 
   @InjectEntityModel(StrategyOrder)
   orderRepo!: Repository<StrategyOrder>;
@@ -35,7 +39,7 @@ export class StrategySyncService {
   async syncRunningStrategies() {
     const orders = await this.orderRepo.find({
       where: { isRunning: true },
-      relations: ['strategy', 'exchange'],
+      relations: ['strategy', 'exchange', 'riskConfig'],
     });
 
     this.logger.info('[StrategySync] Found %d running orders to sync', orders.length);
@@ -49,8 +53,9 @@ export class StrategySyncService {
     let failCount = 0;
 
     for (const order of orders) {
-      const period = (order.parameters as any)?.period ?? '15m';
-      console.log(order)
+      const period = (order.strategy?.params as any)?.period ?? '15m';
+      // const riskConfigDict = this.strategyOrderService.riskConfigToDict(order.riskConfig);
+
       for (const symbol of order.symbols) {
         try {
           console.log({
@@ -63,8 +68,8 @@ export class StrategySyncService {
             exchange: (order.exchange?.exchangeType ?? '').toLowerCase(),
             tradeType: order.tradeType ?? 'spot',
             period,
-            parameters: JSON.stringify(order.parameters ?? {}),
-            riskConfig: JSON.stringify(order.riskConfig ?? {}),
+            parameters: JSON.stringify(order.strategy?.params ?? {}),
+            riskConfig: JSON.stringify(order.riskConfig),
             live: order.live,
           })
           const result = await this.strategyGrpcClient.subscribe({
@@ -77,8 +82,8 @@ export class StrategySyncService {
             exchange: (order.exchange?.exchangeType ?? '').toLowerCase(),
             tradeType: order.tradeType ?? 'spot',
             period,
-            parameters: JSON.stringify(order.parameters ?? {}),
-            riskConfig: JSON.stringify(order.riskConfig ?? {}),
+            parameters: JSON.stringify(order.strategy?.params ?? {}),
+            riskConfig: JSON.stringify(order.riskConfig),
             live: order.live,
           });
           successCount++;

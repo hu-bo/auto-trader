@@ -114,6 +114,7 @@ type ExchangeServiceClient = {
   getOrder: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
   cancelOrder: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
   placeOrder: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
+  placeOrders: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
   getPositions: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
   syncPositions: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
   getBalance: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
@@ -274,6 +275,41 @@ export class ExchangeGrpcClient {
     if (params.clientOrderId != null) req.client_order_id = params.clientOrderId;
     if (params.reduceOnly != null) req.reduce_only = params.reduceOnly;
     return await this.unary(cb => client.placeOrder(req, cb));
+  }
+
+  async placeOrders(params: {
+    token?: string;
+    orders: Array<{
+      symbol: string;
+      tradeType: string;
+      side: string;
+      orderType: string;
+      quantity: number;
+      price?: number | null;
+      positionSide?: string | null;
+      leverage?: number | null;
+      clientOrderId?: string | null;
+      reduceOnly?: boolean | null;
+    }>;
+  }): Promise<any> {
+    const client = this.getClient();
+    const token = params.token ?? this.getToken();
+    const orders = params.orders.map(o => {
+      const req: any = {
+        symbol: o.symbol,
+        trade_type: mapTradeType(o.tradeType),
+        side: mapOrderSide(o.side),
+        order_type: mapOrderType(o.orderType),
+        quantity: o.quantity,
+      };
+      if (o.price != null) req.price = o.price;
+      if (o.positionSide != null) req.position_side = mapPositionSide(o.positionSide);
+      if (o.leverage != null) req.leverage = o.leverage;
+      if (o.clientOrderId != null) req.client_order_id = o.clientOrderId;
+      if (o.reduceOnly != null) req.reduce_only = o.reduceOnly;
+      return req;
+    });
+    return await this.unary(cb => client.placeOrders({ token, orders }, cb));
   }
 
   async getPositions(params: { token?: string; symbol?: string }): Promise<any> {

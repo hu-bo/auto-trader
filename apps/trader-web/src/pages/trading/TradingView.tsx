@@ -4,7 +4,6 @@ import { Card, Row, Col, Tabs, TabPane } from '@douyinfe/semi-ui-19'
 import { KLineChart } from '@/components/charts/KLineChart'
 import { OrderForm } from '@/components/trading/OrderForm'
 import { OrderTable } from '@/components/trading/OrderTable'
-import { PositionCard } from '@/components/trading/PositionCard'
 import { useAppStore } from '@/stores/appStore'
 import { useNavigateKeepParams } from '@/hooks'
 
@@ -47,10 +46,6 @@ const TradingView: React.FC = () => {
           <Card title="下单" bodyStyle={{ padding: 16 }}>
             <OrderForm symbol={urlSymbol || tradingSymbol} />
           </Card>
-
-          {/* <Card title="当前持仓" style={{ marginTop: 16 }}>
-            <PositionCard symbol={tradingSymbol} />
-          </Card> */}
         </Col>
 
         {/* 订单和持仓列表 */}

@@ -1,6 +1,7 @@
 export { default as api, request } from './api'
 export { authApi } from './auth'
 export { exchangeApi } from './exchange'
+export { riskConfigApi } from './risk-config'
 export { strategyApi } from './strategy'
 export { strategyOrderApi } from './strategy-order'
 export { orderApi } from './order'

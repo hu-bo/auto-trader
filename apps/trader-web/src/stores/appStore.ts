@@ -3,6 +3,7 @@ import { getStorage, setStorage, STORAGE_KEYS } from '@/utils/storage'
 import type { Exchange } from '@/types'
 
 type ThemeMode = 'light' | 'dark'
+type TradeTypeMode = 'spot' | 'futures'
 
 interface AppState {
   theme: ThemeMode
@@ -10,6 +11,7 @@ interface AppState {
   selectedExchange: Exchange | null
   tradingSymbol: string
   tradingInterval: string
+  tradingTradeType: TradeTypeMode
 }
 
 interface AppActions {
@@ -20,6 +22,7 @@ interface AppActions {
   setSelectedExchange: (exchange: Exchange | null) => void
   setTradingSymbol: (symbol: string) => void
   setTradingInterval: (interval: string) => void
+  setTradingTradeType: (tradeType: TradeTypeMode) => void
   initialize: () => void
 }
 
@@ -31,6 +34,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   selectedExchange: null,
   tradingSymbol: 'BTC-USDT',
   tradingInterval: '15m',
+  tradingTradeType: 'spot',
 
   setTheme: (theme) => {
     setStorage(STORAGE_KEYS.THEME, theme)
@@ -53,9 +57,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   setSelectedExchange: (exchange) => {
-    if (exchange) {
-      setStorage(STORAGE_KEYS.SELECTED_EXCHANGE, exchange)
-    }
     set({ selectedExchange: exchange })
   },
 
@@ -69,21 +70,26 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ tradingInterval: interval })
   },
 
+  setTradingTradeType: (tradeType) => {
+    setStorage(STORAGE_KEYS.TRADING_TRADE_TYPE, tradeType)
+    set({ tradingTradeType: tradeType })
+  },
+
   initialize: () => {
     const theme = getStorage<ThemeMode>(STORAGE_KEYS.THEME) || 'dark'
     const sidebarCollapsed = getStorage<boolean>(STORAGE_KEYS.SIDEBAR_COLLAPSED) || false
-    const selectedExchange = getStorage<Exchange>(STORAGE_KEYS.SELECTED_EXCHANGE)
     const tradingSymbol = getStorage<string>(STORAGE_KEYS.TRADING_SYMBOL) || 'BTC-USDT'
     const tradingInterval = getStorage<string>(STORAGE_KEYS.TRADING_INTERVAL) || '15m'
+    const tradingTradeType = getStorage<TradeTypeMode>(STORAGE_KEYS.TRADING_TRADE_TYPE) || 'spot'
 
     document.body.setAttribute('theme-mode', theme)
 
     set({
       theme,
       sidebarCollapsed,
-      selectedExchange,
       tradingSymbol,
       tradingInterval,
+      tradingTradeType,
     })
   },
 }))

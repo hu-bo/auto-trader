@@ -8,6 +8,9 @@ export class PlaceBatchStrategyOrderBodyDTO {
   @Rule(Joi.string().trim().valid('futures', 'spot', 'usdm-algo').required())
   tradeType!: string;
 
+  @Rule(Joi.string().trim().valid('limit', 'market', 'algo').required())
+  orderType!: string;
+  
   @Rule(Joi.array().items(Joi.string().trim().min(1)).min(1).required())
   symbols!: string[];
 

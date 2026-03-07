@@ -28,9 +28,6 @@ export class CreateStrategyOrderBodyDTO {
   symbols!: string[];
 
   @Rule(Joi.object().unknown(true).allow(null).optional())
-  parameters?: Record<string, unknown> | null;
-
-  @Rule(Joi.object().unknown(true).allow(null).optional())
   riskConfig?: Record<string, unknown> | null;
 
   @Rule(Joi.boolean().allow(null).optional())
@@ -38,11 +35,11 @@ export class CreateStrategyOrderBodyDTO {
 }
 
 export class UpdateStrategyOrderBodyDTO {
+  @Rule(Joi.number().integer().positive().allow(null).optional())
+  strategyId?: number | null;
+
   @Rule(Joi.array().items(Joi.string().trim().min(1)).allow(null).optional())
   symbols?: string[] | null;
-
-  @Rule(Joi.object().unknown(true).allow(null).optional())
-  parameters?: Record<string, unknown> | null;
 
   @Rule(Joi.object().unknown(true).allow(null).optional())
   riskConfig?: Record<string, unknown> | null;

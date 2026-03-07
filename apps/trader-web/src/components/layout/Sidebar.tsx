@@ -3,16 +3,13 @@ import { useLocation } from 'react-router-dom'
 import { Layout, Nav } from '@douyinfe/semi-ui-19'
 import {
   IconHome,
-  IconLineChartStroked,
   IconGridStroked,
-  IconHistogram,
   IconSetting,
   IconPulse,
   IconList,
   IconUserGroup,
   IconTicketCodeExchangeStroked,
   IconCode,
-  IconCopyStroked,
   IconAlignVBotStroked,
   IconMoneyExchangeStroked,
 } from '@douyinfe/semi-icons'
@@ -29,13 +26,13 @@ interface SidebarProps {
 const menuItems = [
   { itemKey: '/dashboard', text: '仪表盘', icon: <IconHome /> },
   { itemKey: '/market', text: '行情总览', icon: <IconTable /> },
-  { itemKey: '/trading/BTC-USDT', text: '行情交易', icon: <IconAlignVBotStroked /> },
+  { itemKey: '/trading/ETH-USDT', text: '行情交易', icon: <IconAlignVBotStroked /> },
   { itemKey: '/positions', text: '持仓', icon: <IconMoneyExchangeStroked /> },
   { itemKey: '/orders', text: '订单', icon: <IconList /> },
   { itemKey: '/strategy-orders', text: '策略运行', icon: <IconGridStroked /> },
-  { itemKey: '/batch-trading', text: '批量交易', icon: <IconCopyStroked /> },
   { itemKey: '/strategy-debugger', text: '策略调试', icon: <IconCode /> },
   { itemKey: '/exchanges', text: '交易所', icon: <IconTicketCodeExchangeStroked /> },
+  { itemKey: '/risk-config', text: '风控配置', icon: <IconPulse /> },
   { itemKey: '/strategy-library', text: '策略库', icon: <IconTree /> },
   { itemKey: '/settings', text: '设置', icon: <IconSetting /> },
 ]

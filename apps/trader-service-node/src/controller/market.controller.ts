@@ -1,13 +1,29 @@
-import { Controller, Config, Get, Query } from '@midwayjs/core';
+import { Controller, Config, Get, Inject, Query } from '@midwayjs/core';
 import axios from 'axios';
 import { apiFail, apiOk } from '../util/api-response.js';
 import { exchangeSync } from '../common/exchange-sync.js';
+import { StrategyOrderService } from '../service/strategy-order.service.js';
+import { OrderService } from '../service/order.service.js';
+import { UserService } from '../service/user.service.js';
+import type { Context } from '@midwayjs/koa';
 import type { ExchangeAdapterConfig } from '../types/config.js';
 
 @Controller('/api/v1/market')
 export class MarketController {
   @Config('exchangeAdapter')
   exchangeAdapter!: ExchangeAdapterConfig;
+
+  @Inject()
+  ctx!: Context;
+
+  @Inject()
+  strategyOrderService?: StrategyOrderService;
+
+  @Inject()
+  orderService?: OrderService;
+
+  @Inject()
+  userService?: UserService;
 
   private async ensureSync() {
     await exchangeSync.init(this.exchangeAdapter);
@@ -110,6 +126,7 @@ export class MarketController {
   /**
    * 代理获取交易所所有交易对的 tickers (从 exchange-sync 服务)
    * GET /api/v1/market/tickers?exchange=binance&trade_type=spot
+   * 返回正在执行的策略/条件单数量
    */
   @Get('/tickers')
   async getTickers(
@@ -119,6 +136,43 @@ export class MarketController {
     try {
       await this.ensureSync();
       const data = await exchangeSync.getTickers(exchange || 'binance', tradeType);
+
+      // Enrich tickers with running strategy/conditional counts
+      try {
+        if (this.strategyOrderService && this.orderService && this.userService && this.ctx?.state?.user) {
+          const user = await this.userService.getOrCreateCurrentUser(this.ctx.state.user);
+          
+          // Get running strategy orders for this user
+          const strategyResult = await this.strategyOrderService.listForUser(user.id, 1, 1000);
+          const runningStrategies = strategyResult.data.filter(s => s.isRunning);
+          
+          // Build symbol -> count maps
+          const strategyCountMap = new Map<string, number>();
+          for (const order of runningStrategies) {
+            for (const symbol of order.symbols) {
+              strategyCountMap.set(symbol, (strategyCountMap.get(symbol) || 0) + 1);
+            }
+          }
+
+          // Get open conditional orders count from DB
+          const conditionalCountMap = new Map<string, number>();
+          const openOrders = await this.orderService.listOpenStrategyOrders(user.id);
+          for (const order of openOrders) {
+            conditionalCountMap.set(order.symbol, (conditionalCountMap.get(order.symbol) || 0) + 1);
+          }
+
+          // Enrich tickers
+          if (data?.tickers) {
+            for (const ticker of data.tickers) {
+              (ticker as any).runningStrategies = strategyCountMap.get(ticker.symbol) || 0;
+              (ticker as any).runningConditionals = conditionalCountMap.get(ticker.symbol) || 0;
+            }
+          }
+        }
+      } catch {
+        // Non-critical: if enrichment fails, return tickers without counts
+      }
+
       return apiOk(data);
     } catch (error: any) {
       return apiFail(error.message || '获取 tickers 失败');
