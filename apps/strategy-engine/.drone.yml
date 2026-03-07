@@ -25,9 +25,7 @@ steps:
       CARGO_HOME: /root/.cargo
     volumes:
       - name: cargo-cache
-        path: /root/.cargo/registry
-      - name: cargo-cache
-        path: /root/.cargo/git
+        path: /root/.cargo
     commands:
       - echo "== Building hquant wheel =="
       - cd packages/hquant-py
@@ -50,7 +48,7 @@ steps:
           build-essential git curl && \
         rm -rf /var/lib/apt/lists/*
 
-      - pip install --no-cache-dir "poetry==$POETRY_VERSION"
+      - pip install "poetry==$POETRY_VERSION"
 
       - echo "== Install prebuilt hquant wheel =="
       - pip install wheels/hquant-*.whl
@@ -59,7 +57,7 @@ steps:
 
       - echo "== Install local path packages =="
       - cd apps/strategy-engine
-      - poetry install --only main --no-interaction --no-ansi --no-directory
+      - poetry install --no-dev --no-interaction --no-ansi
 
       - echo "== Run tests (if exist) =="
       - poetry run pytest tests/ || true
