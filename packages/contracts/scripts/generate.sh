@@ -7,7 +7,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 PROTO_DIR="$ROOT_DIR/proto"
-DIST_DIR="$ROOT_DIR/dist"
+OUTPUT_DIR="$ROOT_DIR/output"
 
 # 颜色输出
 RED='\033[0;31m'
@@ -54,7 +54,7 @@ generate_node() {
 
     check_node_deps
 
-    local OUT_DIR="$DIST_DIR/node"
+    local OUT_DIR="$OUTPUT_DIR/node"
     mkdir -p "$OUT_DIR"
 
     # 使用 ts-proto 生成纯 TypeScript 代码
@@ -66,18 +66,18 @@ generate_node() {
             protoc \
                 --plugin=protoc-gen-ts_proto="$PLUGIN_PATH" \
                 --ts_proto_out="$OUT_DIR" \
-                --ts_proto_opt=outputServices=nice-grpc,outputServices=generic-definitions,useExactTypes=false,esModuleInterop=true \
+                --ts_proto_opt=outputServices=nice-grpc,outputServices=generic-definitions,useExactTypes=false,esModuleInterop=true,importSuffix=.js \
                 --proto_path="$PROTO_DIR" \
                 "$proto_file"
         fi
     done
 
-    # 生成 index.ts
+    # 生成 index.ts（避免重名导出冲突）
     cat > "$OUT_DIR/index.ts" << 'EOF'
 // Auto-generated index file
-export * from './exchange.js';
-export * from './signal.js';
-export * from './strategy_subscription.js';
+export * as exchange from './exchange.js';
+export * as signal from './signal.js';
+export * as strategySubscription from './strategy_subscription.js';
 EOF
 
     log_info "Node.js code generated at: $OUT_DIR"
@@ -89,7 +89,7 @@ generate_python() {
 
     check_python_deps
 
-    local OUT_DIR="$DIST_DIR/python"
+    local OUT_DIR="$OUTPUT_DIR/python"
     mkdir -p "$OUT_DIR"
 
     # 生成 Python gRPC 代码

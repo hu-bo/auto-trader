@@ -741,7 +741,7 @@ func (a *TradeAdapter) PlaceStrategyOrder(ctx context.Context, params core.Strat
 				if ao.TPTriggerPrice != nil {
 					item.TPTriggerPx = strconv.FormatFloat(*ao.TPTriggerPrice, 'f', -1, 64)
 				}
-				if ao.TPOrderPrice != nil {
+				if ao.TPOrderPrice != nil && *ao.TPOrderPrice > 0 {
 					item.TPOrdPx = strconv.FormatFloat(*ao.TPOrderPrice, 'f', -1, 64)
 				}
 				if ao.TPTriggerPriceType != nil {
@@ -750,7 +750,7 @@ func (a *TradeAdapter) PlaceStrategyOrder(ctx context.Context, params core.Strat
 				if ao.SLTriggerPrice != nil {
 					item.SLTriggerPx = strconv.FormatFloat(*ao.SLTriggerPrice, 'f', -1, 64)
 				}
-				if ao.SLOrderPrice != nil {
+				if ao.SLOrderPrice != nil && *ao.SLOrderPrice > 0 {
 					item.SLOrdPx = strconv.FormatFloat(*ao.SLOrderPrice, 'f', -1, 64)
 				}
 				if ao.SLTriggerPriceType != nil {

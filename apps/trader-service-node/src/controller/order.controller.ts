@@ -63,7 +63,7 @@ export class OrderController {
     return false
   }
 
-  private async getTokenForExchange(exchangeId: number): Promise<string> {
+  private async getTokenForExchange(exchangeId: number): Promise<{ token: string; exchangeType: string }> {
     const user = await this.userService.getOrCreateCurrentUser(this.ctx.state.user);
     const exchange = await this.exchangeService.get(user.id, exchangeId);
     const creds = await this.exchangeService.getApiCredentials(user.id, exchangeId);
@@ -82,7 +82,7 @@ export class OrderController {
       throw new httpError.BadGatewayError(msg);
     }
 
-    return initResp.token;
+    return { token: initResp.token, exchangeType: exchange.exchangeType };
   }
 
   @Get('/')
@@ -96,13 +96,21 @@ export class OrderController {
       limit: query.limit,
       offset: query.offset,
     });
+    if ((result?.total ?? 0) > 0 && !this.orderUpdateService.isSubscribed(query.exchangeId)) {
+      try {
+        const { token, exchangeType } = await this.getTokenForExchange(query.exchangeId);
+        this.orderUpdateService.subscribeForToken(query.exchangeId, exchangeType, token);
+      } catch (err) {
+        this.logger.warn('[OrderUpdate] Failed to init token for exchangeId=%s: %s', query.exchangeId, err);
+      }
+    }
     return apiOk(result);
   }
 
   @Post('/')
   async create(@Body() body: PlaceOrderBodyDTO) {
     const user = await this.userService.getOrCreateCurrentUser(this.ctx.state.user);
-    const token = await this.getTokenForExchange(body.exchangeId);
+    const { token, exchangeType: tokenExchangeType } = await this.getTokenForExchange(body.exchangeId);
     const resp = await this.exchangeGrpc.placeOrder({
       token,
       symbol: body.symbol,
@@ -123,7 +131,7 @@ export class OrderController {
       throw new httpError.BadGatewayError('下单成功但未返回订单信息');
     }
 
-    const exchangeOrderId = order.exchange_order_id || order.id;
+    const exchangeOrderId = order.exchangeOrderId || order.exchange_order_id || order.id;
     if (!exchangeOrderId) {
       throw new httpError.BadGatewayError('下单成功但未返回交易所订单ID');
     }
@@ -143,7 +151,7 @@ export class OrderController {
       positionSide: body.positionSide ?? null,
       reduceOnly: body.reduceOnly ?? false,
     }]);
-    this.orderUpdateService.subscribeForExchange(body.exchangeId);
+    this.orderUpdateService.subscribeForToken(body.exchangeId, tokenExchangeType, token);
 
     return apiOk(resp);
   }
@@ -163,13 +171,28 @@ export class OrderController {
     const tickerMap = await exchangeSync.getTickerPriceMap(exchangeType, grpcTradeType);
 
     // 4. Compute orders with precision truncation
-    const offsetMultiplier = 1 + body.priceOffsetPercent / 100;
-    const orders: Array<{
-      symbol: string; tradeType: string; side: string; strategyType: string;
-      quantity: number; triggerPrice: number; positionSide?: string;
-      triggerPriceType: string; reduceOnly: boolean;
-      tpTriggerPrice?: number;
-    }> = [];
+    const offset = Math.abs(body.priceOffsetPercent) / 100;
+    const isFutures = body.tradeType === 'futures' || body.tradeType === 'usdm-algo';
+    const leverage = isFutures ? (body.leverage ?? 1) : 1;
+    type AttachedOrder = {
+      type: 'take_profit' | 'stop_loss';
+      triggerPrice: number;
+      orderPrice?: number;
+    };
+    type StrategyOrderParams = {
+      symbol: string;
+      tradeType: string;
+      side: string;
+      positionSide?: string;
+      strategyType: string;
+      quantity: number;
+      triggerPrice: number;
+      triggerPriceType: string;
+      orderPrice?: number;
+      reduceOnly: boolean;
+      attachedOrders?: AttachedOrder[];
+    };
+    const orders: StrategyOrderParams[] = [];
 
     const tp = (price: number, sym: string) =>
       exchangeSync.truncatePrice(price, exchangeType, grpcTradeType, sym);
@@ -182,64 +205,65 @@ export class OrderController {
         this.logger.warn('[BatchStrategy] No price data for symbol %s, skipping', symbol);
         continue;
       };
-      
-      const entryPrice = lastPrice * offsetMultiplier;
-      const quantity = tq(body.amountUSDT / entryPrice, symbol);
-      if (quantity <= 0) {
-        this.logger.warn('[BatchStrategy] Computed quantity %.8f for symbol %s is too small, skipping', quantity, symbol);
-        continue;
-      };
 
       // determine order side and optional position side
       const side = body.side; // 'buy' or 'sell'
       let posSide: string | undefined = undefined;
-      if (body.tradeType === 'futures') {
+      if (isFutures) {
         // futures/api may ignore positionSide but we keep for compatibility
         posSide = body.positionSide;
       }
-      console.log({
-        symbol,
-        tradeType: grpcTradeType,
-        side,
-        positionSide: posSide,
-        strategyType: 'stop-loss',
-        quantity,
-        triggerPrice: tp(
-          side === 'buy'
-            ? entryPrice * (1 - Math.abs(body.stopLossPercent) / 100)
-            : entryPrice * (1 + Math.abs(body.stopLossPercent) / 100),
-          symbol
-        ),
-        triggerPriceType: 'last',
-        reduceOnly: false, // opening order by default
-        tpTriggerPrice: tp(
-          side === 'buy'
-            ? entryPrice * (1 + body.takeProfitPercent / 100)
-            : entryPrice * (1 - body.takeProfitPercent / 100),
-          symbol
-        ),
-      })
+
+      const entryPriceRaw = side === 'buy'
+        ? lastPrice * (1 - offset)
+        : lastPrice * (1 + offset);
+      const entryPrice = tp(entryPriceRaw, symbol);
+      if (entryPrice <= 0) {
+        this.logger.warn('[BatchStrategy] Computed entry price %.8f for symbol %s is invalid, skipping', entryPrice, symbol);
+        continue;
+      }
+
+      const notionalUSDT = body.amountUSDT * leverage;
+      const quantity = tq(notionalUSDT / entryPrice, symbol);
+      if (quantity <= 0) {
+        this.logger.warn('[BatchStrategy] Computed quantity %.8f for symbol %s is too small, skipping', quantity, symbol);
+        continue;
+      };
+      const slPrice = tp(
+        side === 'buy'
+          ? entryPrice * (1 - Math.abs(body.stopLossPercent) / 100)
+          : entryPrice * (1 + Math.abs(body.stopLossPercent) / 100),
+        symbol
+      );
+      const tpPrice = tp(
+        side === 'buy'
+          ? entryPrice * (1 + Math.abs(body.takeProfitPercent) / 100)
+          : entryPrice * (1 - Math.abs(body.takeProfitPercent) / 100),
+        symbol
+      );
       orders.push({
         symbol,
         tradeType: grpcTradeType,
         side,
         positionSide: posSide,
-        strategyType: 'stop-loss',
+        strategyType: 'trigger',
         quantity,
-        triggerPrice: tp(
-          side === 'buy'
-            ? entryPrice * (1 - Math.abs(body.stopLossPercent) / 100)
-            : entryPrice * (1 + Math.abs(body.stopLossPercent) / 100),
-          symbol
-        ),
+        triggerPrice: entryPrice,
         triggerPriceType: 'last',
+        orderPrice: entryPrice,
         reduceOnly: false, // opening order by default
-        tpTriggerPrice: tp(
-          side === 'buy'
-            ? entryPrice * (1 + body.takeProfitPercent / 100)
-            : entryPrice * (1 - body.takeProfitPercent / 100),
-          symbol
-        ),
+        attachedOrders: [
+          {
+            type: 'take_profit',
+            triggerPrice: tpPrice,
+            orderPrice: -1,
+          },
+          {
+            type: 'stop_loss',
+            triggerPrice: slPrice,
+            orderPrice: -1,
+          },
+        ],
       });
     }
 
@@ -248,13 +272,14 @@ export class OrderController {
     }
 
     // 5. Place via gRPC
-    const token = await this.getTokenForExchange(body.exchangeId);
+    const { token, exchangeType: tokenExchangeType } = await this.getTokenForExchange(body.exchangeId);
     const resp = await this.exchangeGrpc.placeStrategyOrders({ token, orders });
     const results: any[] = Array.isArray(resp?.results) ? resp.results : [];
     if (results.length === 0) {
       throw new httpError.BadGatewayError('批量下单返回为空');
     }
-    if ((resp?.success_count ?? 0) <= 0) {
+    const successCount = resp?.successCount ?? resp?.success_count ?? 0;
+    if (successCount <= 0) {
       const firstErr = results.find(r => !r?.success)?.error?.message;
       throw new httpError.BadRequestError(firstErr || '批量下单失败');
     }
@@ -269,7 +294,7 @@ export class OrderController {
           userid: user.id,
           exchangeId: body.exchangeId,
           source: 'manual',
-          exchangeOrderId: r.order.algo_id,
+          exchangeOrderId: r.order.algoId || r.order.algo_id,
           symbol: r.order.symbol,
           tradeType: body.tradeType,
           side: orders[i].side,
@@ -283,7 +308,7 @@ export class OrderController {
       }
       if (orderRecords.length > 0) {
         await this.orderService.createBatch(orderRecords);
-        this.orderUpdateService.subscribeForExchange(body.exchangeId);
+        this.orderUpdateService.subscribeForToken(body.exchangeId, tokenExchangeType, token);
       }
     } catch (err) {
       this.logger.error('[BatchStrategy] Failed to persist orders to DB: %s', err);
@@ -294,7 +319,7 @@ export class OrderController {
 
   @Post('/batch-strategy/check-duplicates')
   async checkDuplicates(@Body() body: CheckDuplicatesBodyDTO) {
-    const token = await this.getTokenForExchange(body.exchangeId);
+    const { token } = await this.getTokenForExchange(body.exchangeId);
     const grpcTradeType = this.normalizeTradeTypeForGrpc(body.tradeType);
     const resp = await this.exchangeGrpc.getOpenStrategyOrders({
       token,
@@ -315,7 +340,7 @@ export class OrderController {
       throw new httpError.BadRequestError('该订单没有交易所订单ID，无法查询');
     }
 
-    const token = await this.getTokenForExchange(query.exchangeId);
+    const { token } = await this.getTokenForExchange(query.exchangeId);
     const grpcTradeType = this.normalizeTradeTypeForGrpc(order.tradeType);
     const resp = this.isStrategyAlgoOrder(order)
       ? await this.exchangeGrpc.getStrategyOrder({
@@ -345,7 +370,7 @@ export class OrderController {
       throw new httpError.BadRequestError('该订单没有交易所订单ID，无法取消');
     }
 
-    const token = await this.getTokenForExchange(body.exchangeId);
+    const { token } = await this.getTokenForExchange(body.exchangeId);
     const grpcTradeType = this.normalizeTradeTypeForGrpc(order.tradeType);
     const resp = this.isStrategyAlgoOrder(order)
       ? await this.exchangeGrpc.cancelStrategyOrder({

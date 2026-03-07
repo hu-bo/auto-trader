@@ -352,6 +352,19 @@ enum StrategyTriggerPriceType {
   STRATEGY_TRIGGER_PRICE_TYPE_INDEX = 3;
 }
 
+enum StrategyAttachedOrderType {
+  STRATEGY_ATTACHED_ORDER_TYPE_UNSPECIFIED = 0;
+  STRATEGY_ATTACHED_ORDER_TYPE_TAKE_PROFIT = 1;
+  STRATEGY_ATTACHED_ORDER_TYPE_STOP_LOSS = 2;
+}
+
+message StrategyAttachedOrder {
+  StrategyAttachedOrderType type = 1;
+  double trigger_price = 2;
+  optional double order_price = 3;
+  optional StrategyTriggerPriceType trigger_price_type = 4;
+}
+
 enum StrategyOrderStatus {
   STRATEGY_ORDER_STATUS_UNSPECIFIED = 0;
   STRATEGY_ORDER_STATUS_LIVE = 1;
@@ -378,6 +391,7 @@ message PlaceStrategyOrderRequest {
   optional double activation_price = 14;
   optional double sl_trigger_price = 15;
   optional double tp_trigger_price = 16;
+  repeated StrategyAttachedOrder attached_orders = 17;
 }
 
 message PlaceStrategyOrderResponse {

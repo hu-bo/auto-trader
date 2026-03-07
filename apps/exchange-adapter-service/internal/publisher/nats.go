@@ -243,9 +243,37 @@ func (p *Publisher) PublishOrderUpdate(accountID string, msg OrderUpdateMessage)
 	}
 }
 
+// PublishOrderUpdateByToken publishes an order update using token-based subject.
+// Subject format: {prefix}.order_update.{exchange}.{token}
+func (p *Publisher) PublishOrderUpdateByToken(exchangeName, token string, msg OrderUpdateMessage) {
+	subject := fmt.Sprintf("%s.order_update.%s.%s", p.cfg.SubjectPrefix, exchangeName, token)
+	data, err := sonic.Marshal(msg)
+	if err != nil {
+		log.Error().Err(err).Str("subject", subject).Msg("Failed to marshal order update")
+		return
+	}
+	if err := p.conn.Publish(subject, data); err != nil {
+		log.Error().Err(err).Str("subject", subject).Msg("Failed to publish order update")
+	}
+}
+
 // PublishStrategyOrderUpdate publishes a strategy order update immediately (not batched).
 func (p *Publisher) PublishStrategyOrderUpdate(accountID string, msg StrategyOrderUpdateMessage) {
 	subject := fmt.Sprintf("%s.strategy_order_update.%s", p.cfg.SubjectPrefix, accountID)
+	data, err := sonic.Marshal(msg)
+	if err != nil {
+		log.Error().Err(err).Str("subject", subject).Msg("Failed to marshal strategy order update")
+		return
+	}
+	if err := p.conn.Publish(subject, data); err != nil {
+		log.Error().Err(err).Str("subject", subject).Msg("Failed to publish strategy order update")
+	}
+}
+
+// PublishStrategyOrderUpdateByToken publishes a strategy order update using token-based subject.
+// Subject format: {prefix}.strategy_order_update.{exchange}.{token}
+func (p *Publisher) PublishStrategyOrderUpdateByToken(exchangeName, token string, msg StrategyOrderUpdateMessage) {
+	subject := fmt.Sprintf("%s.strategy_order_update.%s.%s", p.cfg.SubjectPrefix, exchangeName, token)
 	data, err := sonic.Marshal(msg)
 	if err != nil {
 		log.Error().Err(err).Str("subject", subject).Msg("Failed to marshal strategy order update")

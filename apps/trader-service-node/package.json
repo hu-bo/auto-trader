@@ -6,9 +6,11 @@
   "type": "module",
   "dependencies": {
     "@ai-sdk/openai": "^1.0.0",
+    "@bufbuild/protobuf": "^2.11.0",
     "@grpc/grpc-js": "^1.14.3",
     "@grpc/proto-loader": "^0.8.0",
     "@hquant/casdoor": "workspace:*",
+    "@hquant/contracts": "workspace:*",
     "@midwayjs/bootstrap": "^4.0.0-beta.7",
     "@midwayjs/core": "^4.0.0-beta.7",
     "@midwayjs/info": "^4.0.0-beta.7",
@@ -23,6 +25,8 @@
     "lodash-es": "^4.17.23",
     "nanoid": "^5.1.6",
     "nats": "^2.29.3",
+    "nice-grpc": "^2.0.2",
+    "nice-grpc-common": "^2.0.2",
     "pg": "^8.18.0",
     "socket.io": "^4.8.3",
     "typeorm": "^0.3.28"

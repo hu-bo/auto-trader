@@ -94,24 +94,52 @@ export class OrderUpdateService {
   @Logger()
   logger!: ILogger;
 
-  private subscribedIds = new Set<string>();
+  private subscribedSubjects = new Set<string>();
+  private exchangeSubjects = new Map<number, { orderSubject: string; strategySubject: string }>();
 
-  subscribeForExchange(exchangeId: number): void {
-    const id = exchangeId.toString();
-    if (this.subscribedIds.has(id)) return;
+  isSubscribed(exchangeId: number): boolean {
+    return this.exchangeSubjects.has(exchangeId);
+  }
+
+  subscribeForToken(exchangeId: number, exchangeType: string, token: string): void {
+    const ex = (exchangeType ?? '').trim().toLowerCase();
+    if (!token || !ex) {
+      this.logger.warn('[OrderUpdate] Missing token or exchangeType, skip subscribe');
+      return;
+    }
 
     const prefix = this.natsConfig?.subjectPrefix ?? 'exchange';
 
-    this.natsService.subscribe(`${prefix}.order_update.${id}`, (data) => {
-      this.handleOrderUpdate(exchangeId, data as OrderUpdateData);
-    });
+    const orderSubject = `${prefix}.order_update.${ex}.${token}`;
+    const strategySubject = `${prefix}.strategy_order_update.${ex}.${token}`;
 
-    this.natsService.subscribe(`${prefix}.strategy_order_update.${id}`, (data) => {
-      this.handleStrategyOrderUpdate(exchangeId, data as StrategyOrderUpdateData);
-    });
+    const existing = this.exchangeSubjects.get(exchangeId);
+    if (existing?.orderSubject === orderSubject && existing?.strategySubject === strategySubject) {
+      return;
+    }
+    if (existing) {
+      this.natsService.unsubscribe(existing.orderSubject);
+      this.natsService.unsubscribe(existing.strategySubject);
+      this.subscribedSubjects.delete(existing.orderSubject);
+      this.subscribedSubjects.delete(existing.strategySubject);
+    }
 
-    this.subscribedIds.add(id);
-    this.logger.info('[OrderUpdate] Subscribed for exchangeId=%s', id);
+    if (!this.subscribedSubjects.has(orderSubject)) {
+      this.natsService.subscribe(orderSubject, (data) => {
+        this.handleOrderUpdate(exchangeId, data as OrderUpdateData);
+      });
+      this.subscribedSubjects.add(orderSubject);
+    }
+
+    if (!this.subscribedSubjects.has(strategySubject)) {
+      this.natsService.subscribe(strategySubject, (data) => {
+        this.handleStrategyOrderUpdate(exchangeId, data as StrategyOrderUpdateData);
+      });
+      this.subscribedSubjects.add(strategySubject);
+    }
+
+    this.exchangeSubjects.set(exchangeId, { orderSubject, strategySubject });
+    this.logger.info('[OrderUpdate] Subscribed for exchangeId=%s exchangeType=%s', exchangeId, ex);
   }
 
   private async handleOrderUpdate(exchangeId: number, data: OrderUpdateData): Promise<void> {

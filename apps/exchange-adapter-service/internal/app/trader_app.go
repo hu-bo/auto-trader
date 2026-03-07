@@ -14,6 +14,7 @@ import (
 	"exchange-adapter-service/internal/session"
 	"exchange-adapter-service/internal/trading"
 
+	"github.com/pkg/exchange-adapter/core"
 	"github.com/pkg/logger"
 )
 
@@ -88,12 +89,57 @@ func New(cfg *config.Config) (*App, error) {
 					UpdateTime:     upd.UpdateTime,
 				})
 			})
+			manager.SetOnOrderUpdateToken(func(token string, ex core.Exchange, upd trading.OrderUpdate) {
+				posSide := ""
+				if upd.PositionSide != nil {
+					posSide = string(*upd.PositionSide)
+				}
+				pub.PublishOrderUpdateByToken(string(ex), token, publisher.OrderUpdateMessage{
+					OrderID:        upd.OrderID,
+					ClientOrderID:  upd.ClientOrderID,
+					Symbol:         upd.Symbol,
+					TradeType:      string(upd.TradeType),
+					Side:           string(upd.Side),
+					PositionSide:   posSide,
+					OrderType:      string(upd.OrderType),
+					Status:         string(upd.Status),
+					Price:          upd.Price,
+					Quantity:       upd.Quantity,
+					FilledQuantity: upd.FilledQuantity,
+					AvgPrice:       upd.AvgPrice,
+					Fee:            upd.Fee,
+					FeeAsset:       upd.FeeAsset,
+					ReduceOnly:     upd.ReduceOnly,
+					UpdateTime:     upd.UpdateTime,
+				})
+			})
 			manager.SetOnStrategyOrderUpdate(func(accountID string, upd trading.StrategyOrderUpdate) {
 				posSide := ""
 				if upd.PositionSide != nil {
 					posSide = string(*upd.PositionSide)
 				}
 				pub.PublishStrategyOrderUpdate(accountID, publisher.StrategyOrderUpdateMessage{
+					AlgoID:       upd.AlgoID,
+					ClientAlgoID: upd.ClientAlgoID,
+					Symbol:       upd.Symbol,
+					TradeType:    string(upd.TradeType),
+					Side:         string(upd.Side),
+					PositionSide: posSide,
+					StrategyType: string(upd.StrategyType),
+					Status:       string(upd.Status),
+					TriggerPrice: upd.TriggerPrice,
+					OrderPrice:   upd.OrderPrice,
+					Quantity:     upd.Quantity,
+					TriggerTime:  upd.TriggerTime,
+					UpdateTime:   upd.UpdateTime,
+				})
+			})
+			manager.SetOnStrategyOrderUpdateToken(func(token string, ex core.Exchange, upd trading.StrategyOrderUpdate) {
+				posSide := ""
+				if upd.PositionSide != nil {
+					posSide = string(*upd.PositionSide)
+				}
+				pub.PublishStrategyOrderUpdateByToken(string(ex), token, publisher.StrategyOrderUpdateMessage{
 					AlgoID:       upd.AlgoID,
 					ClientAlgoID: upd.ClientAlgoID,
 					Symbol:       upd.Symbol,

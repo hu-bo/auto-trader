@@ -301,5 +301,7 @@ security:                   # TLS（可选）
 |----------|------|
 | `{prefix}.order_update.{accountID}` | 普通订单状态变更 |
 | `{prefix}.strategy_order_update.{accountID}` | 策略单状态变更 |
+| `{prefix}.order_update.{exchange}.{token}` | 普通订单状态变更（token 订阅） |
+| `{prefix}.strategy_order_update.{exchange}.{token}` | 策略单状态变更（token 订阅） |
 
-示例: `exchange.candle.binance.spot.BTC-USDT.15m`、`exchange.order_update.acc-123`
+示例: `exchange.candle.binance.spot.BTC-USDT.15m`、`exchange.order_update.acc-123`、`exchange.order_update.binance.<token>`

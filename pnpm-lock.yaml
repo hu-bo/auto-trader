@@ -78,6 +78,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^1.0.0
         version: 1.3.24(zod@3.25.76)
+      '@bufbuild/protobuf':
+        specifier: ^2.11.0
+        version: 2.11.0
       '@grpc/grpc-js':
         specifier: ^1.14.3
         version: 1.14.3
@@ -87,6 +90,9 @@ importers:
       '@hquant/casdoor':
         specifier: workspace:*
         version: link:../../packages/casdoor
+      '@hquant/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@midwayjs/bootstrap':
         specifier: ^4.0.0-beta.7
         version: 4.0.0-beta.11
@@ -129,6 +135,12 @@ importers:
       nats:
         specifier: ^2.29.3
         version: 2.29.3
+      nice-grpc:
+        specifier: ^2.0.2
+        version: 2.1.14
+      nice-grpc-common:
+        specifier: ^2.0.2
+        version: 2.0.2
       pg:
         specifier: ^8.18.0
         version: 8.18.0
@@ -281,6 +293,13 @@ importers:
         version: 2.1.9(@types/node@22.19.7)(less@4.5.1)(lightningcss@1.31.1)(sass@1.97.3)(terser@5.46.0)
 
   packages/contracts:
+    dependencies:
+      '@bufbuild/protobuf':
+        specifier: ^2.11.0
+        version: 2.11.0
+      nice-grpc-common:
+        specifier: ^2.0.2
+        version: 2.0.2
     devDependencies:
       grpc-tools:
         specifier: ^1.12.4
@@ -2349,6 +2368,9 @@ packages:
   abbrev@3.0.1:
     resolution: {integrity: sha512-AO2ac6pjRB3SJmGJo+v5/aK6Omggp6fsLrs6wN9bd35ulu4cCwaAU9+7ZhXjeqHVkaHThLuzH0nZr0YpCDhygg==, tarball: https://nexus3.bilibili.co/repository/npm-public/abbrev/-/abbrev-3.0.1.tgz}
     engines: {node: ^18.17.0 || >=20.5.0}
+
+  abort-controller-x@0.4.3:
+    resolution: {integrity: sha512-VtUwTNU8fpMwvWGn4xE93ywbogTYsuT+AUxAXOeelbXuQVIwNmC5YLeho9sH4vZ4ITW8414TTAOG1nW6uIVHCA==, tarball: https://nexus3.bilibili.co/repository/npm-public/abort-controller-x/-/abort-controller-x-0.4.3.tgz}
 
   accepts@1.3.8:
     resolution: {integrity: sha512-PYAthTa2m2VKxuvSD3DPC/Gy+U+sOA1LAuT8mkmRuvw+NACSaeXEQ+NHcVF7rONl6qcaxV3Uuemwawk+7+SJLw==, tarball: https://nexus3.bilibili.co/repository/npm-public/accepts/-/accepts-1.3.8.tgz}
@@ -4710,6 +4732,12 @@ packages:
   neo-async@2.6.2:
     resolution: {integrity: sha512-Yd3UES5mWCSqR+qNT93S3UoYUkqAZ9lLg8a7g9rimsWmYGK8cVToA4/sF3RrshdyV3sAGMXVUmpMYOw+dLpOuw==, tarball: https://nexus3.bilibili.co/repository/npm-public/neo-async/-/neo-async-2.6.2.tgz}
 
+  nice-grpc-common@2.0.2:
+    resolution: {integrity: sha512-7RNWbls5kAL1QVUOXvBsv1uO0wPQK3lHv+cY1gwkTzirnG1Nop4cBJZubpgziNbaVc/bl9QJcyvsf/NQxa3rjQ==, tarball: https://nexus3.bilibili.co/repository/npm-public/nice-grpc-common/-/nice-grpc-common-2.0.2.tgz}
+
+  nice-grpc@2.1.14:
+    resolution: {integrity: sha512-GK9pKNxlvnU5FAdaw7i2FFuR9CqBspcE+if2tqnKXBcE0R8525wj4BZvfcwj7FjvqbssqKxRHt2nwedalbJlww==, tarball: https://nexus3.bilibili.co/repository/npm-public/nice-grpc/-/nice-grpc-2.1.14.tgz}
+
   nkeys.js@1.1.0:
     resolution: {integrity: sha512-tB/a0shZL5UZWSwsoeyqfTszONTt4k2YS0tuQioMOD180+MbombYVgzDUYHlx+gejYK6rgf08n/2Df99WY0Sxg==, tarball: https://nexus3.bilibili.co/repository/npm-public/nkeys.js/-/nkeys.js-1.1.0.tgz}
     engines: {node: '>=10.0.0'}
@@ -5774,6 +5802,9 @@ packages:
     engines: {node: '>=18.12'}
     peerDependencies:
       typescript: '>=4.8.4'
+
+  ts-error@1.0.6:
+    resolution: {integrity: sha512-tLJxacIQUM82IR7JO1UUkKlYuUTmoY9HBJAmNWFzheSlDS5SPMcNIepejHJa4BpPQLAcbRhRf3GDJzyj6rbKvA==, tarball: https://nexus3.bilibili.co/repository/npm-public/ts-error/-/ts-error-1.0.6.tgz}
 
   ts-interface-checker@0.1.13:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==, tarball: https://nexus3.bilibili.co/repository/npm-public/ts-interface-checker/-/ts-interface-checker-0.1.13.tgz}
@@ -8468,6 +8499,8 @@ snapshots:
   '@vue/shared@3.5.27': {}
 
   abbrev@3.0.1: {}
+
+  abort-controller-x@0.4.3: {}
 
   accepts@1.3.8:
     dependencies:
@@ -11541,6 +11574,16 @@ snapshots:
 
   neo-async@2.6.2: {}
 
+  nice-grpc-common@2.0.2:
+    dependencies:
+      ts-error: 1.0.6
+
+  nice-grpc@2.1.14:
+    dependencies:
+      '@grpc/grpc-js': 1.14.3
+      abort-controller-x: 0.4.3
+      nice-grpc-common: 2.0.2
+
   nkeys.js@1.1.0:
     dependencies:
       tweetnacl: 1.0.3
@@ -12692,6 +12735,8 @@ snapshots:
   ts-api-utils@2.4.0(typescript@5.9.3):
     dependencies:
       typescript: 5.9.3
+
+  ts-error@1.0.6: {}
 
   ts-interface-checker@0.1.13: {}
 

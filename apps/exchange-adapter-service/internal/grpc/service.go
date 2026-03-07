@@ -858,7 +858,40 @@ func (s *ExchangeService) PlaceStrategyOrder(ctx context.Context, req *exchangep
 	}
 
 	var attachedOrders []core.StrategyAttachedOrder
-	if req.SlTriggerPrice != nil || req.TpTriggerPrice != nil {
+	if len(req.AttachedOrders) > 0 {
+		for _, ao := range req.AttachedOrders {
+			if ao == nil {
+				continue
+			}
+			var triggerPriceType *core.StrategyTriggerPriceType
+			if ao.TriggerPriceType != nil {
+				triggerPriceType = contract.ProtoStrategyTriggerPriceTypeToCore(ao.GetTriggerPriceType())
+			}
+			var orderPrice *float64
+			if ao.OrderPrice != nil {
+				op := ao.GetOrderPrice()
+				orderPrice = &op
+			}
+
+			attached := core.StrategyAttachedOrder{}
+			switch ao.Type {
+			case exchangepb.StrategyAttachedOrderType_STRATEGY_ATTACHED_ORDER_TYPE_TAKE_PROFIT:
+				tpp := ao.GetTriggerPrice()
+				attached.TPTriggerPrice = &tpp
+				attached.TPOrderPrice = orderPrice
+				attached.TPTriggerPriceType = triggerPriceType
+			case exchangepb.StrategyAttachedOrderType_STRATEGY_ATTACHED_ORDER_TYPE_STOP_LOSS:
+				slp := ao.GetTriggerPrice()
+				attached.SLTriggerPrice = &slp
+				attached.SLOrderPrice = orderPrice
+				attached.SLTriggerPriceType = triggerPriceType
+			default:
+				continue
+			}
+			attachedOrders = append(attachedOrders, attached)
+		}
+	}
+	if len(attachedOrders) == 0 && (req.SlTriggerPrice != nil || req.TpTriggerPrice != nil) {
 		attached := core.StrategyAttachedOrder{}
 		if req.SlTriggerPrice != nil {
 			slp := req.GetSlTriggerPrice()
@@ -969,7 +1002,40 @@ func (s *ExchangeService) PlaceStrategyOrders(ctx context.Context, req *exchange
 		}
 
 		var attached []core.StrategyAttachedOrder
-		if oreq.SlTriggerPrice != nil || oreq.TpTriggerPrice != nil {
+		if len(oreq.AttachedOrders) > 0 {
+			for _, ao := range oreq.AttachedOrders {
+				if ao == nil {
+					continue
+				}
+				var triggerPriceType *core.StrategyTriggerPriceType
+				if ao.TriggerPriceType != nil {
+					triggerPriceType = contract.ProtoStrategyTriggerPriceTypeToCore(ao.GetTriggerPriceType())
+				}
+				var orderPrice *float64
+				if ao.OrderPrice != nil {
+					op := ao.GetOrderPrice()
+					orderPrice = &op
+				}
+
+				item := core.StrategyAttachedOrder{}
+				switch ao.Type {
+				case exchangepb.StrategyAttachedOrderType_STRATEGY_ATTACHED_ORDER_TYPE_TAKE_PROFIT:
+					tpp := ao.GetTriggerPrice()
+					item.TPTriggerPrice = &tpp
+					item.TPOrderPrice = orderPrice
+					item.TPTriggerPriceType = triggerPriceType
+				case exchangepb.StrategyAttachedOrderType_STRATEGY_ATTACHED_ORDER_TYPE_STOP_LOSS:
+					slp := ao.GetTriggerPrice()
+					item.SLTriggerPrice = &slp
+					item.SLOrderPrice = orderPrice
+					item.SLTriggerPriceType = triggerPriceType
+				default:
+					continue
+				}
+				attached = append(attached, item)
+			}
+		}
+		if len(attached) == 0 && (oreq.SlTriggerPrice != nil || oreq.TpTriggerPrice != nil) {
 			ao := core.StrategyAttachedOrder{}
 			if oreq.SlTriggerPrice != nil {
 				slp := oreq.GetSlTriggerPrice()

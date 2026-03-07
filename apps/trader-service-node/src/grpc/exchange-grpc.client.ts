@@ -1,96 +1,139 @@
 import * as grpc from '@grpc/grpc-js';
-import * as protoLoader from '@grpc/proto-loader';
+import { createChannel, createClient } from 'nice-grpc';
 import { Config, Provide, httpError } from '@midwayjs/core';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
 import type { ExchangeAdapterConfig } from '../types/index.js';
+import {
+  ExchangeServiceDefinition,
+  type ExchangeServiceClient as GrpcExchangeServiceClient,
+  Exchange,
+  TradeType,
+  OrderSide,
+  OrderType,
+  PositionSide,
+  OrderStatus,
+  StrategyOrderType,
+  StrategyTriggerPriceType,
+  StrategyAttachedOrderType,
+} from '@hquant/contracts/exchange';
 
-type GrpcTradeType = 'TRADE_TYPE_SPOT' | 'TRADE_TYPE_FUTURES' | 'TRADE_TYPE_DELIVERY';
-type GrpcExchange = 'EXCHANGE_OKX' | 'EXCHANGE_BINANCE';
-type GrpcOrderSide = 'ORDER_SIDE_BUY' | 'ORDER_SIDE_SELL';
-type GrpcOrderType = 'ORDER_TYPE_LIMIT' | 'ORDER_TYPE_MARKET' | 'ORDER_TYPE_MAKER_ONLY';
-type GrpcPositionSide = 'POSITION_SIDE_LONG' | 'POSITION_SIDE_SHORT';
-type GrpcOrderStatus =
-  | 'ORDER_STATUS_PENDING'
-  | 'ORDER_STATUS_OPEN'
-  | 'ORDER_STATUS_PARTIAL'
-  | 'ORDER_STATUS_FILLED'
-  | 'ORDER_STATUS_CANCELED'
-  | 'ORDER_STATUS_REJECTED'
-  | 'ORDER_STATUS_EXPIRED';
-type GrpcStrategyOrderType = 'STRATEGY_ORDER_TYPE_STOP_LOSS' | 'STRATEGY_ORDER_TYPE_TAKE_PROFIT' | 'STRATEGY_ORDER_TYPE_TRIGGER' | 'STRATEGY_ORDER_TYPE_TRAILING_STOP';
-type GrpcStrategyTriggerPriceType = 'STRATEGY_TRIGGER_PRICE_TYPE_LAST' | 'STRATEGY_TRIGGER_PRICE_TYPE_MARK' | 'STRATEGY_TRIGGER_PRICE_TYPE_INDEX';
+type StrategyAttachedOrder = {
+  type: 'take_profit' | 'stop_loss';
+  triggerPrice: number;
+  orderPrice?: number | null;
+  triggerPriceType?: string | null;
+};
 
-function mapTradeType(input: string): GrpcTradeType {
+function mapTradeType(input: string): TradeType {
   const v = input.trim().toUpperCase();
-  if (v === 'SPOT' || v === 'TRADE_TYPE_SPOT') return 'TRADE_TYPE_SPOT';
-  if (v === 'USDM-ALGO' || v === 'USDM_ALGO') return 'TRADE_TYPE_FUTURES';
-  if (v === 'FUTURES' || v === 'TRADE_TYPE_FUTURES') return 'TRADE_TYPE_FUTURES';
-  if (v === 'DELIVERY' || v === 'TRADE_TYPE_DELIVERY') return 'TRADE_TYPE_DELIVERY';
+  if (v === 'SPOT' || v === 'TRADE_TYPE_SPOT') return TradeType.TRADE_TYPE_SPOT;
+  if (v === 'USDM-ALGO' || v === 'USDM_ALGO') return TradeType.TRADE_TYPE_FUTURES;
+  if (v === 'FUTURES' || v === 'TRADE_TYPE_FUTURES') return TradeType.TRADE_TYPE_FUTURES;
+  if (v === 'DELIVERY' || v === 'TRADE_TYPE_DELIVERY') return TradeType.TRADE_TYPE_DELIVERY;
   throw new httpError.BadRequestError(`Invalid trade_type: ${input}`);
 }
 
-function mapExchange(input: string): GrpcExchange {
+function mapExchange(input: string): Exchange {
   const v = input.trim().toUpperCase();
-  if (v === 'OKX' || v === 'EXCHANGE_OKX') return 'EXCHANGE_OKX';
-  if (v === 'BINANCE' || v === 'EXCHANGE_BINANCE') return 'EXCHANGE_BINANCE';
+  if (v === 'OKX' || v === 'EXCHANGE_OKX') return Exchange.EXCHANGE_OKX;
+  if (v === 'BINANCE' || v === 'EXCHANGE_BINANCE') return Exchange.EXCHANGE_BINANCE;
   throw new httpError.BadRequestError(`Invalid exchange_type: ${input}`);
 }
 
-function mapOrderSide(input: string): GrpcOrderSide {
+function mapOrderSide(input: string): OrderSide {
   const v = input.trim().toUpperCase();
-  if (v === 'BUY' || v === 'ORDER_SIDE_BUY') return 'ORDER_SIDE_BUY';
-  if (v === 'SELL' || v === 'ORDER_SIDE_SELL') return 'ORDER_SIDE_SELL';
+  if (v === 'BUY' || v === 'ORDER_SIDE_BUY') return OrderSide.ORDER_SIDE_BUY;
+  if (v === 'SELL' || v === 'ORDER_SIDE_SELL') return OrderSide.ORDER_SIDE_SELL;
   throw new httpError.BadRequestError(`Invalid side: ${input}`);
 }
 
-function mapOrderType(input: string): GrpcOrderType {
+function mapOrderType(input: string): OrderType {
   const v = input.trim().toUpperCase();
-  if (v === 'LIMIT' || v === 'ORDER_TYPE_LIMIT') return 'ORDER_TYPE_LIMIT';
-  if (v === 'MARKET' || v === 'ORDER_TYPE_MARKET') return 'ORDER_TYPE_MARKET';
-  if (v === 'MAKER_ONLY' || v === 'ORDER_TYPE_MAKER_ONLY') return 'ORDER_TYPE_MAKER_ONLY';
+  if (v === 'LIMIT' || v === 'ORDER_TYPE_LIMIT') return OrderType.ORDER_TYPE_LIMIT;
+  if (v === 'MARKET' || v === 'ORDER_TYPE_MARKET') return OrderType.ORDER_TYPE_MARKET;
+  if (v === 'MAKER_ONLY' || v === 'ORDER_TYPE_MAKER_ONLY') return OrderType.ORDER_TYPE_MAKER_ONLY;
   throw new httpError.BadRequestError(`Invalid order_type: ${input}`);
 }
 
-function mapPositionSide(input: string): GrpcPositionSide {
+function mapPositionSide(input: string): PositionSide {
   const v = input.trim().toUpperCase();
-  if (v === 'LONG' || v === 'POSITION_SIDE_LONG') return 'POSITION_SIDE_LONG';
-  if (v === 'SHORT' || v === 'POSITION_SIDE_SHORT') return 'POSITION_SIDE_SHORT';
+  if (v === 'LONG' || v === 'POSITION_SIDE_LONG') return PositionSide.POSITION_SIDE_LONG;
+  if (v === 'SHORT' || v === 'POSITION_SIDE_SHORT') return PositionSide.POSITION_SIDE_SHORT;
   throw new httpError.BadRequestError(`Invalid position_side: ${input}`);
 }
 
-function mapOrderStatus(input: string): GrpcOrderStatus {
+function mapOrderStatus(input: string): OrderStatus {
   const v = input.trim().toUpperCase();
-  if (v === 'PENDING' || v === 'ORDER_STATUS_PENDING') return 'ORDER_STATUS_PENDING';
-  if (v === 'OPEN' || v === 'ORDER_STATUS_OPEN') return 'ORDER_STATUS_OPEN';
-  if (v === 'PARTIAL' || v === 'ORDER_STATUS_PARTIAL') return 'ORDER_STATUS_PARTIAL';
-  if (v === 'FILLED' || v === 'ORDER_STATUS_FILLED') return 'ORDER_STATUS_FILLED';
-  if (v === 'CANCELED' || v === 'ORDER_STATUS_CANCELED') return 'ORDER_STATUS_CANCELED';
-  if (v === 'REJECTED' || v === 'ORDER_STATUS_REJECTED') return 'ORDER_STATUS_REJECTED';
-  if (v === 'EXPIRED' || v === 'ORDER_STATUS_EXPIRED') return 'ORDER_STATUS_EXPIRED';
+  if (v === 'PENDING' || v === 'ORDER_STATUS_PENDING') return OrderStatus.ORDER_STATUS_PENDING;
+  if (v === 'OPEN' || v === 'ORDER_STATUS_OPEN') return OrderStatus.ORDER_STATUS_OPEN;
+  if (v === 'PARTIAL' || v === 'ORDER_STATUS_PARTIAL') return OrderStatus.ORDER_STATUS_PARTIAL;
+  if (v === 'FILLED' || v === 'ORDER_STATUS_FILLED') return OrderStatus.ORDER_STATUS_FILLED;
+  if (v === 'CANCELED' || v === 'ORDER_STATUS_CANCELED') return OrderStatus.ORDER_STATUS_CANCELED;
+  if (v === 'REJECTED' || v === 'ORDER_STATUS_REJECTED') return OrderStatus.ORDER_STATUS_REJECTED;
+  if (v === 'EXPIRED' || v === 'ORDER_STATUS_EXPIRED') return OrderStatus.ORDER_STATUS_EXPIRED;
   throw new httpError.BadRequestError(`Invalid status: ${input}`);
 }
 
-function mapStrategyOrderType(input: string): GrpcStrategyOrderType {
+function mapStrategyOrderType(input: string): StrategyOrderType {
   const v = input.trim().toLowerCase();
-  if (v === 'stop-loss' || v === 'stop_loss') return 'STRATEGY_ORDER_TYPE_STOP_LOSS';
-  if (v === 'take-profit' || v === 'take_profit') return 'STRATEGY_ORDER_TYPE_TAKE_PROFIT';
-  if (v === 'trigger') return 'STRATEGY_ORDER_TYPE_TRIGGER';
-  if (v === 'trailing-stop' || v === 'trailing_stop') return 'STRATEGY_ORDER_TYPE_TRAILING_STOP';
+  if (v === 'stop-loss' || v === 'stop_loss') return StrategyOrderType.STRATEGY_ORDER_TYPE_STOP_LOSS;
+  if (v === 'take-profit' || v === 'take_profit') return StrategyOrderType.STRATEGY_ORDER_TYPE_TAKE_PROFIT;
+  if (v === 'trigger') return StrategyOrderType.STRATEGY_ORDER_TYPE_TRIGGER;
+  if (v === 'trailing-stop' || v === 'trailing_stop') return StrategyOrderType.STRATEGY_ORDER_TYPE_TRAILING_STOP;
   throw new httpError.BadRequestError(`Invalid strategy_type: ${input}`);
 }
 
-function mapStrategyTriggerPriceType(input: string): GrpcStrategyTriggerPriceType {
+function mapStrategyTriggerPriceType(input: string): StrategyTriggerPriceType {
   const v = input.trim().toLowerCase();
-  if (v === 'last') return 'STRATEGY_TRIGGER_PRICE_TYPE_LAST';
-  if (v === 'mark') return 'STRATEGY_TRIGGER_PRICE_TYPE_MARK';
-  if (v === 'index') return 'STRATEGY_TRIGGER_PRICE_TYPE_INDEX';
+  if (v === 'last') return StrategyTriggerPriceType.STRATEGY_TRIGGER_PRICE_TYPE_LAST;
+  if (v === 'mark') return StrategyTriggerPriceType.STRATEGY_TRIGGER_PRICE_TYPE_MARK;
+  if (v === 'index') return StrategyTriggerPriceType.STRATEGY_TRIGGER_PRICE_TYPE_INDEX;
   throw new httpError.BadRequestError(`Invalid trigger_price_type: ${input}`);
 }
 
-function mapGrpcError(err: grpc.ServiceError): Error {
-  const message = err.details || err.message || 'gRPC request failed';
-  switch (err.code) {
+function mapStrategyAttachedOrderType(input: string): StrategyAttachedOrderType {
+  const v = input.trim().toLowerCase();
+  if (v === 'take-profit' || v === 'take_profit') return StrategyAttachedOrderType.STRATEGY_ATTACHED_ORDER_TYPE_TAKE_PROFIT;
+  if (v === 'stop-loss' || v === 'stop_loss') return StrategyAttachedOrderType.STRATEGY_ATTACHED_ORDER_TYPE_STOP_LOSS;
+  throw new httpError.BadRequestError(`Invalid attached_order_type: ${input}`);
+}
+
+function deriveAttachedTriggerPrices(params: {
+  slTriggerPrice?: number | null;
+  tpTriggerPrice?: number | null;
+  attachedOrders?: StrategyAttachedOrder[] | null;
+}) {
+  let sl = params.slTriggerPrice ?? undefined;
+  let tp = params.tpTriggerPrice ?? undefined;
+  if (params.attachedOrders && params.attachedOrders.length > 0) {
+    for (const attached of params.attachedOrders) {
+      if (attached.type === 'stop_loss' && sl == null) {
+        sl = attached.triggerPrice;
+      }
+      if (attached.type === 'take_profit' && tp == null) {
+        tp = attached.triggerPrice;
+      }
+    }
+  }
+  return { slTriggerPrice: sl, tpTriggerPrice: tp };
+}
+
+function mapAttachedOrders(attachedOrders?: StrategyAttachedOrder[] | null) {
+  if (!attachedOrders || attachedOrders.length === 0) return undefined;
+  return attachedOrders.map(ao => {
+    const req: any = {
+      type: mapStrategyAttachedOrderType(ao.type),
+      triggerPrice: ao.triggerPrice,
+    };
+    if (ao.orderPrice != null) req.orderPrice = ao.orderPrice;
+    if (ao.triggerPriceType != null) req.triggerPriceType = mapStrategyTriggerPriceType(ao.triggerPriceType);
+    return req;
+  });
+}
+
+function mapGrpcError(err: unknown): Error {
+  const e = err as { code?: number; details?: string; message?: string };
+  const message = e.details || e.message || 'gRPC request failed';
+  switch (e.code) {
     case grpc.status.INVALID_ARGUMENT:
       return new httpError.BadRequestError(message);
     case grpc.status.UNAUTHENTICATED:
@@ -106,34 +149,14 @@ function mapGrpcError(err: grpc.ServiceError): Error {
   }
 }
 
-type ExchangeServiceClient = {
-  initAccount: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  validateToken: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  invalidateToken: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  getOrders: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  getOrder: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  cancelOrder: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  placeOrder: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  placeOrders: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  getPositions: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  syncPositions: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  getBalance: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  setLeverage: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  placeStrategyOrder: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  placeStrategyOrders: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  cancelStrategyOrder: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  getStrategyOrder: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  getOpenStrategyOrders: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-};
-
 @Provide()
 export class ExchangeGrpcClient {
   @Config('exchangeAdapter')
   exchangeAdapter!: ExchangeAdapterConfig;
 
-  private client?: ExchangeServiceClient;
+  private client?: GrpcExchangeServiceClient;
 
-  private getClient(): ExchangeServiceClient {
+  private getClient(): GrpcExchangeServiceClient {
     if (this.client) return this.client;
 
     const url = (this.exchangeAdapter?.grpc ?? '').trim();
@@ -141,25 +164,8 @@ export class ExchangeGrpcClient {
       throw new httpError.ServiceUnavailableError('EXCHANGE_GRPC_URL is required');
     }
 
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
-    const protoPath = join(__dirname, '../../../../packages/contracts/proto/exchange.proto');
-
-    const packageDefinition = protoLoader.loadSync(protoPath, {
-      keepCase: true,
-      longs: String,
-      enums: String,
-      defaults: true,
-      oneofs: true,
-    });
-
-    const loaded = grpc.loadPackageDefinition(packageDefinition) as any;
-    const ServiceCtor = loaded?.exchange?.ExchangeService;
-    if (!ServiceCtor) {
-      throw new httpError.ServiceUnavailableError('Failed to load exchange proto');
-    }
-
-    this.client = new ServiceCtor(url, grpc.credentials.createInsecure()) as ExchangeServiceClient;
+    const channel = createChannel(url, grpc.credentials.createInsecure());
+    this.client = createClient(ExchangeServiceDefinition, channel);
     return this.client;
   }
 
@@ -174,13 +180,12 @@ export class ExchangeGrpcClient {
     return token;
   }
 
-  private async unary<T>(fn: (cb: (err: grpc.ServiceError | null, res: T) => void) => void): Promise<T> {
-    return await new Promise<T>((resolve, reject) => {
-      fn((err, res) => {
-        if (err) return reject(mapGrpcError(err));
-        resolve(res);
-      });
-    });
+  private async unary<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      throw mapGrpcError(err);
+    }
   }
 
   async initAccount(params: {
@@ -195,26 +200,26 @@ export class ExchangeGrpcClient {
     const client = this.getClient();
     const req: any = {
       exchange: mapExchange(params.exchangeType),
-      api_key: params.apiKey,
-      api_secret: params.apiSecret,
+      apiKey: params.apiKey,
+      apiSecret: params.apiSecret,
       demonet: params.demonet ?? false,
     };
     if (params.passphrase != null) req.passphrase = params.passphrase;
     if (params.name != null) req.name = params.name;
-    if (params.accountId != null) req.account_id = params.accountId;
-    return await this.unary(cb => client.initAccount(req, cb));
+    if (params.accountId != null) req.accountId = params.accountId;
+    return await this.unary(() => client.initAccount(req));
   }
 
   async validateToken(params: { token: string }): Promise<any> {
     const client = this.getClient();
     const req = { token: params.token };
-    return await this.unary(cb => client.validateToken(req, cb));
+    return await this.unary(() => client.validateToken(req));
   }
 
   async invalidateToken(params: { token: string }): Promise<any> {
     const client = this.getClient();
     const req = { token: params.token };
-    return await this.unary(cb => client.invalidateToken(req, cb));
+    return await this.unary(() => client.invalidateToken(req));
   }
 
   async getOrders(params: {
@@ -232,19 +237,19 @@ export class ExchangeGrpcClient {
     if (params.status) req.status = mapOrderStatus(params.status);
     if (params.limit !== undefined) req.limit = params.limit;
     if (params.offset !== undefined) req.offset = params.offset;
-    return await this.unary(cb => client.getOrders(req, cb));
+    return await this.unary(() => client.getOrders(req));
   }
 
   async getOrder(params: { token?: string; orderId: string }): Promise<any> {
     const client = this.getClient();
-    const req = { token: params.token ?? this.getToken(), order_id: params.orderId };
-    return await this.unary(cb => client.getOrder(req, cb));
+    const req = { token: params.token ?? this.getToken(), orderId: params.orderId };
+    return await this.unary(() => client.getOrder(req));
   }
 
   async cancelOrder(params: { token?: string; orderId: string }): Promise<any> {
     const client = this.getClient();
-    const req = { token: params.token ?? this.getToken(), order_id: params.orderId };
-    return await this.unary(cb => client.cancelOrder(req, cb));
+    const req = { token: params.token ?? this.getToken(), orderId: params.orderId };
+    return await this.unary(() => client.cancelOrder(req));
   }
 
   async placeOrder(params: {
@@ -264,17 +269,17 @@ export class ExchangeGrpcClient {
     const req: any = {
       token: params.token ?? this.getToken(),
       symbol: params.symbol,
-      trade_type: mapTradeType(params.tradeType),
+      tradeType: mapTradeType(params.tradeType),
       side: mapOrderSide(params.side),
-      order_type: mapOrderType(params.orderType),
+      orderType: mapOrderType(params.orderType),
       quantity: params.quantity,
     };
     if (params.price != null) req.price = params.price;
-    if (params.positionSide != null) req.position_side = params.positionSide;
+    if (params.positionSide != null) req.positionSide = mapPositionSide(params.positionSide);
     if (params.leverage != null) req.leverage = params.leverage;
-    if (params.clientOrderId != null) req.client_order_id = params.clientOrderId;
-    if (params.reduceOnly != null) req.reduce_only = params.reduceOnly;
-    return await this.unary(cb => client.placeOrder(req, cb));
+    if (params.clientOrderId != null) req.clientOrderId = params.clientOrderId;
+    if (params.reduceOnly != null) req.reduceOnly = params.reduceOnly;
+    return await this.unary(() => client.placeOrder(req));
   }
 
   async placeOrders(params: {
@@ -297,38 +302,38 @@ export class ExchangeGrpcClient {
     const orders = params.orders.map(o => {
       const req: any = {
         symbol: o.symbol,
-        trade_type: mapTradeType(o.tradeType),
+        tradeType: mapTradeType(o.tradeType),
         side: mapOrderSide(o.side),
-        order_type: mapOrderType(o.orderType),
+        orderType: mapOrderType(o.orderType),
         quantity: o.quantity,
       };
       if (o.price != null) req.price = o.price;
-      if (o.positionSide != null) req.position_side = mapPositionSide(o.positionSide);
+      if (o.positionSide != null) req.positionSide = mapPositionSide(o.positionSide);
       if (o.leverage != null) req.leverage = o.leverage;
-      if (o.clientOrderId != null) req.client_order_id = o.clientOrderId;
-      if (o.reduceOnly != null) req.reduce_only = o.reduceOnly;
+      if (o.clientOrderId != null) req.clientOrderId = o.clientOrderId;
+      if (o.reduceOnly != null) req.reduceOnly = o.reduceOnly;
       return req;
     });
-    return await this.unary(cb => client.placeOrders({ token, orders }, cb));
+    return await this.unary(() => client.placeOrders({ token, orders }));
   }
 
   async getPositions(params: { token?: string; symbol?: string }): Promise<any> {
     const client = this.getClient();
     const req: any = { token: params.token ?? this.getToken() };
     if (params.symbol) req.symbol = params.symbol;
-    return await this.unary(cb => client.getPositions(req, cb));
+    return await this.unary(() => client.getPositions(req));
   }
 
   async syncPositions(params?: { token?: string }): Promise<any> {
     const client = this.getClient();
     const req = { token: params?.token ?? this.getToken() };
-    return await this.unary(cb => client.syncPositions(req, cb));
+    return await this.unary(() => client.syncPositions(req));
   }
 
   async getBalance(params: { token?: string; tradeType: string }): Promise<any> {
     const client = this.getClient();
-    const req = { token: params.token ?? this.getToken(), trade_type: mapTradeType(params.tradeType) };
-    return await this.unary(cb => client.getBalance(req, cb));
+    const req = { token: params.token ?? this.getToken(), tradeType: mapTradeType(params.tradeType) };
+    return await this.unary(() => client.getBalance(req));
   }
 
   async setLeverage(params: {
@@ -343,10 +348,10 @@ export class ExchangeGrpcClient {
       token: params.token ?? this.getToken(),
       symbol: params.symbol,
       leverage: params.leverage,
-      trade_type: mapTradeType(params.tradeType),
+      tradeType: mapTradeType(params.tradeType),
     };
-    if (params.positionSide != null) req.position_side = mapPositionSide(params.positionSide);
-    return await this.unary(cb => client.setLeverage(req, cb));
+    if (params.positionSide != null) req.positionSide = mapPositionSide(params.positionSide);
+    return await this.unary(() => client.setLeverage(req));
   }
 
   async placeStrategyOrder(params: {
@@ -366,27 +371,31 @@ export class ExchangeGrpcClient {
     activationPrice?: number | null;
     slTriggerPrice?: number | null;
     tpTriggerPrice?: number | null;
+    attachedOrders?: StrategyAttachedOrder[] | null;
   }): Promise<any> {
     const client = this.getClient();
+    const derived = deriveAttachedTriggerPrices(params);
     const req: any = {
       token: params.token ?? this.getToken(),
       symbol: params.symbol,
-      trade_type: mapTradeType(params.tradeType),
+      tradeType: mapTradeType(params.tradeType),
       side: mapOrderSide(params.side),
-      strategy_type: mapStrategyOrderType(params.strategyType),
+      strategyType: mapStrategyOrderType(params.strategyType),
       quantity: params.quantity,
-      trigger_price: params.triggerPrice,
+      triggerPrice: params.triggerPrice,
     };
-    if (params.positionSide != null) req.position_side = mapPositionSide(params.positionSide);
-    if (params.triggerPriceType != null) req.trigger_price_type = mapStrategyTriggerPriceType(params.triggerPriceType);
-    if (params.orderPrice != null) req.order_price = params.orderPrice;
-    if (params.reduceOnly != null) req.reduce_only = params.reduceOnly;
-    if (params.clientAlgoId != null) req.client_algo_id = params.clientAlgoId;
-    if (params.callbackRatio != null) req.callback_ratio = params.callbackRatio;
-    if (params.activationPrice != null) req.activation_price = params.activationPrice;
-    if (params.slTriggerPrice != null) req.sl_trigger_price = params.slTriggerPrice;
-    if (params.tpTriggerPrice != null) req.tp_trigger_price = params.tpTriggerPrice;
-    return await this.unary(cb => client.placeStrategyOrder(req, cb));
+    if (params.positionSide != null) req.positionSide = mapPositionSide(params.positionSide);
+    if (params.triggerPriceType != null) req.triggerPriceType = mapStrategyTriggerPriceType(params.triggerPriceType);
+    if (params.orderPrice != null) req.orderPrice = params.orderPrice;
+    if (params.reduceOnly != null) req.reduceOnly = params.reduceOnly;
+    if (params.clientAlgoId != null) req.clientAlgoId = params.clientAlgoId;
+    if (params.callbackRatio != null) req.callbackRatio = params.callbackRatio;
+    if (params.activationPrice != null) req.activationPrice = params.activationPrice;
+    if (derived.slTriggerPrice != null) req.slTriggerPrice = derived.slTriggerPrice;
+    if (derived.tpTriggerPrice != null) req.tpTriggerPrice = derived.tpTriggerPrice;
+    const attachedOrders = mapAttachedOrders(params.attachedOrders);
+    if (attachedOrders != null) req.attachedOrders = attachedOrders;
+    return await this.unary(() => client.placeStrategyOrder(req));
   }
 
   async placeStrategyOrders(params: {
@@ -405,30 +414,34 @@ export class ExchangeGrpcClient {
       clientAlgoId?: string | null;
       slTriggerPrice?: number | null;
       tpTriggerPrice?: number | null;
+      attachedOrders?: StrategyAttachedOrder[] | null;
     }>;
   }): Promise<any> {
     const client = this.getClient();
     const token = params.token ?? this.getToken();
     const orders = params.orders.map(o => {
+      const derived = deriveAttachedTriggerPrices(o);
       const req: any = {
         token,
         symbol: o.symbol,
-        trade_type: mapTradeType(o.tradeType),
+        tradeType: mapTradeType(o.tradeType),
         side: mapOrderSide(o.side),
-        strategy_type: mapStrategyOrderType(o.strategyType),
+        strategyType: mapStrategyOrderType(o.strategyType),
         quantity: o.quantity,
-        trigger_price: o.triggerPrice,
+        triggerPrice: o.triggerPrice,
       };
-      if (o.positionSide != null) req.position_side = mapPositionSide(o.positionSide);
-      if (o.triggerPriceType != null) req.trigger_price_type = mapStrategyTriggerPriceType(o.triggerPriceType);
-      if (o.orderPrice != null) req.order_price = o.orderPrice;
-      if (o.reduceOnly != null) req.reduce_only = o.reduceOnly;
-      if (o.clientAlgoId != null) req.client_algo_id = o.clientAlgoId;
-      if (o.slTriggerPrice != null) req.sl_trigger_price = o.slTriggerPrice;
-      if (o.tpTriggerPrice != null) req.tp_trigger_price = o.tpTriggerPrice;
+      if (o.positionSide != null) req.positionSide = mapPositionSide(o.positionSide);
+      if (o.triggerPriceType != null) req.triggerPriceType = mapStrategyTriggerPriceType(o.triggerPriceType);
+      if (o.orderPrice != null) req.orderPrice = o.orderPrice;
+      if (o.reduceOnly != null) req.reduceOnly = o.reduceOnly;
+      if (o.clientAlgoId != null) req.clientAlgoId = o.clientAlgoId;
+      if (derived.slTriggerPrice != null) req.slTriggerPrice = derived.slTriggerPrice;
+      if (derived.tpTriggerPrice != null) req.tpTriggerPrice = derived.tpTriggerPrice;
+      const attachedOrders = mapAttachedOrders(o.attachedOrders);
+      if (attachedOrders != null) req.attachedOrders = attachedOrders;
       return req;
     });
-    return await this.unary(cb => client.placeStrategyOrders({ token, orders }, cb));
+    return await this.unary(() => client.placeStrategyOrders({ token, orders }));
   }
 
   async cancelStrategyOrder(params: {
@@ -441,10 +454,10 @@ export class ExchangeGrpcClient {
     const req = {
       token: params.token ?? this.getToken(),
       symbol: params.symbol,
-      algo_id: params.algoId,
-      trade_type: mapTradeType(params.tradeType),
+      algoId: params.algoId,
+      tradeType: mapTradeType(params.tradeType),
     };
-    return await this.unary(cb => client.cancelStrategyOrder(req, cb));
+    return await this.unary(() => client.cancelStrategyOrder(req));
   }
 
   async getStrategyOrder(params: {
@@ -455,10 +468,10 @@ export class ExchangeGrpcClient {
     const client = this.getClient();
     const req = {
       token: params.token ?? this.getToken(),
-      algo_id: params.algoId,
-      trade_type: mapTradeType(params.tradeType),
+      algoId: params.algoId,
+      tradeType: mapTradeType(params.tradeType),
     };
-    return await this.unary(cb => client.getStrategyOrder(req, cb));
+    return await this.unary(() => client.getStrategyOrder(req));
   }
 
   async getOpenStrategyOrders(params: {
@@ -469,7 +482,7 @@ export class ExchangeGrpcClient {
     const client = this.getClient();
     const req: any = { token: params.token ?? this.getToken() };
     if (params.symbol) req.symbol = params.symbol;
-    if (params.tradeType) req.trade_type = mapTradeType(params.tradeType);
-    return await this.unary(cb => client.getOpenStrategyOrders(req, cb));
+    if (params.tradeType) req.tradeType = mapTradeType(params.tradeType);
+    return await this.unary(() => client.getOpenStrategyOrders(req));
   }
 }

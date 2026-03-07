@@ -43,7 +43,9 @@ type Manager struct {
 	hub      *OrderUpdateHub
 
 	onOrderUpdate         func(accountID string, update OrderUpdate)
+	onOrderUpdateToken    func(token string, exchange core.Exchange, update OrderUpdate)
 	onStrategyOrderUpdate func(accountID string, update StrategyOrderUpdate)
+	onStrategyOrderUpdateToken func(token string, exchange core.Exchange, update StrategyOrderUpdate)
 }
 
 type sessionResources struct {
@@ -68,8 +70,16 @@ func (m *Manager) SetOnOrderUpdate(fn func(accountID string, update OrderUpdate)
 	m.onOrderUpdate = fn
 }
 
+func (m *Manager) SetOnOrderUpdateToken(fn func(token string, exchange core.Exchange, update OrderUpdate)) {
+	m.onOrderUpdateToken = fn
+}
+
 func (m *Manager) SetOnStrategyOrderUpdate(fn func(accountID string, update StrategyOrderUpdate)) {
 	m.onStrategyOrderUpdate = fn
+}
+
+func (m *Manager) SetOnStrategyOrderUpdateToken(fn func(token string, exchange core.Exchange, update StrategyOrderUpdate)) {
+	m.onStrategyOrderUpdateToken = fn
 }
 
 func (m *Manager) CloseAll(ctx context.Context) {
@@ -206,6 +216,9 @@ func (m *Manager) EnsureWsSubscribed(ctx context.Context, token string, cfg sess
 			if m.onOrderUpdate != nil && r.cfg.AccountID != "" {
 				m.onOrderUpdate(r.cfg.AccountID, upd)
 			}
+			if m.onOrderUpdateToken != nil {
+				m.onOrderUpdateToken(token, r.cfg.Exchange, upd)
+			}
 
 		case core.WsStrategyOrderUpdate:
 			supd := StrategyOrderUpdate{
@@ -225,6 +238,9 @@ func (m *Manager) EnsureWsSubscribed(ctx context.Context, token string, cfg sess
 			}
 			if m.onStrategyOrderUpdate != nil && r.cfg.AccountID != "" {
 				m.onStrategyOrderUpdate(r.cfg.AccountID, supd)
+			}
+			if m.onStrategyOrderUpdateToken != nil {
+				m.onStrategyOrderUpdateToken(token, r.cfg.Exchange, supd)
 			}
 		}
 	})
