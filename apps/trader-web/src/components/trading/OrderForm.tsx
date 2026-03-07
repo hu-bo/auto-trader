@@ -138,7 +138,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ symbol, tradeType, onTrade
               style={{ height: 44, background: '#10b981', borderColor: '#10b981' }}
               onClick={() => submitByAction(leftAction.key, leftAction.side, leftAction.positionSide)}
             >
-              {leftAction.label} {symbol}
+              {leftAction.label} 
             </Button>
           </Col>
           <Col span={12}>
@@ -151,7 +151,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ symbol, tradeType, onTrade
               style={{ height: 44, background: '#ef4444', borderColor: '#ef4444' }}
               onClick={() => submitByAction(rightAction.key, rightAction.side, rightAction.positionSide)}
             >
-              {rightAction.label} {symbol}
+              {rightAction.label}
             </Button>
           </Col>
         </Row>

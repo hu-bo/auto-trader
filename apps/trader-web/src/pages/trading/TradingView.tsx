@@ -10,7 +10,14 @@ import { useNavigateKeepParams } from '@/hooks'
 const TradingView: React.FC = () => {
   const { symbol: urlSymbol } = useParams<{ symbol: string }>()
   const navigate = useNavigateKeepParams()
-  const { tradingSymbol, tradingInterval, setTradingSymbol, setTradingInterval } = useAppStore()
+  const {
+    tradingSymbol,
+    tradingTradeType,
+    tradingInterval,
+    setTradingSymbol,
+    setTradingInterval,
+    setTradingTradeType
+  } = useAppStore()
 
   // URL param → store 同步
   useEffect(() => {
@@ -34,7 +41,7 @@ const TradingView: React.FC = () => {
             <KLineChart
               symbol={urlSymbol || tradingSymbol}
               interval={tradingInterval}
-              height={560}
+              height={638}
               onSymbolChange={handleSymbolChange}
               onIntervalChange={setTradingInterval}
             />
@@ -44,23 +51,22 @@ const TradingView: React.FC = () => {
         {/* 下单区域 */}
         <Col span={6}>
           <Card title="下单" bodyStyle={{ padding: 16 }}>
-            <OrderForm symbol={urlSymbol || tradingSymbol} />
+            <OrderForm
+              tradeType={tradingTradeType}
+              symbol={urlSymbol || tradingSymbol}
+              onTradeTypeChange={setTradingTradeType} />
           </Card>
         </Col>
 
         {/* 订单和持仓列表 */}
-        <Col span={24}>
-          <Card bodyStyle={{ padding: 0 }}>
+        <Col span={24} >
+          <Card bodyStyle={{ padding: 4 }}>
             <Tabs type="line">
               <TabPane tab="当前委托" itemKey="open">
-                <div style={{ padding: 16 }}>
-                  <OrderTable symbol={urlSymbol || tradingSymbol} />
-                </div>
+                <OrderTable symbol={urlSymbol || tradingSymbol} />
               </TabPane>
               <TabPane tab="历史订单" itemKey="history">
-                <div style={{ padding: 16 }}>
-                  <OrderTable symbol={urlSymbol || tradingSymbol} showActions={false} />
-                </div>
+                <OrderTable symbol={urlSymbol || tradingSymbol} showActions={false} />
               </TabPane>
             </Tabs>
           </Card>

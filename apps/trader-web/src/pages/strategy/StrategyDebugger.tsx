@@ -205,14 +205,14 @@ const StrategyDebugger: React.FC = () => {
                 onChange={(v) => setSymbol(v as string)}
                 optionList={symbolOptions}
                 filter
-                style={{ width: 160 }}
+                style={{ width: 180 }}
                 prefix="交易对"
               />
               <Select
                 value={period}
                 onChange={(v) => setPeriod(v as string)}
                 optionList={PERIODS}
-                style={{ width: 100 }}
+                style={{ width: 120 }}
                 prefix="周期"
               />
               <InputNumber
