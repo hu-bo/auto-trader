@@ -278,9 +278,7 @@ func (a *TradeAdapter) DoPlaceOrder(ctx context.Context, params core.PlaceOrderP
 		Sz:      params.Quantity,
 		ClOrdID: params.ClientOrderID,
 	}
-	if params.TradeType == core.TradeTypeSpot {
-		req.TgtCcy = "base_ccy"
-	}
+	req.TgtCcy = "base_ccy"
 
 	if params.OrderType == core.OrderTypeLimit || params.OrderType == core.OrderTypeMakerOnly {
 		if params.Price == nil {
@@ -370,9 +368,7 @@ func (a *TradeAdapter) DoBatchPlaceOrder(
 			Sz:      p.Quantity,
 			ClOrdID: p.ClientOrderID,
 		}
-		if p.TradeType == core.TradeTypeSpot {
-			req.TgtCcy = "base_ccy"
-		}
+		req.TgtCcy = "base_ccy"
 		if p.OrderType == core.OrderTypeLimit || p.OrderType == core.OrderTypeMakerOnly {
 			if p.Price != nil {
 				req.Px = *p.Price
@@ -651,6 +647,7 @@ type placeAlgoOrderRequest struct {
 	Side        string `json:"side"`
 	OrdType     string `json:"ordType"`
 	Sz          string `json:"sz"`
+	TgtCcy      string `json:"tgtCcy,omitempty"`
 	PosSide     string `json:"posSide,omitempty"`
 	ReduceOnly  string `json:"reduceOnly,omitempty"`
 	AlgoClOrdID string `json:"algoClOrdId,omitempty"`
@@ -747,7 +744,8 @@ func (a *TradeAdapter) PlaceStrategyOrder(ctx context.Context, params core.Strat
 		OrdType: toRawStrategyOrderType(params.StrategyType),
 		Sz:      strconv.FormatFloat(params.Quantity, 'f', -1, 64),
 	}
-	fmt.Println(1111, instID, req.Sz)
+	req.TgtCcy = "base_ccy"
+
 	if params.TradeType != core.TradeTypeSpot && params.PositionSide != nil {
 		req.PosSide = string(*params.PositionSide)
 	}
