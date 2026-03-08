@@ -38,7 +38,7 @@ steps:
   - name: build-service
     image: python:3.12-slim
     environment:
-      POETRY_VERSION: "1.8.3"
+      POETRY_VERSION: "2.3.2"
     volumes:
       - name: pip-cache
         path: /root/.cache
@@ -50,24 +50,19 @@ steps:
 
       - pip install --no-cache-dir "poetry==$POETRY_VERSION"
 
-      - echo "== Install prebuilt hquant wheel =="
-      - pip install wheels/hquant-*.whl
-      - pip install ./packages/logger-py
+      - echo "== Build local wheels =="
       - pip wheel ./packages/logger-py -w /drone/src/wheels
 
-      - echo "== Install local path packages =="
-      - cd apps/strategy-engine
-      - poetry install --only main --no-interaction --no-ansi --no-directory
-
-      - echo "== Run tests (if exist) =="
-      - poetry run pytest tests/ || true
-
       - echo "== Build service wheel =="
+      - cd apps/strategy-engine
       - poetry build -f wheel -n
+      - poetry export --only main -f requirements.txt --without-hashes -o /drone/src/requirements.txt
+      - sed -i '/^hquant[=<>@ ]/d;/^hquant-logger[=<>@ ]/d' /drone/src/requirements.txt
 
       - echo "== Package release artifact =="
       - cd /drone/src
       - mkdir -p release/strategy-engine/dist release/strategy-engine/wheels
+      - cp /drone/src/requirements.txt release/strategy-engine/requirements.txt
       - cp apps/strategy-engine/pyproject.toml release/strategy-engine/
       - cp apps/strategy-engine/poetry.lock release/strategy-engine/
       - cp -r apps/strategy-engine/app release/strategy-engine/
