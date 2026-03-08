@@ -58,7 +58,7 @@ steps:
       - cd apps/strategy-engine
       - poetry build -f wheel -n
       - poetry export --only main -f requirements.txt --without-hashes -o /drone/src/requirements.txt
-      - sed -i '/^hquant[=<>@ ]/d;/^hquant-logger[=<>@ ]/d' /drone/src/requirements.txt
+      - sed -i '/^hquant[=<>@ ]/d;/^hquant-logger[=<>@ ]/d;/packages\\/hquant-py/d;/packages\\/logger-py/d' /drone/src/requirements.txt
 
       - echo "== Package release artifact =="
       - cd /drone/src
