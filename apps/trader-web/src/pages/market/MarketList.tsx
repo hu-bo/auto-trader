@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   Card,
   Typography,
@@ -16,14 +16,15 @@ import {
   Checkbox,
 } from '@douyinfe/semi-ui-19'
 import { IconSearch, IconFilter, IconTick } from '@douyinfe/semi-icons'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { SymbolCard } from '@/components/market/SymbolCard'
 import { StrategyOrderForm } from '@/components/trading/StrategyOrderForm'
-import { BatchStrategyOrderForm } from '@/components/trading/BatchStrategyOrderForm'
+import { BatchAlgoOrderForm } from '@/components/trading/BatchAlgoOrderForm'
 import { marketApi } from '@/api'
 import { batchOrderApi } from '@/api/batch-order'
 import { useAppStore } from '@/stores/appStore'
+import { useMarketStore, getMarketSymbolsKey } from '@/stores/marketStore'
 import { useNavigateKeepParams } from '@/hooks'
 import type { TickerData } from '@/api/market'
 
@@ -49,7 +50,11 @@ const MarketList: React.FC = () => {
   const { selectedExchange, tradingTradeType, setTradingTradeType } = useAppStore()
   const [searchParams] = useSearchParams()
   const navigate = useNavigateKeepParams()
+  const queryClient = useQueryClient()
   const exchange = selectedExchange?.exchangeType?.toLowerCase() || 'binance'
+  const symbolsKey = getMarketSymbolsKey(exchange, tradingTradeType)
+  const syncEnabledByKey = useMarketStore((state) => state.syncEnabledByKey)
+  const fetchSymbols = useMarketStore((state) => state.fetchSymbols)
   const exchangeIdFromUrl = useMemo(() => {
     const exchangeId = Number(searchParams.get('exchangeId'))
     return Number.isFinite(exchangeId) && exchangeId > 0 ? exchangeId : undefined
@@ -80,10 +85,26 @@ const MarketList: React.FC = () => {
   })
 
   const symbols = symbolsData?.tickers || []
+  const syncEnabledSymbols = syncEnabledByKey[symbolsKey] || []
+  const hasSyncEnabledLoaded = Object.prototype.hasOwnProperty.call(syncEnabledByKey, symbolsKey)
+  const syncEnabledSet = useMemo(
+    () => new Set(syncEnabledSymbols.map((s) => s.symbol)),
+    [syncEnabledSymbols]
+  )
+
+  useEffect(() => {
+    fetchSymbols(exchange, tradingTradeType)
+  }, [exchange, tradingTradeType, fetchSymbols])
 
   // Apply filter + search + sort
   const filteredSymbols = useMemo(() => {
     let result = [...symbols]
+
+    result.forEach((s) => {
+      if (syncEnabledSet.has(s.symbol)) {
+        s.syncEnabled = true
+      }
+    })
 
     // Apply filter (front-end based)
     if (filterType !== 'none') {
@@ -114,7 +135,7 @@ const MarketList: React.FC = () => {
     }
 
     return result
-  }, [symbols, searchText, sortType, filterType, topN])
+  }, [symbols, searchText, sortType, filterType, topN, hasSyncEnabledLoaded, syncEnabledSet])
 
   const handleSymbolClick = (symbol: string) => {
     setSelectedSymbols((prev) => {
@@ -144,17 +165,13 @@ const MarketList: React.FC = () => {
     setSelectedSymbols(new Set())
   }
 
-  const handleCreateStrategy = () => {
-    if (selectedSymbols.size === 1) {
-      const sym = [...selectedSymbols][0]
-      const data = symbols.find((s) => s.symbol === sym)
-      if (data) {
-        setSelectedSymbol(data)
-        setStrategyModalVisible(true)
-      }
-    } else {
-      setStrategyModalVisible(true)
-    }
+  const handleCreateStrategy = (data: TickerData) => {
+    setSelectedSymbol(data)
+    setStrategyModalVisible(true)
+  }
+
+  const handleViewStrategy = (strategyOrderId: number | string) => {
+    navigate(`/strategy-orders/${strategyOrderId}`)
   }
 
   const handleBatchOrder = async (params: any) => {
@@ -168,11 +185,40 @@ const MarketList: React.FC = () => {
 
     try {
       const result = await batchOrderApi.placeBatchStrategy(payload)
+      const successCount = result.successCount ?? (result as any).success_count ?? 0
+      const failedCount = result.failedCount ?? (result as any).failed_count ?? 0
+      const resultSymbols = (result.symbols && result.symbols.length > 0) ? result.symbols : syms
+      const resultList = Array.isArray(result.results) ? result.results : []
       Modal.info({
         title: '批量下单结果',
-        content: `成功: ${result.success_count}, 失败: ${result.failed_count}`,
-        afterClose: () => {
-          if (result.success_count > 0) navigate('/orders')
+        content: (
+          <div>
+            <div style={{ marginBottom: 8 }}>
+              成功: {successCount}, 失败: {failedCount}
+            </div>
+            <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+              {resultSymbols.map((symbol, idx) => {
+                const item = resultList[idx]
+                const success = !!item?.success
+                const message = success ? '成功' : (item?.error?.message || '下单失败')
+                return (
+                  <div key={`${symbol}-${idx}`} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                    <Text strong>{symbol}</Text>
+                    <Text type={success ? 'success' : 'danger'}>{message}</Text>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ),
+        onOk() {
+          if (successCount > 0) {
+            queryClient.invalidateQueries({ queryKey: ['orders'] })
+            navigate('/orders')
+          }
+        },
+        onCancel(e) {
+
         },
       })
     } catch (err: any) {
@@ -224,11 +270,8 @@ const MarketList: React.FC = () => {
           {(
             <>
               <Tag color="blue">已选 {selectionCount} 个</Tag>
-              <Button type="primary" theme="solid" size="small" onClick={handleCreateStrategy} disabled={selectionCount==0}>
-                创建策略
-              </Button>
-              <Button theme="light" size="small" onClick={() => setBatchOrderModalVisible(true)} disabled={selectionCount==0}>
-                创建条件单
+              <Button theme="light" size="small" onClick={() => setBatchOrderModalVisible(true)} disabled={selectionCount == 0}>
+                创建条件委托单
               </Button>
               <Text type="tertiary" size="small">提示：条件单基于交易所官方条件单能力</Text>
             </>
@@ -257,7 +300,13 @@ const MarketList: React.FC = () => {
                   border: selectedSymbols.has(symbol.symbol) ? '2px solid var(--semi-color-primary)' : '2px solid transparent',
                   borderRadius: 10,
                 }}>
-                  <SymbolCard data={symbol} onClick={handleSymbolClick} />
+                  <SymbolCard
+                    data={symbol}
+                    onClick={handleSymbolClick}
+                    onCreateStrategy={handleCreateStrategy}
+                    onViewStrategy={handleViewStrategy}
+                    syncEnabled={symbol.syncEnabled}
+                  />
                 </div>
               </div>
             ))}
@@ -302,19 +351,19 @@ const MarketList: React.FC = () => {
 
       {/* Strategy Order Modal */}
       <Modal
-        title={selectedSymbol ? `创建策略订单 - ${selectedSymbol.symbol}` : `批量创建策略订单 (${selectionCount} 个)`}
+        title={selectedSymbol ? `创建策略订单 - ${selectedSymbol.symbol}` : '创建策略订单'}
         visible={strategyModalVisible}
         onCancel={() => { setStrategyModalVisible(false); setSelectedSymbol(null) }}
-        footer={<div style={{height: '1px'}}/>}
+        footer={<div style={{ height: '1px' }} />}
         width={600}
       >
         <StrategyOrderForm
-          key={strategyModalVisible ? `open-${selectedSymbol?.symbol ?? [...selectedSymbols].join(',')}` : 'closed'}
+          key={strategyModalVisible ? `open-${selectedSymbol?.symbol ?? 'new'}` : 'closed'}
           tradeType={tradingTradeType}
           exchangeId={exchangeIdFromUrl}
-          defaultSymbol={selectedSymbol ? [selectedSymbol.symbol] : [...selectedSymbols]}
+          defaultSymbol={selectedSymbol ? [selectedSymbol.symbol] : []}
           defaultExchange={exchange}
-          onSuccess={() => { setStrategyModalVisible(false); setSelectedSymbol(null); setSelectedSymbols(new Set()) }}
+          onSuccess={() => { setStrategyModalVisible(false); setSelectedSymbol(null) }}
         />
       </Modal>
 
@@ -323,10 +372,10 @@ const MarketList: React.FC = () => {
         title={`创建条件单 (${selectionCount} 个交易对)`}
         visible={batchOrderModalVisible}
         onCancel={() => setBatchOrderModalVisible(false)}
-        footer={<div style={{height: '1px'}}/>}
+        footer={<div style={{ height: '1px' }} />}
         width={600}
       >
-        <BatchStrategyOrderForm
+        <BatchAlgoOrderForm
           tradeType={tradingTradeType}
           onSubmit={handleBatchOrder}
         />

@@ -56,30 +56,57 @@ export interface RiskConfigPreset {
 // 策略订单
 export interface StrategyOrder {
   id: string
-  user_id: string
-  strategy_id: string
-  strategy_name: string
-  strategy_params: Record<string, unknown>
-  exchange_id: string
-  exchange_name: string
-  exchange_type: string
-  trade_type: string
+  userid: string
+  strategyId: string
+  strategyName: string
+  strategyParams: Record<string, unknown>
+  exchangeId: string
+  exchangeName: string
+  exchangeType: string
+  tradeType: string
+  leverage: number
+  orderType: string
   symbols: string[]
-  risk_config: RiskConfig
+  riskConfigId: string | null
+  riskConfig: RiskConfig
+  buyPriceOffsetPercent: number
+  sellPriceOffsetPercent: number
+  stopLossPercent: number
+  takeProfitPercent: number
+  amountBuy: number
+  amountSell: number
+  amountBuyLong: number
+  amountSellLong: number
+  amountBuyShort: number
+  amountSellShort: number
   live: boolean
-  is_running: boolean
-  started_at: string | null
-  stopped_at: string | null
-  created_at: string
-  updated_at: string
+  isRunning: boolean
+  startedAt: string | null
+  stoppedAt: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface StrategyOrderCreate {
   strategyId: string
   exchangeId: string
   tradeType?: string
+  leverage?: number
+  orderType?: string
   symbols: string[]
   riskConfig?: RiskConfig
+  buyPriceOffsetPercent?: number
+  sellPriceOffsetPercent?: number
+  stopLossPercent?: number
+  takeProfitPercent?: number
+  // spot 金额
+  amountBuy?: number
+  amountSell?: number
+  // futures 金额
+  amountBuyLong?: number
+  amountSellLong?: number
+  amountBuyShort?: number
+  amountSellShort?: number
   live?: boolean
 }
 
@@ -87,6 +114,20 @@ export interface StrategyOrderUpdate {
   strategyId?: string
   symbols?: string[]
   riskConfig?: RiskConfig
+  leverage?: number
+  orderType?: string
+  buyPriceOffsetPercent?: number
+  sellPriceOffsetPercent?: number
+  stopLossPercent?: number
+  takeProfitPercent?: number
+  // spot 金额
+  amountBuy?: number
+  amountSell?: number
+  // futures 金额
+  amountBuyLong?: number
+  amountSellLong?: number
+  amountBuyShort?: number
+  amountSellShort?: number
   live?: boolean
 }
 

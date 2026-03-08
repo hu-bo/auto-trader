@@ -56,6 +56,8 @@ export interface TickerData {
   // 正在执行的策略/条件单数量
   runningStrategies?: number
   runningConditionals?: number
+  runningStrategyId?: number
+  syncEnabled?: boolean
 }
 
 export interface GetCandlesParams {

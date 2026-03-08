@@ -19,32 +19,32 @@ import (
 var logTicker = logger.Module("ticker-sync")
 
 type TickerSyncService struct {
-	redis         *storage.RedisClient
-	binanceWS     *binanceAdapter.WsPublicAdapter
-	okxWS         *okxAdapter.WsPublicAdapter
-	mu            sync.RWMutex
-	stopChan      chan struct{}
-	wg            sync.WaitGroup
-	tickerCache   map[string]*TickerData
-	cacheMu       sync.RWMutex
-	volumeFilter  float64
-	proxySOCKS    string
+	redis        *storage.RedisClient
+	binanceWS    *binanceAdapter.WsPublicAdapter
+	okxWS        *okxAdapter.WsPublicAdapter
+	mu           sync.RWMutex
+	stopChan     chan struct{}
+	wg           sync.WaitGroup
+	tickerCache  map[string]*TickerData
+	cacheMu      sync.RWMutex
+	volumeFilter float64
+	proxySOCKS   string
 }
 
 type TickerData struct {
-	Exchange      string  `json:"exchange"`
-	Symbol        string  `json:"symbol"`
-	TradeType     string  `json:"tradeType"`
-	LastPrice     float64 `json:"lastPrice"`
-	LastSz        float64 `json:"lastSz"`
-	PriceChange   float64 `json:"priceChange"`
+	Exchange       string  `json:"exchange"`
+	Symbol         string  `json:"symbol"`
+	TradeType      string  `json:"tradeType"`
+	LastPrice      float64 `json:"lastPrice"`
+	LastSz         float64 `json:"lastSz"`
+	PriceChange    float64 `json:"priceChange"`
 	PriceChangePct float64 `json:"priceChangePct"`
-	High24h       float64 `json:"high24h"`
-	Low24h        float64 `json:"low24h"`
-	Volume24h     float64 `json:"volume24h"`
-	QuoteVolume   float64 `json:"quoteVolume24h"`
-	Timestamp     int64   `json:"timestamp"`
-	UpdatedAt     int64   `json:"updatedAt"`
+	High24h        float64 `json:"high24h"`
+	Low24h         float64 `json:"low24h"`
+	Volume24h      float64 `json:"volume24h"`
+	QuoteVolume    float64 `json:"quoteVolume24h"`
+	Timestamp      int64   `json:"timestamp"`
+	UpdatedAt      int64   `json:"updatedAt"`
 }
 
 func NewTickerSyncService(redis *storage.RedisClient, proxyHTTP, proxySOCKS string) *TickerSyncService {
@@ -91,12 +91,12 @@ func (s *TickerSyncService) Start(ctx context.Context) error {
 
 	// Initialize active symbols (filter by volume)
 	tradeTypes := []marketdata.TradeType{marketdata.Spot, marketdata.Futures}
-	
+
 	logTicker.Info().Msg("Initializing Binance symbols...")
 	if err := s.binanceWS.InitSymbols(ctx, tradeTypes, nil, s.volumeFilter); err != nil {
 		return fmt.Errorf("failed to initialize Binance symbols: %w", err)
 	}
-	
+
 	logTicker.Info().Msg("Initializing OKX symbols...")
 	if err := s.okxWS.InitSymbols(ctx, tradeTypes, nil, s.volumeFilter); err != nil {
 		return fmt.Errorf("failed to initialize OKX symbols: %w", err)
@@ -129,13 +129,19 @@ func (s *TickerSyncService) Start(ctx context.Context) error {
 
 	// Subscribe to ticker streams
 	logTicker.Info().Msg("Subscribing to Binance ticker streams...")
-	if err := s.binanceWS.SubMultiPeriodCandles(tradeTypes); err != nil {
-		return fmt.Errorf("failed to subscribe Binance tickers: %w", err)
+	binanceSubErr := s.binanceWS.SubMultiPeriodCandles(tradeTypes)
+	if binanceSubErr != nil {
+		logTicker.Error().Err(binanceSubErr).Msg("Failed to subscribe Binance tickers")
 	}
 
 	logTicker.Info().Msg("Subscribing to OKX ticker streams...")
-	if err := s.okxWS.SubMultiPeriodCandles(tradeTypes); err != nil {
-		return fmt.Errorf("failed to subscribe OKX tickers: %w", err)
+	okxSubErr := s.okxWS.SubMultiPeriodCandles(tradeTypes)
+	if okxSubErr != nil {
+		logTicker.Error().Err(okxSubErr).Msg("Failed to subscribe OKX tickers")
+	}
+
+	if binanceSubErr != nil && okxSubErr != nil {
+		return fmt.Errorf("failed to subscribe ticker streams: binance=%v, okx=%v", binanceSubErr, okxSubErr)
 	}
 
 	logTicker.Info().Msg("Ticker streams subscribed successfully")
@@ -162,7 +168,7 @@ func (s *TickerSyncService) Stop() {
 
 func (s *TickerSyncService) handleBinanceTicker(ticker marketdata.TickerUpdate) {
 	now := time.Now().UnixMilli()
-	
+
 	tickerData := &TickerData{
 		Exchange:       "binance",
 		Symbol:         ticker.Symbol,
@@ -180,7 +186,7 @@ func (s *TickerSyncService) handleBinanceTicker(ticker marketdata.TickerUpdate) 
 	}
 
 	key := s.getTickerKey("binance", ticker.Symbol, string(ticker.TradeType))
-	
+
 	s.cacheMu.Lock()
 	s.tickerCache[key] = tickerData
 	s.cacheMu.Unlock()
@@ -188,7 +194,7 @@ func (s *TickerSyncService) handleBinanceTicker(ticker marketdata.TickerUpdate) 
 
 func (s *TickerSyncService) handleOKXTicker(ticker marketdata.TickerUpdate) {
 	now := time.Now().UnixMilli()
-	
+
 	tickerData := &TickerData{
 		Exchange:       "okx",
 		Symbol:         ticker.Symbol,
@@ -206,7 +212,6 @@ func (s *TickerSyncService) handleOKXTicker(ticker marketdata.TickerUpdate) {
 	}
 
 	key := s.getTickerKey("okx", ticker.Symbol, string(ticker.TradeType))
-	
 	s.cacheMu.Lock()
 	s.tickerCache[key] = tickerData
 	s.cacheMu.Unlock()
@@ -263,7 +268,7 @@ func (s *TickerSyncService) getTickerKey(exchange, symbol, tradeType string) str
 
 func (s *TickerSyncService) GetTicker(ctx context.Context, exchange, symbol, tradeType string) (*TickerData, error) {
 	key := s.getTickerKey(exchange, symbol, tradeType)
-	
+
 	// Try cache first
 	s.cacheMu.RLock()
 	if ticker, ok := s.tickerCache[key]; ok {

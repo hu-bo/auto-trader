@@ -43,14 +43,14 @@ const Orders: React.FC = () => {
   })
 
   const cancelMutation = useMutation({
-    mutationFn: ({ orderid, exchangeId }: { orderid: string; exchangeId: string }) =>
-      orderApi.cancel(orderid, { exchangeId }),
+    mutationFn: ({ orderid }: { orderid: string }) =>
+      orderApi.cancel(orderid),
     onSuccess: () => {
       Toast.success('订单已取消')
       queryClient.invalidateQueries({ queryKey: ['orders'] })
     },
     onError: (error: Error) => {
-      Toast.error(error.message || '取消失败')
+      console.error('cancel', error.message)
     },
   })
 

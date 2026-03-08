@@ -38,21 +38,51 @@ export class StrategyOrder {
   @Column({ name: 'trade_type', type: 'varchar', length: 32, default: 'spot' })
   tradeType!: string;
 
+  @Column({ name: 'order_type', type: 'varchar', length: 32, default: 'limit' })
+  orderType!: string;
+
+  @Column({ type: 'int', default: 10 })
+  leverage!: number;
+
+  @Column({ name: 'buy_price_offset_percent', type: 'float', default: 1 })
+  buyPriceOffsetPercent!: number;
+
+  @Column({ name: 'sell_price_offset_percent', type: 'float', default: 1 })
+  sellPriceOffsetPercent!: number;
+
+  @Column({ name: 'stop_loss_percent', type: 'float', default: 2 })
+  stopLossPercent!: number;
+
+  @Column({ name: 'take_profit_percent', type: 'float', default: 5 })
+  takeProfitPercent!: number;
+
   @Column({ type: 'jsonb', default: [] })
   symbols!: string[];
+
+  @Column({ name: 'amount_buy', default: 0 })
+  amountBuy!: number;
+
+  @CreateDateColumn({ name: 'amount_sell', default: 0 })
+  amountSell!: number;
+
+  @Column({ name: 'amount_buy_long', default: 0 })
+  amountBuyLong!: number;
+
+  @CreateDateColumn({ name: 'amount_sell_long',  default: 0 })
+  amountSellLong!: number;
+
+  @Column({ name: 'amount_buy_short', default: 0 })
+  amountBuyShort!: number;
+
+  @CreateDateColumn({ name: 'amount_sell_short',  default: 0 })
+  amountSellShort!: number;
 
   @Column({ type: 'boolean', default: false })
   live!: boolean;
 
   @Column({ name: 'is_running', type: 'boolean', default: false })
   isRunning!: boolean;
-
-  @Column({ name: 'started_at', type: 'date', nullable: true })
-  startedAt!: Date | null;
-
-  @Column({ name: 'stopped_at', type: 'date', nullable: true })
-  stoppedAt!: Date | null;
-
+  
   @CreateDateColumn({ name: 'created_at', type: 'date' })
   createdAt!: Date;
 

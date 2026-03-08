@@ -105,8 +105,9 @@ const Dashboard: React.FC = () => {
   })
 
   const { data: strategyOrders } = useQuery({
-    queryKey: ['strategy-orders'],
-    queryFn: () => strategyOrderApi.list(),
+    queryKey: ['strategy-orders', 1, 50],
+    queryFn: () => strategyOrderApi.list({ page: 1, pageSize: 50 }),
+    refetchInterval: 5000,
   })
 
   const { data: positions } = useQuery({
@@ -116,9 +117,10 @@ const Dashboard: React.FC = () => {
         ? positionApi.list({ exchangeId: selectedExchange.id })
         : Promise.resolve({ positions: [], total: 0 }),
     enabled: !!selectedExchange,
+    refetchInterval: 10000,
   })
 
-  const runningStrategies = strategyOrders?.data?.filter((s) => s.is_running) || []
+  const runningStrategies = strategyOrders?.data?.filter((s) => s.isRunning) || []
   const totalPositions = positions?.positions?.length || 0
 
   if (loadingStats) {
@@ -200,9 +202,9 @@ const Dashboard: React.FC = () => {
                     }}
                   >
                     <div>
-                      <Text strong>{order.strategy_id}</Text>
+                      <Text strong>{order.strategyName || order.strategyId}</Text>
                       <div style={{ marginTop: 4 }}>
-                        {order.symbols.map((symbol) => (
+                        {order.symbols?.map((symbol) => (
                           <Tag key={symbol} size="small" style={{ marginRight: 4 }}>
                             {symbol}
                           </Tag>

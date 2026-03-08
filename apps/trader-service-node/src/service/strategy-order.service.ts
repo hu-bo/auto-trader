@@ -11,8 +11,22 @@ type StrategyOrderCreateParams = {
   strategyId: number;
   exchangeId: number;
   tradeType?: string;
+  orderType?: string;
+  leverage?: number;
   symbols: string[];
   riskConfig?: Record<string, unknown>;
+  buyPriceOffsetPercent?: number;
+  sellPriceOffsetPercent?: number;
+  stopLossPercent?: number;
+  takeProfitPercent?: number;
+  // spot 金额
+  amountBuy?: number;
+  amountSell?: number;
+  // futures 金额
+  amountBuyLong?: number;
+  amountSellLong?: number;
+  amountBuyShort?: number;
+  amountSellShort?: number;
   live?: boolean;
 };
 
@@ -20,6 +34,20 @@ type StrategyOrderUpdateParams = {
   strategyId?: number | null;
   symbols?: string[] | null;
   riskConfig?: Record<string, unknown> | null;
+  orderType?: string | null;
+  leverage?: number | null;
+  buyPriceOffsetPercent?: number | null;
+  sellPriceOffsetPercent?: number | null;
+  stopLossPercent?: number | null;
+  takeProfitPercent?: number | null;
+  // spot 金额
+  amountBuy?: number | null;
+  amountSell?: number | null;
+  // futures 金额
+  amountBuyLong?: number | null;
+  amountSellLong?: number | null;
+  amountBuyShort?: number | null;
+  amountSellShort?: number | null;
   live?: boolean | null;
 };
 
@@ -79,6 +107,40 @@ export class StrategyOrderService {
     return result;
   }
 
+  /** Convert StrategyOrder entity to JSON response (camelCase) */
+  toJson(order: StrategyOrder) {
+    return {
+      id: order.id,
+      userid: order.userid,
+      strategyId: order.strategyId,
+      strategyName: order.strategy?.name || '',
+      strategyParams: order.strategy?.params ?? {},
+      exchangeId: order.exchangeId,
+      exchangeName: order.exchange?.name || '',
+      exchangeType: order.exchange?.exchangeType || '',
+      tradeType: order.tradeType,
+      orderType: order.orderType,
+      leverage: order.leverage,
+      symbols: order.symbols ?? [],
+      riskConfigId: order.riskConfig?.id ?? null,
+      riskConfig: this.riskConfigToDict(order.riskConfig),
+      buyPriceOffsetPercent: order.buyPriceOffsetPercent ?? 1,
+      sellPriceOffsetPercent: order.sellPriceOffsetPercent ?? 1,
+      stopLossPercent: order.stopLossPercent ?? 2,
+      takeProfitPercent: order.takeProfitPercent ?? 5,
+      amountBuy: order.amountBuy ?? 0,
+      amountSell: order.amountSell ?? 0,
+      amountBuyLong: order.amountBuyLong ?? 0,
+      amountSellLong: order.amountSellLong ?? 0,
+      amountBuyShort: order.amountBuyShort ?? 0,
+      amountSellShort: order.amountSellShort ?? 0,
+      live: order.live,
+      isRunning: order.isRunning,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    };
+  }
+
   async listForUser(userid: number, page = 1, pageSize = 20): Promise<{ data: StrategyOrder[]; total: number }> {
     const repo = this.requireRepo();
     const [data, total] = await repo.findAndCount({
@@ -100,11 +162,21 @@ export class StrategyOrderService {
       strategyId: params.strategyId,
       exchangeId: params.exchangeId,
       tradeType: params.tradeType ?? 'spot',
+      orderType: params.orderType ?? 'limit',
+      leverage: params.leverage ?? 10,
       symbols: params.symbols,
+      buyPriceOffsetPercent: params.buyPriceOffsetPercent ?? 1,
+      sellPriceOffsetPercent: params.sellPriceOffsetPercent ?? 1,
+      stopLossPercent: params.stopLossPercent ?? 2,
+      takeProfitPercent: params.takeProfitPercent ?? 5,
+      amountBuy: params.amountBuy ?? 0,
+      amountSell: params.amountSell ?? 0,
+      amountBuyLong: params.amountBuyLong ?? 0,
+      amountSellLong: params.amountSellLong ?? 0,
+      amountBuyShort: params.amountBuyShort ?? 0,
+      amountSellShort: params.amountSellShort ?? 0,
       live: params.live ?? false,
       isRunning: false,
-      startedAt: null,
-      stoppedAt: null,
     });
     const savedOrder = await repo.save(order);
 
@@ -148,6 +220,27 @@ export class StrategyOrderService {
     if (patch.strategyId !== undefined && patch.strategyId !== null) order.strategyId = patch.strategyId;
     if (patch.symbols !== undefined && patch.symbols !== null) order.symbols = patch.symbols;
     if (patch.live !== undefined && patch.live !== null) order.live = patch.live;
+    if (patch.orderType !== undefined && patch.orderType !== null) order.orderType = patch.orderType;
+    if (patch.leverage !== undefined && patch.leverage !== null) order.leverage = patch.leverage;
+    if (patch.buyPriceOffsetPercent !== undefined && patch.buyPriceOffsetPercent !== null) {
+      order.buyPriceOffsetPercent = patch.buyPriceOffsetPercent;
+    }
+    if (patch.sellPriceOffsetPercent !== undefined && patch.sellPriceOffsetPercent !== null) {
+      order.sellPriceOffsetPercent = patch.sellPriceOffsetPercent;
+    }
+    if (patch.stopLossPercent !== undefined && patch.stopLossPercent !== null) {
+      order.stopLossPercent = patch.stopLossPercent;
+    }
+    if (patch.takeProfitPercent !== undefined && patch.takeProfitPercent !== null) {
+      order.takeProfitPercent = patch.takeProfitPercent;
+    }
+    // 金额字段
+    if (patch.amountBuy !== undefined && patch.amountBuy !== null) order.amountBuy = patch.amountBuy;
+    if (patch.amountSell !== undefined && patch.amountSell !== null) order.amountSell = patch.amountSell;
+    if (patch.amountBuyLong !== undefined && patch.amountBuyLong !== null) order.amountBuyLong = patch.amountBuyLong;
+    if (patch.amountSellLong !== undefined && patch.amountSellLong !== null) order.amountSellLong = patch.amountSellLong;
+    if (patch.amountBuyShort !== undefined && patch.amountBuyShort !== null) order.amountBuyShort = patch.amountBuyShort;
+    if (patch.amountSellShort !== undefined && patch.amountSellShort !== null) order.amountSellShort = patch.amountSellShort;
 
     // Update risk config in the related table
     if (patch.riskConfig !== undefined && patch.riskConfig !== null) {
@@ -192,8 +285,6 @@ export class StrategyOrderService {
     const order = await this.get(userid, orderId);
 
     order.isRunning = true;
-    order.startedAt = new Date();
-    order.stoppedAt = null;
     const saved = await repo.save(order);
 
     // Call strategy-engine gRPC for each symbol
@@ -218,7 +309,6 @@ export class StrategyOrderService {
     } catch (err) {
       // Rollback DB state on gRPC failure
       order.isRunning = false;
-      order.startedAt = null;
       await repo.save(order);
       throw err;
     }
@@ -245,7 +335,6 @@ export class StrategyOrderService {
     }
 
     order.isRunning = false;
-    order.stoppedAt = new Date();
     return await repo.save(order);
   }
 }

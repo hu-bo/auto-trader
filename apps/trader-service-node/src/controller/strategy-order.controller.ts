@@ -34,28 +34,6 @@ export class StrategyOrderController {
     return user.id;
   }
 
-  private toStrategyOrderRead(order: any) {
-    return {
-      id: order.id,
-      user_id: order.userid,
-      strategy_id: order.strategyId,
-      strategy_name: order.strategy?.name || '',
-      strategy_params: order.strategy?.params ?? {},
-      exchange_id: order.exchangeId,
-      exchange_name: order.exchange?.name || '',
-      exchange_type: order.exchange?.exchangeType || '',
-      trade_type: order.tradeType,
-      symbols: order.symbols ?? [],
-      risk_config: this.strategyOrderService.riskConfigToDict(order.riskConfig),
-      live: order.live,
-      is_running: order.isRunning,
-      started_at: order.startedAt,
-      stopped_at: order.stoppedAt,
-      created_at: order.createdAt,
-      updated_at: order.updatedAt,
-    };
-  }
-
   @Get('/')
   async list(@Query() query: ListStrategyOrderQueryDTO) {
     const userid = await this.getUserid();
@@ -63,7 +41,7 @@ export class StrategyOrderController {
     const pageSize = query.pageSize ?? 20;
     const { data, total } = await this.strategyOrderService.listForUser(userid, page, pageSize);
     return apiOk({
-      data: data.map(o => this.toStrategyOrderRead(o)),
+      data: data.map(o => this.strategyOrderService.toJson(o)),
       total,
       page,
       pageSize,
@@ -71,9 +49,7 @@ export class StrategyOrderController {
   }
 
   @Post('/')
-  async create(
-    @Body() body: CreateStrategyOrderBodyDTO
-  ) {
+  async create(@Body() body: CreateStrategyOrderBodyDTO) {
     const userid = await this.getUserid();
     await this.strategyService.get(userid, body.strategyId);
     await this.exchangeService.get(userid, body.exchangeId);
@@ -83,33 +59,54 @@ export class StrategyOrderController {
       strategyId: body.strategyId,
       exchangeId: body.exchangeId,
       tradeType: body.tradeType,
+      orderType: body.orderType,
+      leverage: body.leverage ?? undefined,
       symbols: body.symbols,
       riskConfig: body.riskConfig ?? {},
+      buyPriceOffsetPercent: body.buyPriceOffsetPercent ?? undefined,
+      sellPriceOffsetPercent: body.sellPriceOffsetPercent ?? undefined,
+      stopLossPercent: body.stopLossPercent ?? undefined,
+      takeProfitPercent: body.takeProfitPercent ?? undefined,
+      amountBuy: body.amountBuy ?? 0,
+      amountSell: body.amountSell ?? 0,
+      amountBuyLong: body.amountBuyLong ?? 0,
+      amountSellLong: body.amountSellLong ?? 0,
+      amountBuyShort: body.amountBuyShort ?? 0,
+      amountSellShort: body.amountSellShort ?? 0,
       live: body.live ?? false,
     });
-    return apiOk(this.toStrategyOrderRead(order));
+    return apiOk(this.strategyOrderService.toJson(order));
   }
 
   @Get('/:id')
   async get(@Param() params: StrategyOrderIdParamDTO) {
     const userid = await this.getUserid();
     const order = await this.strategyOrderService.get(userid, params.id);
-    return apiOk(this.toStrategyOrderRead(order));
+    return apiOk(this.strategyOrderService.toJson(order));
   }
 
   @Put('/:id')
-  async update(
-    @Param() params: StrategyOrderIdParamDTO,
-    @Body() body: UpdateStrategyOrderBodyDTO
-  ) {
+  async update(@Param() params: StrategyOrderIdParamDTO, @Body() body: UpdateStrategyOrderBodyDTO) {
     const userid = await this.getUserid();
     const order = await this.strategyOrderService.update(userid, params.id, {
       strategyId: body?.strategyId ?? undefined,
       symbols: body?.symbols ?? undefined,
       riskConfig: body?.riskConfig ?? undefined,
+      orderType: body?.orderType ?? undefined,
+      leverage: body?.leverage ?? undefined,
+      buyPriceOffsetPercent: body?.buyPriceOffsetPercent ?? undefined,
+      sellPriceOffsetPercent: body?.sellPriceOffsetPercent ?? undefined,
+      stopLossPercent: body?.stopLossPercent ?? undefined,
+      takeProfitPercent: body?.takeProfitPercent ?? undefined,
+      amountBuy: body?.amountBuy ?? undefined,
+      amountSell: body?.amountSell ?? undefined,
+      amountBuyLong: body?.amountBuyLong ?? undefined,
+      amountSellLong: body?.amountSellLong ?? undefined,
+      amountBuyShort: body?.amountBuyShort ?? undefined,
+      amountSellShort: body?.amountSellShort ?? undefined,
       live: body?.live ?? undefined,
     });
-    return apiOk(this.toStrategyOrderRead(order));
+    return apiOk(this.strategyOrderService.toJson(order));
   }
 
   @Del('/:id')
@@ -123,14 +120,14 @@ export class StrategyOrderController {
   async start(@Param() params: StrategyOrderIdParamDTO) {
     const userid = await this.getUserid();
     const order = await this.strategyOrderService.start(userid, params.id);
-    return apiOk(this.toStrategyOrderRead(order));
+    return apiOk(this.strategyOrderService.toJson(order));
   }
 
   @Post('/:id/stop')
   async stop(@Param() params: StrategyOrderIdParamDTO) {
     const userid = await this.getUserid();
     const order = await this.strategyOrderService.stop(userid, params.id);
-    return apiOk(this.toStrategyOrderRead(order));
+    return apiOk(this.strategyOrderService.toJson(order));
   }
 
   @Get('/:id/stats')

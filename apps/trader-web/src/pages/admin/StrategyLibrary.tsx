@@ -18,6 +18,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { strategyApi } from '@/api'
 import { StrategyEditor } from '@/components/editor/StrategyEditor'
 import { formatDateTime } from '@/utils/format'
+import { useNavigateKeepParams } from '@/hooks'
 import type { Strategy, StrategyTag, StrategyStatus } from '@/types'
 
 const { Title } = Typography
@@ -183,6 +184,7 @@ IF sim > 0.85 THEN BUY("pattern match")
 `
 
 const StrategyLibrary: React.FC = () => {
+  const navigate = useNavigateKeepParams()
   const queryClient = useQueryClient()
   const [modalVisible, setModalVisible] = useState(false)
   const [editingStrategy, setEditingStrategy] = useState<Strategy | null>(null)
@@ -287,17 +289,18 @@ const StrategyLibrary: React.FC = () => {
     {
       title: '策略名称',
       dataIndex: 'name',
-      width: 200,
+      width: 150,
     },
     {
       title: '描述',
       dataIndex: 'description',
+      width: 150,
       ellipsis: true,
     },
     {
       title: '类型',
       dataIndex: 'tag',
-      width: 100,
+      width: 60,
       render: (tag: StrategyTag) => (
         <Tag
           color={
@@ -311,7 +314,7 @@ const StrategyLibrary: React.FC = () => {
     {
       title: '状态',
       dataIndex: 'status',
-      width: 100,
+      width: 60,
       render: (status: StrategyStatus) => (
         <Tag color={status === 'active' ? 'green' : 'grey'}>
           {status === 'active' ? '启用' : '禁用'}
@@ -321,13 +324,13 @@ const StrategyLibrary: React.FC = () => {
     {
       title: '创建人',
       dataIndex: 'creator',
-      width: 120,
+      width: 80,
       render: (creator: any) => creator?.displayname || creator?.username || '-',
     },
     {
       title: '公开',
       dataIndex: 'isPublic',
-      width: 80,
+      width: 60,
       render: (isPublic: boolean) => (
         <Tag color={isPublic ? 'blue' : 'grey'}>{isPublic ? '是' : '否'}</Tag>
       ),
@@ -335,7 +338,7 @@ const StrategyLibrary: React.FC = () => {
     {
       title: '创建时间',
       dataIndex: 'createdAt',
-      width: 180,
+      width: 120,
       render: (date: string) => formatDateTime(date),
     },
     {
@@ -375,9 +378,14 @@ const StrategyLibrary: React.FC = () => {
         }}
       >
         <Title heading={4}>策略库管理</Title>
-        <Button type="primary" icon={<IconPlus />} onClick={handleCreate}>
-          创建策略
-        </Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button theme="light" onClick={() => navigate('/strategy-config/debugger')}>
+            策略调试器
+          </Button>
+          <Button type="primary" icon={<IconPlus />} onClick={handleCreate}>
+            创建策略
+          </Button>
+        </div>
       </div>
 
       <Card>

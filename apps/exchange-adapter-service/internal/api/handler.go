@@ -108,6 +108,22 @@ func NewHandler(wsSyncService *service.WsSyncService, historySyncService *servic
 	}
 }
 
+func normalizeExchangeParam(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func normalizeTradeTypeParam(value string) string {
+	v := strings.ToLower(strings.TrimSpace(value))
+	switch v {
+	case "", "spot":
+		return "spot"
+	case "futures", "swap", "perp", "perpetual", "usdm", "usdm-algo", "usdm_algo":
+		return "futures"
+	default:
+		return v
+	}
+}
+
 // HealthCheckData 健康检查响应数据
 type HealthCheckData struct {
 	Time string `json:"time"`
@@ -129,14 +145,14 @@ func (h *Handler) GetOrderBook(c echo.Context) error {
 		TradeType string  `query:"trade_type" validate:"required"`
 		Range     float64 `query:"range" validate:"gt=0"`
 	}{
-		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		Exchange:  normalizeExchangeParam(c.QueryParam("exchange")),
 		Symbol:    strings.TrimSpace(c.QueryParam("symbol")),
 		TradeType: "spot",
 		Range:     0.1,
 	}
 	errs := make([]ErrorItem, 0)
 	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
-		req.TradeType = t
+		req.TradeType = normalizeTradeTypeParam(t)
 	}
 	if rangeStr := strings.TrimSpace(c.QueryParam("range")); rangeStr != "" {
 		parsed, err := strconv.ParseFloat(rangeStr, 64)
@@ -888,12 +904,12 @@ func (h *Handler) GetTicker(c echo.Context) error {
 		Symbol    string `query:"symbol" validate:"required"`
 		TradeType string `query:"trade_type" validate:"required"`
 	}{
-		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		Exchange:  normalizeExchangeParam(c.QueryParam("exchange")),
 		Symbol:    strings.TrimSpace(c.QueryParam("symbol")),
 		TradeType: "spot",
 	}
 	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
-		req.TradeType = t
+		req.TradeType = normalizeTradeTypeParam(t)
 	}
 	errs := validateStruct(req)
 	if len(errs) > 0 {
@@ -919,11 +935,11 @@ func (h *Handler) GetTickerPriceMap(c echo.Context) error {
 		Exchange  string `query:"exchange" validate:"required"`
 		TradeType string `query:"trade_type" validate:"required"`
 	}{
-		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		Exchange:  normalizeExchangeParam(c.QueryParam("exchange")),
 		TradeType: "spot",
 	}
 	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
-		req.TradeType = t
+		req.TradeType = normalizeTradeTypeParam(t)
 	}
 	errs := validateStruct(req)
 	if len(errs) > 0 {
@@ -948,21 +964,16 @@ func (h *Handler) GetTickers(c echo.Context) error {
 		Exchange  string `query:"exchange" validate:"required"`
 		TradeType string `query:"trade_type" validate:"required"`
 	}{
-		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
+		Exchange:  normalizeExchangeParam(c.QueryParam("exchange")),
 		TradeType: "spot",
 	}
 	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
-		req.TradeType = t
+		req.TradeType = normalizeTradeTypeParam(t)
 	}
 	errs := validateStruct(req)
 	if len(errs) > 0 {
 		return ErrorWithDetails(c, http.StatusBadRequest, ErrCodeBadRequest, "invalid query parameters", errs)
 	}
-
-	logAPI.Debug().
-		Str("exchange", req.Exchange).
-		Str("trade_type", req.TradeType).
-		Msg("GetTickers params")
 
 	tickers, err := h.tickerSyncService.GetTickers(c.Request().Context(), req.Exchange, req.TradeType)
 	if err != nil {

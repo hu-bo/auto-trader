@@ -4,7 +4,8 @@ import { Config, Logger, Provide, Scope, ScopeEnum, httpError } from '@midwayjs/
 import type { ILogger } from '@midwayjs/core';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import type { StrategyEngineConfig } from '../types/index.js';
+import type { GrpcTlsConfig, StrategyEngineConfig } from '../types/index.js';
+import { resolveGrpcChannelSecurity } from './grpc-tls.js';
 
 function mapGrpcError(err: grpc.ServiceError): Error {
   const message = err.details || err.message || 'gRPC request failed';
@@ -40,6 +41,9 @@ export class StrategySubscriptionGrpcClient {
   @Config('strategyEngine')
   strategyEngine!: StrategyEngineConfig;
 
+  @Config('grpcTls')
+  grpcTls!: GrpcTlsConfig;
+
   @Logger()
   logger!: ILogger;
 
@@ -71,7 +75,8 @@ export class StrategySubscriptionGrpcClient {
       throw new httpError.ServiceUnavailableError('Failed to load strategy_subscription proto');
     }
 
-    this.client = new ServiceCtor(url, grpc.credentials.createInsecure()) as SubscriptionServiceClient;
+    const { credentials, options } = resolveGrpcChannelSecurity(this.grpcTls);
+    this.client = new ServiceCtor(url, credentials, options) as SubscriptionServiceClient;
     return this.client;
   }
 

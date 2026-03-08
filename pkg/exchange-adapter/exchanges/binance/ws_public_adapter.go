@@ -340,7 +340,7 @@ func (a *WsPublicAdapter) ensureConn(tradeType marketdata.TradeType) (*binancePu
 
 	a.registerHandlers(conn)
 
-	if err := ws.Connect(wsKey); err != nil {
+	if err := a.connectWithRetry(ws, wsKey); err != nil {
 		return nil, err
 	}
 
@@ -348,6 +348,45 @@ func (a *WsPublicAdapter) ensureConn(tradeType marketdata.TradeType) (*binancePu
 
 	go a.reconnectLoop(conn)
 	return conn, nil
+}
+
+func (a *WsPublicAdapter) connectWithRetry(ws *binanceapi.WebsocketClient, wsKey bws.WsKey) error {
+	const maxAttempts = 3
+	delay := a.reconnectInterval
+	if delay <= 0 {
+		delay = 2 * time.Second
+	}
+	if delay > 10*time.Second {
+		delay = 10 * time.Second
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err := ws.Connect(wsKey); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+
+		if a.ctx != nil {
+			select {
+			case <-a.ctx.Done():
+				return a.ctx.Err()
+			default:
+			}
+		}
+
+		if attempt < maxAttempts {
+			time.Sleep(delay)
+			if delay < 10*time.Second {
+				delay *= 2
+				if delay > 10*time.Second {
+					delay = 10 * time.Second
+				}
+			}
+		}
+	}
+	return lastErr
 }
 
 func (a *WsPublicAdapter) reconnectLoop(conn *binancePublicConn) {

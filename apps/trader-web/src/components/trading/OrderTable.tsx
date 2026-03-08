@@ -36,8 +36,8 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   })
 
   const cancelMutation = useMutation({
-    mutationFn: ({ orderId, exchangeId }: { orderId: string; exchangeId: string }) =>
-      orderApi.cancel(orderId, { exchangeId }),
+    mutationFn: ({ orderId }: { orderId: string }) =>
+      orderApi.cancel(orderId),
     onSuccess: () => {
       Toast.success('订单已取消')
       queryClient.invalidateQueries({ queryKey: ['orders'] })
@@ -110,7 +110,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
           expired: 'grey',
         }
         return (
-          <Tag size="small" color={colorMap[status] || 'grey'}>
+          <Tag size="small" color={colorMap[status] || 'grey' as any}>
             {formatOrderStatus(status)}
           </Tag>
         )
@@ -134,7 +134,6 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                   onClick={() =>
                     cancelMutation.mutate({
                       orderId: record.orderid,
-                      exchangeId: record.exchangeId,
                     })
                   }
                 >

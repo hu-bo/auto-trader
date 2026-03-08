@@ -32,10 +32,19 @@ export interface StrategyEngineConfig {
   http: string;
 }
 
+export interface GrpcTlsConfig {
+  enabled: boolean;
+  caCertPath: string;
+  certFile: string;
+  keyFile: string;
+  serverNameOverride: string;
+}
+
 export interface AppConfig {
   auth: AuthConfig;
   casdoor: CasdoorConfig;
   encryption: EncryptionConfig;
   exchangeAdapter: ExchangeAdapterConfig;
   strategyEngine: StrategyEngineConfig;
+  grpcTls: GrpcTlsConfig;
 }

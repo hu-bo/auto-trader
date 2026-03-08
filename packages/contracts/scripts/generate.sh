@@ -36,15 +36,25 @@ check_node_deps() {
 }
 
 check_python_deps() {
-    if ! command -v python3 &> /dev/null; then
+    # 优先使用 conda 环境的 python（解决 macOS Homebrew PATH 优先级问题）
+    PYTHON3=""
+    if [ -x "/opt/miniconda3/envs/python312/bin/python3" ]; then
+        PYTHON3="/opt/miniconda3/envs/python312/bin/python3"
+    elif [ -n "$CONDA_PREFIX" ] && [ -x "$CONDA_PREFIX/bin/python3" ]; then
+        PYTHON3="$CONDA_PREFIX/bin/python3"
+    elif command -v python3 &> /dev/null; then
+        PYTHON3="python3"
+    else
         log_error "python3 not found"
         exit 1
     fi
 
+    log_info "Using Python: $PYTHON3"
+
     # 检查 grpcio-tools
-    if ! python3 -c "import grpc_tools.protoc" 2>/dev/null; then
+    if ! $PYTHON3 -c "import grpc_tools.protoc" 2>/dev/null; then
         log_warn "grpcio-tools not found. Installing..."
-        pip3 install grpcio-tools
+        $PYTHON3 -m pip install grpcio-tools
     fi
 }
 
@@ -93,7 +103,7 @@ generate_python() {
     mkdir -p "$OUT_DIR"
 
     # 生成 Python gRPC 代码
-    python3 -m grpc_tools.protoc \
+    $PYTHON3 -m grpc_tools.protoc \
         --proto_path="$PROTO_DIR" \
         --python_out="$OUT_DIR" \
         --pyi_out="$OUT_DIR" \

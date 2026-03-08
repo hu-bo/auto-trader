@@ -1,7 +1,8 @@
 import * as grpc from '@grpc/grpc-js';
 import { createChannel, createClient } from 'nice-grpc';
-import { Config, Provide, httpError } from '@midwayjs/core';
-import type { ExchangeAdapterConfig } from '../types/index.js';
+import { Config, Provide, Scope, ScopeEnum, httpError } from '@midwayjs/core';
+import type { ExchangeAdapterConfig, GrpcTlsConfig } from '../types/index.js';
+import { resolveGrpcChannelSecurity } from './grpc-tls.js';
 import {
   ExchangeServiceDefinition,
   type ExchangeServiceClient as GrpcExchangeServiceClient,
@@ -22,6 +23,42 @@ type StrategyAttachedOrder = {
   orderPrice?: number | null;
   triggerPriceType?: string | null;
 };
+
+function mapTradeTypeValue(input: unknown): string | null {
+  if (input == null) return null;
+  if (typeof input === 'string') {
+    const v = input.trim();
+    if (!v) return null;
+    const upper = v.toUpperCase();
+    if (upper === 'SPOT' || upper === 'TRADE_TYPE_SPOT') return 'spot';
+    if (upper === 'FUTURES' || upper === 'TRADE_TYPE_FUTURES' || upper === 'USDM-ALGO' || upper === 'USDM_ALGO') {
+      return 'futures';
+    }
+    if (upper === 'DELIVERY' || upper === 'TRADE_TYPE_DELIVERY') return 'delivery';
+    return null;
+  }
+  if (typeof input === 'number') {
+    switch (input) {
+      case TradeType.TRADE_TYPE_SPOT:
+        return 'spot';
+      case TradeType.TRADE_TYPE_FUTURES:
+        return 'futures';
+      case TradeType.TRADE_TYPE_DELIVERY:
+        return 'delivery';
+      default:
+        return null;
+    }
+  }
+  return null;
+}
+
+function normalizePositionTradeType(position: any): any {
+  if (!position || typeof position !== 'object') return position;
+  const tradeType = mapTradeTypeValue(position.tradeType ?? position.trade_type);
+  if (!tradeType) return position;
+  const { trade_type: _trade_type, ...rest } = position;
+  return { ...rest, tradeType: tradeType };
+}
 
 function mapTradeType(input: string): TradeType {
   const v = input.trim().toUpperCase();
@@ -150,9 +187,13 @@ function mapGrpcError(err: unknown): Error {
 }
 
 @Provide()
+@Scope(ScopeEnum.Request, { allowDowngrade: true })
 export class ExchangeGrpcClient {
   @Config('exchangeAdapter')
   exchangeAdapter!: ExchangeAdapterConfig;
+
+  @Config('grpcTls')
+  grpcTls!: GrpcTlsConfig;
 
   private client?: GrpcExchangeServiceClient;
 
@@ -164,7 +205,8 @@ export class ExchangeGrpcClient {
       throw new httpError.ServiceUnavailableError('EXCHANGE_GRPC_URL is required');
     }
 
-    const channel = createChannel(url, grpc.credentials.createInsecure());
+    const { credentials, options } = resolveGrpcChannelSecurity(this.grpcTls);
+    const channel = createChannel(url, credentials, options);
     this.client = createClient(ExchangeServiceDefinition, channel);
     return this.client;
   }
@@ -186,6 +228,34 @@ export class ExchangeGrpcClient {
     } catch (err) {
       throw mapGrpcError(err);
     }
+  }
+
+  startSubscribeOrders(params: {
+    token?: string;
+    tradeType: string;
+    onUpdate?: (update: any) => void;
+  }): { stop: () => void } {
+    const client = this.getClient();
+    const token = params.token ?? this.getToken();
+    const req = {
+      token,
+      tradeType: mapTradeType(params.tradeType),
+    };
+    const controller = new AbortController();
+    const stream = client.subscribeOrders(req, { signal: controller.signal });
+
+    (async () => {
+      try {
+        for await (const upd of stream) {
+          if (params.onUpdate) params.onUpdate(upd);
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        // Best-effort: keep silent to avoid noisy logs on transient stream errors.
+      }
+    })();
+
+    return { stop: () => controller.abort() };
   }
 
   async initAccount(params: {
@@ -321,13 +391,19 @@ export class ExchangeGrpcClient {
     const client = this.getClient();
     const req: any = { token: params.token ?? this.getToken() };
     if (params.symbol) req.symbol = params.symbol;
-    return await this.unary(() => client.getPositions(req));
+    const resp = await this.unary(() => client.getPositions(req));
+    if (!Array.isArray(resp?.positions)) return resp;
+    const positions = resp.positions.map(normalizePositionTradeType);
+    return { ...resp, positions };
   }
 
   async syncPositions(params?: { token?: string }): Promise<any> {
     const client = this.getClient();
     const req = { token: params?.token ?? this.getToken() };
-    return await this.unary(() => client.syncPositions(req));
+    const resp = await this.unary(() => client.syncPositions(req));
+    if (!Array.isArray(resp?.positions)) return resp;
+    const positions = resp.positions.map(normalizePositionTradeType);
+    return { ...resp, positions };
   }
 
   async getBalance(params: { token?: string; tradeType: string }): Promise<any> {
@@ -412,6 +488,8 @@ export class ExchangeGrpcClient {
       orderPrice?: number | null;
       reduceOnly?: boolean | null;
       clientAlgoId?: string | null;
+      callbackRatio?: number | null;
+      activationPrice?: number | null;
       slTriggerPrice?: number | null;
       tpTriggerPrice?: number | null;
       attachedOrders?: StrategyAttachedOrder[] | null;
@@ -435,6 +513,8 @@ export class ExchangeGrpcClient {
       if (o.orderPrice != null) req.orderPrice = o.orderPrice;
       if (o.reduceOnly != null) req.reduceOnly = o.reduceOnly;
       if (o.clientAlgoId != null) req.clientAlgoId = o.clientAlgoId;
+      if (o.callbackRatio != null) req.callbackRatio = o.callbackRatio;
+      if (o.activationPrice != null) req.activationPrice = o.activationPrice;
       if (derived.slTriggerPrice != null) req.slTriggerPrice = derived.slTriggerPrice;
       if (derived.tpTriggerPrice != null) req.tpTriggerPrice = derived.tpTriggerPrice;
       const attachedOrders = mapAttachedOrders(o.attachedOrders);

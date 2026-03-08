@@ -135,7 +135,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ symbol, tradeType, onTrade
               block
               loading={placeMutation.isPending && submittingAction === leftAction.key}
               disabled={isSubmitting && submittingAction !== leftAction.key}
-              style={{ height: 44, background: '#10b981', borderColor: '#10b981' }}
+              style={{  background: '#10b981', borderColor: '#10b981' }}
               onClick={() => submitByAction(leftAction.key, leftAction.side, leftAction.positionSide)}
             >
               {leftAction.label} 
@@ -148,7 +148,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ symbol, tradeType, onTrade
               block
               loading={placeMutation.isPending && submittingAction === rightAction.key}
               disabled={isSubmitting && submittingAction !== rightAction.key}
-              style={{ height: 44, background: '#ef4444', borderColor: '#ef4444' }}
+              style={{ background: '#ef4444', borderColor: '#ef4444' }}
               onClick={() => submitByAction(rightAction.key, rightAction.side, rightAction.positionSide)}
             >
               {rightAction.label}

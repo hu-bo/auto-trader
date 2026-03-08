@@ -4,6 +4,7 @@ import type { Datafeed, SymbolInfo, Period, KLineData } from '@hquant/klinechart
 import '@hquant/klinecharts-pro/styles.css'
 import { useAppStore } from '@/stores/appStore'
 import { marketApi } from '@/api/market'
+import { useMarketStore } from '@/stores/marketStore'
 import { io, Socket } from 'socket.io-client'
 
 interface KLineChartProps {
@@ -82,15 +83,13 @@ export class TradingDatafeed implements Datafeed {
 
     this.loadingPromise = (async () => {
       try {
-        const res = await marketApi.getSymbols({
-          exchange: this.exchange,
-          tradeType: this.tradeType,
-        })
-        const symbols = (res?.symbols || [])
-          .filter((s: any) => s.syncEnabled)
+        const store = useMarketStore.getState()
+        await store.fetchSymbols(this.exchange, this.tradeType)
+        const syncEnabled = store.getSyncEnabledSymbols(this.exchange, this.tradeType)
+        const symbols = syncEnabled
           .map((s: any) => ({
             ticker: s.symbol,
-            name: `${s.baseCurrency}/${s.quoteCurrency}`,
+            name: `${s.baseCurrency}/${s.quoteCurrency}[${this.exchange}][${s.tradeType}]`,
             exchange: s.exchange,
             market: s.tradeType,
           }))

@@ -1,5 +1,5 @@
 import { requestData } from './api'
-import type { Order, PlaceOrderParams, OrderQuery, CancelOrderParams } from '@/types'
+import type { Order, PlaceOrderParams, OrderQuery } from '@/types'
 
 interface OrderListResponse {
   orders: Order[]
@@ -19,6 +19,6 @@ export const orderApi = {
   place: (params: PlaceOrderParams) => requestData.post<Order>('/orders', params),
 
   // 取消订单
-  cancel: (orderId: string, params: Omit<CancelOrderParams, 'orderId'>) =>
-    requestData.post<Order>(`/orders/${orderId}/cancel`, params),
+  cancel: (orderId: string) =>
+    requestData.post<Order>(`/orders/${orderId}/cancel`),
 }

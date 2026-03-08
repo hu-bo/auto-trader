@@ -1,5 +1,5 @@
 import React from 'react'
-import { Typography, Tag } from '@douyinfe/semi-ui-19'
+import { Typography, Tag, Button } from '@douyinfe/semi-ui-19'
 import type { TickerData } from '@/api/market'
 
 const { Text } = Typography
@@ -16,9 +16,18 @@ const formatVolume = (v: number | string) => {
 interface SymbolCardProps {
   data: TickerData
   onClick?: (symbol: string) => void
+  onCreateStrategy?: (data: TickerData) => void
+  onViewStrategy?: (strategyOrderId: number | string) => void
+  syncEnabled?: boolean
 }
 
-export const SymbolCard: React.FC<SymbolCardProps> = ({ data, onClick }) => {
+export const SymbolCard: React.FC<SymbolCardProps> = ({
+  data,
+  onClick,
+  onCreateStrategy,
+  onViewStrategy,
+  syncEnabled = false,
+}) => {
   const isUp = Number(data.priceChangePct) >= 0
   const color = isUp ? 'var(--semi-color-success)' : 'var(--semi-color-danger)'
   const bgColor = isUp
@@ -27,6 +36,8 @@ export const SymbolCard: React.FC<SymbolCardProps> = ({ data, onClick }) => {
 
   const hasStrategies = (data.runningStrategies ?? 0) > 0
   const hasConditionals = (data.runningConditionals ?? 0) > 0
+  const runningStrategyId = data.runningStrategyId
+  const canCreateStrategy = syncEnabled && !runningStrategyId
 
   return (
     <div
@@ -79,24 +90,42 @@ export const SymbolCard: React.FC<SymbolCardProps> = ({ data, onClick }) => {
         </div>
       </div>
 
-      {/* 价格 */}
-      <div style={{ marginBottom: 4 }}>
+      {/* 价格 + 成交量 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
         <Text style={{ fontSize: 20, fontWeight: 700, color }}>
           {data.lastPrice.toFixed(data.lastPrice >= 1 ? 2 : 6)}
         </Text>
+        <Text type="tertiary" style={{ fontSize: 12 }}>
+          Vol {formatVolume(data.quoteVolume24h)}
+        </Text>
       </div>
 
-      {/* 成交量 */}
-      <div>
-        <Text type="tertiary" style={{ fontSize: 12 }}>
-          Vol {formatVolume(data.volume24h)}
-        </Text>
-        <Text type="tertiary" style={{ marginRight: 12 }}>
-          <span style={{width: '10px'}}></span>
-        </Text>
-        <Text type="tertiary" style={{ fontSize: 12 }}>
-          Vol(USDT) {formatVolume(data.quoteVolume24h)}
-        </Text>
+      {/*  操作区域 */}
+      <div style={{ marginTop: 8, height: 24, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+        {runningStrategyId ? (
+          <Button
+            size="small"
+            theme="light"
+            onClick={(e) => {
+              e.stopPropagation()
+              onViewStrategy?.(runningStrategyId)
+            }}
+          >
+            策略运行中
+          </Button>
+        ) : canCreateStrategy ? (
+          <Button
+            size="small"
+            type="primary"
+            theme="solid"
+            onClick={(e) => {
+              e.stopPropagation()
+              onCreateStrategy?.(data)
+            }}
+          >
+            创建策略
+          </Button>
+        ) : null}
       </div>
     </div>
   )

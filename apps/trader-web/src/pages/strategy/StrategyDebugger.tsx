@@ -18,9 +18,9 @@ import {
   IconChevronRight,
   IconStop,
 } from '@douyinfe/semi-icons'
-import { useQuery } from '@tanstack/react-query'
 import { marketApi, debugApi } from '@/api'
 import { useAppStore } from '@/stores/appStore'
+import { useMarketStore, getMarketSymbolsKey } from '@/stores/marketStore'
 import { StrategyEditor } from '@/components/editor/StrategyEditor'
 import { formatDateTime, formatPrice } from '@/utils/format'
 import type { DebugStep, DebugResponse, DebugBar } from '@/api/debug'
@@ -64,13 +64,16 @@ const StrategyDebugger: React.FC = () => {
   const [autoPlaying, setAutoPlaying] = useState(false)
   const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Load symbols
-  const { data } = useQuery({
-    queryKey: ['symbols', exchange, tradeType],
-    queryFn: () => marketApi.getSymbols({ exchange, tradeType }),
-  })
+  // Load symbols (from store)
+  const symbolsKey = getMarketSymbolsKey(exchange, tradeType)
+  const symbols = useMarketStore((state) => state.symbolsByKey[symbolsKey] || [])
+  const fetchSymbols = useMarketStore((state) => state.fetchSymbols)
 
-  const symbolOptions = (data?.symbols ?? []).map((s: { symbol: string }) => ({
+  useEffect(() => {
+    fetchSymbols(exchange, tradeType)
+  }, [exchange, tradeType, fetchSymbols])
+
+  const symbolOptions = symbols.map((s: { symbol: string }) => ({
     value: s.symbol,
     label: s.symbol,
   }))

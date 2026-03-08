@@ -55,6 +55,13 @@ export default {
     grpc: process.env.STRATEGY_ENGINE_GRPC ?? 'localhost:50052',
     http: process.env.STRATEGY_ENGINE_HTTP ?? 'http://localhost:9002',
   },
+  grpcTls: {
+    enabled: (process.env.GRPC_TLS_ENABLED ?? 'false').toLowerCase() === 'true',
+    caCertPath: process.env.GRPC_TLS_CA_CERT_PATH ?? '',
+    certFile: process.env.GRPC_TLS_CERT_FILE ?? '',
+    keyFile: process.env.GRPC_TLS_KEY_FILE ?? '',
+    serverNameOverride: process.env.GRPC_TLS_SERVER_NAME_OVERRIDE ?? '',
+  },
   nats: {
     url: process.env.NATS_URL ?? 'nats://152.32.210.32:15001',
     user: process.env.NATS_USER ?? '',

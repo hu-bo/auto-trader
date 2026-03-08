@@ -1,4 +1,4 @@
-import { Config, Provide, httpError } from '@midwayjs/core';
+import { Config, Provide, Scope, ScopeEnum, httpError } from '@midwayjs/core';
 import { isNil } from 'lodash-es';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import type { Repository } from 'typeorm';
@@ -28,6 +28,7 @@ type ExchangeUpdateParams = {
 };
 
 @Provide()
+@Scope(ScopeEnum.Request, { allowDowngrade: true })
 export class ExchangeService {
   @InjectEntityModel(UserExchange)
   exchangeRepo?: Repository<UserExchange>;

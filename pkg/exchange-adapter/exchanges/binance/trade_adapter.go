@@ -3,6 +3,7 @@ package binance
 import (
 	"context"
 	"crypto/rand"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -525,7 +526,7 @@ func (a *TradeAdapter) PlaceStrategyOrder(ctx context.Context, params core.Strat
 			Message: err.Error(),
 		})
 	}
-
+	fmt.Println(1111, params.Quantity)
 	req := btypes.NewAlgoOrderParams{
 		AlgoType:     btypes.AlgoOrderTypeConditional,
 		Symbol:       rawSymbol,
@@ -575,6 +576,19 @@ func (a *TradeAdapter) PlaceStrategyOrder(ctx context.Context, params core.Strat
 	return core.Ok(transformAlgoOrder(*resp, params.TradeType))
 }
 
+func (a *TradeAdapter) PlaceStrategyOrders(ctx context.Context, paramsList []core.StrategyOrderParams) []core.Result[core.StrategyOrder] {
+	results := make([]core.Result[core.StrategyOrder], len(paramsList))
+	for i := range paramsList {
+		p := paramsList[i]
+		// Binance only supports futures algo orders; default empty trade type to futures.
+		if p.TradeType == "" {
+			p.TradeType = core.TradeTypeFutures
+		}
+		results[i] = a.PlaceStrategyOrder(ctx, p)
+	}
+	return results
+}
+
 func (a *TradeAdapter) CancelStrategyOrder(ctx context.Context, symbol string, algoID string, tradeType core.TradeType) core.Result[core.StrategyOrder] {
 	if tradeType != core.TradeTypeFutures {
 		return core.Err[core.StrategyOrder](core.ErrorInfo{
@@ -591,7 +605,7 @@ func (a *TradeAdapter) CancelStrategyOrder(ctx context.Context, symbol string, a
 			Raw:     err,
 		})
 	}
-
+	fmt.Println(2222, algoID)
 	_, apiErr := a.futures.CancelAlgoOrder(ctx, btypes.CancelAlgoOrderParams{AlgoID: id})
 	if apiErr != nil {
 		return core.Err[core.StrategyOrder](core.ErrorInfo{

@@ -7,6 +7,52 @@ export interface SymbolPrecision {
   stepSize: string;
 }
 
+type StepSpec = {
+  scale: number;
+  stepInt: number;
+};
+
+const countFractionDigits = (value: string): number => {
+  const normalized = value.trim();
+  const dotIndex = normalized.indexOf('.');
+  if (dotIndex < 0) return 0;
+  return normalized.slice(dotIndex + 1).replace(/0+$/, '').length;
+};
+
+const parseStepSpec = (step: string | undefined): StepSpec | null => {
+  const normalized = step?.trim();
+  if (!normalized) return null;
+
+  const stepNumber = Number(normalized);
+  if (!Number.isFinite(stepNumber) || stepNumber <= 0) return null;
+
+  const fractionDigits = countFractionDigits(normalized);
+  const scale = 10 ** fractionDigits;
+  const stepInt = Math.round(stepNumber * scale);
+  if (!Number.isFinite(stepInt) || stepInt <= 0) return null;
+
+  return { scale, stepInt };
+};
+
+export const truncateToIncrement = (value: number, step: string | undefined): number => {
+  if (!Number.isFinite(value)) return value;
+
+  const spec = parseStepSpec(step);
+  if (!spec) return value;
+
+  const scaledValue = Math.floor(value * spec.scale + 1e-9);
+  const alignedValue = Math.floor(scaledValue / spec.stepInt) * spec.stepInt;
+  return alignedValue / spec.scale;
+};
+
+export const truncateToPrecision = (value: number, precision: number): number => {
+  if (!Number.isFinite(value)) return value;
+  if (!Number.isFinite(precision) || precision < 0) return value;
+
+  const factor = 10 ** precision;
+  return Math.floor(value * factor) / factor;
+};
+
 /** cache key: `${exchange}:${tradeType}:${symbol}` */
 type PrecisionMap = Map<string, SymbolPrecision>;
 
@@ -78,8 +124,8 @@ class ExchangeSync {
               stepSize: s.stepSize ?? '',
             });
           }
-        } catch (err) {
-          console.warn('[ExchangeSync] load precision %s/%s failed:', exchange, tradeType, err);
+        } catch (err: any) {
+          console.warn('[ExchangeSync] load precision %s/%s failed:', exchange, tradeType, err.message);
         }
       }
     }
@@ -97,16 +143,24 @@ class ExchangeSync {
   truncatePrice(value: number, exchange: string, tradeType: string, symbol: string): number {
     const p = this.getSymbolPrecision(exchange, tradeType, symbol);
     if (!p) return value;
-    const factor = 10 ** p.pricePrecision;
-    return Math.floor(value * factor) / factor;
+
+    if (parseStepSpec(p.tickSize)) {
+      return truncateToIncrement(value, p.tickSize);
+    }
+
+    return truncateToPrecision(value, p.pricePrecision);
   }
 
   /** 按精度向下截断数量 */
   truncateQuantity(value: number, exchange: string, tradeType: string, symbol: string): number {
     const p = this.getSymbolPrecision(exchange, tradeType, symbol);
     if (!p) return value;
-    const factor = 10 ** p.quantityPrecision;
-    return Math.floor(value * factor) / factor;
+
+    if (parseStepSpec(p.stepSize)) {
+      return truncateToIncrement(value, p.stepSize);
+    }
+
+    return truncateToPrecision(value, p.quantityPrecision);
   }
 
   // ────────── HTTP proxies ──────────

@@ -14,6 +14,7 @@ import { NotFoundFilter } from './filter/notfound.filter.js';
 import { AuthMiddleware } from './middleware/auth.middleware.js';
 import { ReportMiddleware } from './middleware/report.middleware.js';
 import { MarketGateway } from './socket/market.gateway.js';
+import { OrderUpdateService } from './service/order-update.service.js';
 import DefaultConfig from './config/config.default.js';
 import LocalConfig from './config/config.local.js';
 import UnittestConfig from './config/config.unittest.js';
@@ -52,5 +53,13 @@ export class MainConfiguration implements ILifeCycle {
 
     // 初始化 NATS -> Socket.IO 网关
     await container.getAsync(MarketGateway);
+
+    try {
+      const orderUpdateService = await container.getAsync(OrderUpdateService);
+      await orderUpdateService.bootstrapSubscriptions();
+    } catch (err) {
+      // best-effort, do not block boot
+      console.error('[OrderUpdate] bootstrapSubscriptions failed', err);
+    }
   }
 }

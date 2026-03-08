@@ -43,6 +43,64 @@ export class OrderController {
     return tradeType === 'usdm-algo' ? 'futures' : tradeType;
   }
 
+  private async ensurePrecisionReady(): Promise<void> {
+    await exchangeSync.init(this.exchangeAdapterConfig);
+  }
+
+  private truncateOrderPrice(price: number, exchangeType: string, tradeType: string, symbol: string): number {
+    return exchangeSync.truncatePrice(
+      price,
+      exchangeType.toLowerCase(),
+      this.normalizeTradeTypeForGrpc(tradeType),
+      symbol
+    );
+  }
+
+  private truncateOrderQuantity(quantity: number, exchangeType: string, tradeType: string, symbol: string): number {
+    return exchangeSync.truncateQuantity(
+      quantity,
+      exchangeType.toLowerCase(),
+      this.normalizeTradeTypeForGrpc(tradeType),
+      symbol
+    );
+  }
+
+  private resolveBinanceEntryStrategyType(side: string, entryPrice: number, lastPrice: number): string | null {
+    const normalizedSide = side.trim().toLowerCase();
+    if (!Number.isFinite(entryPrice) || !Number.isFinite(lastPrice) || entryPrice <= 0 || lastPrice <= 0) {
+      return null;
+    }
+
+    if (normalizedSide === 'buy') {
+      if (entryPrice > lastPrice) return 'trigger';
+      if (entryPrice < lastPrice) return 'take-profit';
+      return null;
+    }
+
+    if (normalizedSide === 'sell') {
+      if (entryPrice < lastPrice) return 'trigger';
+      if (entryPrice > lastPrice) return 'take-profit';
+      return null;
+    }
+
+    return null;
+  }
+
+  private normalizeOrderPrecision(params: {
+    exchangeType: string;
+    tradeType: string;
+    symbol: string;
+    quantity: number;
+    price?: number | null;
+  }): { quantity: number; price?: number | null } {
+    return {
+      quantity: this.truncateOrderQuantity(params.quantity, params.exchangeType, params.tradeType, params.symbol),
+      price: params.price == null
+        ? params.price
+        : this.truncateOrderPrice(params.price, params.exchangeType, params.tradeType, params.symbol),
+    };
+  }
+
   private requireGrpcSuccess(resp: any, fallbackMessage: string): void {
     if (!resp?.success) {
       const errMsg = resp?.error?.message;
@@ -59,7 +117,7 @@ export class OrderController {
   }
 
   private isStrategyAlgoOrder(order: { orderType?: string | null; }): boolean {
-    if (order.orderType === 'algo') return true;
+    if (order.orderType === 'algo' || 'stop_market') return true;
     return false
   }
 
@@ -111,14 +169,30 @@ export class OrderController {
   async create(@Body() body: PlaceOrderBodyDTO) {
     const user = await this.userService.getOrCreateCurrentUser(this.ctx.state.user);
     const { token, exchangeType: tokenExchangeType } = await this.getTokenForExchange(body.exchangeId);
+    await this.ensurePrecisionReady();
+    const normalizedOrder = this.normalizeOrderPrecision({
+      exchangeType: tokenExchangeType,
+      tradeType: body.tradeType,
+      symbol: body.symbol,
+      quantity: body.quantity,
+      price: body.price,
+    });
+
+    if (normalizedOrder.quantity <= 0) {
+      throw new httpError.BadRequestError('下单数量按交易所精度处理后为 0，请调整数量');
+    }
+    if (normalizedOrder.price != null && normalizedOrder.price <= 0) {
+      throw new httpError.BadRequestError('下单价格按交易所精度处理后为 0，请调整价格');
+    }
+
     const resp = await this.exchangeGrpc.placeOrder({
       token,
       symbol: body.symbol,
       tradeType: body.tradeType,
       side: body.side,
       orderType: body.orderType,
-      quantity: body.quantity,
-      price: body.price,
+      quantity: normalizedOrder.quantity,
+      price: normalizedOrder.price,
       positionSide: body.positionSide,
       leverage: body.leverage,
       clientOrderId: body.clientOrderId,
@@ -146,8 +220,8 @@ export class OrderController {
       side: body.side,
       orderType: body.orderType,
       status: OrderStatus.NEW,
-      quantity: String(body.quantity),
-      price: body.price == null ? null : String(body.price),
+      quantity: String(normalizedOrder.quantity),
+      price: normalizedOrder.price == null ? null : String(normalizedOrder.price),
       positionSide: body.positionSide ?? null,
       reduceOnly: body.reduceOnly ?? false,
     }]);
@@ -164,7 +238,7 @@ export class OrderController {
     const exchangeType = exchange.exchangeType.toLowerCase();
 
     // 2. Ensure precision cache is ready
-    await exchangeSync.init(this.exchangeAdapterConfig);
+    await this.ensurePrecisionReady();
 
     // 3. Fetch price map from exchange-sync (symbol -> lastPrice)
     const grpcTradeType = this.normalizeTradeTypeForGrpc(body.tradeType);
@@ -172,8 +246,8 @@ export class OrderController {
 
     // 4. Compute orders with precision truncation
     const offset = Math.abs(body.priceOffsetPercent) / 100;
-    const isFutures = body.tradeType === 'futures' || body.tradeType === 'usdm-algo';
-    const leverage = isFutures ? (body.leverage ?? 1) : 1;
+    const isFutures = body.tradeType === 'futures';
+    const leverage = 1;
     type AttachedOrder = {
       type: 'take_profit' | 'stop_loss';
       triggerPrice: number;
@@ -195,9 +269,9 @@ export class OrderController {
     const orders: StrategyOrderParams[] = [];
 
     const tp = (price: number, sym: string) =>
-      exchangeSync.truncatePrice(price, exchangeType, grpcTradeType, sym);
+      this.truncateOrderPrice(price, exchangeType, body.tradeType, sym);
     const tq = (qty: number, sym: string) =>
-      exchangeSync.truncateQuantity(qty, exchangeType, grpcTradeType, sym);
+      this.truncateOrderQuantity(qty, exchangeType, body.tradeType, sym);
 
     for (const symbol of body.symbols) {
       const lastPrice = tickerMap.get(symbol);
@@ -214,17 +288,17 @@ export class OrderController {
         posSide = body.positionSide;
       }
 
-      const entryPriceRaw = side === 'buy'
-        ? lastPrice * (1 - offset)
-        : lastPrice * (1 + offset);
+      const entryPriceRaw = lastPrice * (1 + offset);
       const entryPrice = tp(entryPriceRaw, symbol);
       if (entryPrice <= 0) {
         this.logger.warn('[BatchStrategy] Computed entry price %.8f for symbol %s is invalid, skipping', entryPrice, symbol);
         continue;
       }
 
-      const notionalUSDT = body.amountUSDT * leverage;
-      const quantity = tq(notionalUSDT / entryPrice, symbol);
+
+      const quantityRaw = body.amountUSDT / entryPrice;
+
+      const quantity = tq(quantityRaw, symbol);
       if (quantity <= 0) {
         this.logger.warn('[BatchStrategy] Computed quantity %.8f for symbol %s is too small, skipping', quantity, symbol);
         continue;
@@ -241,12 +315,22 @@ export class OrderController {
           : entryPrice * (1 - Math.abs(body.takeProfitPercent) / 100),
         symbol
       );
+      let strategyType = 'trigger';
+      if (exchangeType === 'binance') {
+        const resolved = this.resolveBinanceEntryStrategyType(side, entryPrice, lastPrice);
+        if (!resolved) {
+          this.logger.warn('[BatchStrategy] Entry price %.8f equals/invalid against last price %.8f for %s, skipping', entryPrice, lastPrice, symbol);
+          continue;
+        }
+        strategyType = resolved;
+      }
+
       orders.push({
         symbol,
         tradeType: grpcTradeType,
         side,
         positionSide: posSide,
-        strategyType: 'trigger',
+        strategyType,
         quantity,
         triggerPrice: entryPrice,
         triggerPriceType: 'last',
@@ -272,9 +356,14 @@ export class OrderController {
     }
 
     // 5. Place via gRPC
+    const orderedSymbols = orders.map((o) => o.symbol);
     const { token, exchangeType: tokenExchangeType } = await this.getTokenForExchange(body.exchangeId);
     const resp = await this.exchangeGrpc.placeStrategyOrders({ token, orders });
-    const results: any[] = Array.isArray(resp?.results) ? resp.results : [];
+    const rawResults: any[] = Array.isArray(resp?.results) ? resp.results : [];
+    const results = rawResults.map((r, idx) => ({
+      ...r,
+      symbol: orderedSymbols[idx] ?? r?.order?.symbol,
+    }));
     if (results.length === 0) {
       throw new httpError.BadGatewayError('批量下单返回为空');
     }
@@ -298,11 +387,12 @@ export class OrderController {
           symbol: r.order.symbol,
           tradeType: body.tradeType,
           side: orders[i].side,
-          orderType: 'stop_market',
+          orderType: body.orderType,
           status: OrderStatus.NEW,
           quantity: String(orders[i].quantity),
           price: String(orders[i].triggerPrice),
           positionSide: orders[i].positionSide ?? null,
+          leverage: isFutures ? leverage : null,
           reduceOnly: orders[i].reduceOnly,
         });
       }
@@ -314,7 +404,7 @@ export class OrderController {
       this.logger.error('[BatchStrategy] Failed to persist orders to DB: %s', err);
     }
 
-    return apiOk(resp);
+    return apiOk({ ...resp, results, symbols: orderedSymbols });
   }
 
   @Post('/batch-strategy/check-duplicates')
@@ -340,7 +430,7 @@ export class OrderController {
       throw new httpError.BadRequestError('该订单没有交易所订单ID，无法查询');
     }
 
-    const { token } = await this.getTokenForExchange(query.exchangeId);
+    const { token } = await this.getTokenForExchange(order.exchangeId);
     const grpcTradeType = this.normalizeTradeTypeForGrpc(order.tradeType);
     const resp = this.isStrategyAlgoOrder(order)
       ? await this.exchangeGrpc.getStrategyOrder({
@@ -370,8 +460,9 @@ export class OrderController {
       throw new httpError.BadRequestError('该订单没有交易所订单ID，无法取消');
     }
 
-    const { token } = await this.getTokenForExchange(body.exchangeId);
+    const { token } = await this.getTokenForExchange(order.exchangeId);
     const grpcTradeType = this.normalizeTradeTypeForGrpc(order.tradeType);
+
     const resp = this.isStrategyAlgoOrder(order)
       ? await this.exchangeGrpc.cancelStrategyOrder({
           token,

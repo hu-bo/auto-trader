@@ -48,7 +48,7 @@ proxy:
   socks5: "" # SOCKS5 代理，用于 WebSocket
 
 security:
-  tls_enabled: false
-  cert_file: "" # e.g. ../../certs/grpc/shared.crt
-  key_file: "" # e.g. ../../certs/grpc/shared.key
-  ca_file: ""   # optional; set for mTLS, can point to shared.crt
+  tls_enabled: true
+  cert_file: "../../certs/grpc/shared.crt"
+  key_file: "../../certs/grpc/shared.key"
+  ca_file: "../../certs/grpc/shared.crt"

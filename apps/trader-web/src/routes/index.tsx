@@ -14,6 +14,9 @@ const MarketList = lazy(() => import('@/pages/market/MarketList'))
 const Positions = lazy(() => import('@/pages/position/Positions'))
 const Orders = lazy(() => import('@/pages/order/Orders'))
 const StrategyOrders = lazy(() => import('@/pages/order/StrategyOrders'))
+const StrategyOrderDetail = lazy(() => import('@/pages/order/StrategyOrderDetail'))
+const StrategyConfig = lazy(() => import('@/pages/strategy/StrategyConfig'))
+const StrategyConfigForm = lazy(() => import('@/pages/strategy/StrategyConfigForm'))
 const StrategyDebugger = lazy(() => import('@/pages/strategy/StrategyDebugger'))
 const ExchangeConfig = lazy(() => import('@/pages/exchange/ExchangeConfig'))
 const Settings = lazy(() => import('@/pages/settings/Settings'))
@@ -111,12 +114,46 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'strategy-debugger',
+        path: 'strategy-orders/:id',
         element: (
           <LazyPage>
-            <StrategyDebugger />
+            <StrategyOrderDetail />
           </LazyPage>
         ),
+      },
+      {
+        path: 'strategy-config',
+        element: (
+          <LazyPage>
+            <StrategyConfig />
+          </LazyPage>
+        ),
+        children: [
+          {
+            index: true,
+            element: (
+              <LazyPage>
+                <StrategyConfigForm />
+              </LazyPage>
+            ),
+          },
+          {
+            path: ':id',
+            element: (
+              <LazyPage>
+                <StrategyConfigForm />
+              </LazyPage>
+            ),
+          },
+          {
+            path: 'debugger',
+            element: (
+              <LazyPage>
+                <StrategyDebugger />
+              </LazyPage>
+            ),
+          },
+        ],
       },
       {
         path: 'exchanges',

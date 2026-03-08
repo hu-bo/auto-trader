@@ -675,12 +675,55 @@ type okxAlgoOrderResult struct {
 	SMsg        string `json:"sMsg"`
 }
 
+func resolveOkxOrderPrice(price *float64) string {
+	if price == nil {
+		return ""
+	}
+	if *price <= 0 {
+		return "-1"
+	}
+	return strconv.FormatFloat(*price, 'f', -1, 64)
+}
+
+func buildOkxAttachAlgoOrd(ao core.StrategyAttachedOrder) okxAttachAlgoOrd {
+	item := okxAttachAlgoOrd{}
+
+	if ao.TPTriggerPrice != nil {
+		item.TPTriggerPx = strconv.FormatFloat(*ao.TPTriggerPrice, 'f', -1, 64)
+	}
+	if ao.TPOrderPrice != nil {
+		item.TPOrdPx = resolveOkxOrderPrice(ao.TPOrderPrice)
+	}
+	if item.TPTriggerPx != "" && item.TPOrdPx == "" {
+		item.TPOrdPx = "-1"
+	}
+	if ao.TPTriggerPriceType != nil {
+		item.TPTriggerPxType = string(*ao.TPTriggerPriceType)
+	}
+
+	if ao.SLTriggerPrice != nil {
+		item.SLTriggerPx = strconv.FormatFloat(*ao.SLTriggerPrice, 'f', -1, 64)
+	}
+	if ao.SLOrderPrice != nil {
+		item.SLOrdPx = resolveOkxOrderPrice(ao.SLOrderPrice)
+	}
+	if item.SLTriggerPx != "" && item.SLOrdPx == "" {
+		item.SLOrdPx = "-1"
+	}
+	if ao.SLTriggerPriceType != nil {
+		item.SLTriggerPxType = string(*ao.SLTriggerPriceType)
+	}
+
+	return item
+}
+
 func (a *TradeAdapter) PlaceStrategyOrder(ctx context.Context, params core.StrategyOrderParams) core.Result[core.StrategyOrder] {
 	if err := a.ensureReady(); err != nil {
 		return core.Err[core.StrategyOrder](core.ErrorInfo{Code: "INIT_ERROR", Message: err.Error(), Raw: err})
 	}
 
 	instID, err := a.resolveInstID(ctx, params.Symbol, params.TradeType)
+
 	if err != nil {
 		return core.Err[core.StrategyOrder](core.ErrorInfo{Code: core.ErrorInvalidParams, Message: err.Error(), Raw: err})
 	}
@@ -697,7 +740,7 @@ func (a *TradeAdapter) PlaceStrategyOrder(ctx context.Context, params core.Strat
 		OrdType: toRawStrategyOrderType(params.StrategyType),
 		Sz:      strconv.FormatFloat(params.Quantity, 'f', -1, 64),
 	}
-
+	fmt.Println(1111, instID, req.Sz)
 	if params.TradeType != core.TradeTypeSpot && params.PositionSide != nil {
 		req.PosSide = string(*params.PositionSide)
 	}
@@ -737,26 +780,7 @@ func (a *TradeAdapter) PlaceStrategyOrder(ctx context.Context, params core.Strat
 		if len(params.AttachedOrders) > 0 {
 			attach := make([]okxAttachAlgoOrd, 0, len(params.AttachedOrders))
 			for _, ao := range params.AttachedOrders {
-				var item okxAttachAlgoOrd
-				if ao.TPTriggerPrice != nil {
-					item.TPTriggerPx = strconv.FormatFloat(*ao.TPTriggerPrice, 'f', -1, 64)
-				}
-				if ao.TPOrderPrice != nil && *ao.TPOrderPrice > 0 {
-					item.TPOrdPx = strconv.FormatFloat(*ao.TPOrderPrice, 'f', -1, 64)
-				}
-				if ao.TPTriggerPriceType != nil {
-					item.TPTriggerPxType = string(*ao.TPTriggerPriceType)
-				}
-				if ao.SLTriggerPrice != nil {
-					item.SLTriggerPx = strconv.FormatFloat(*ao.SLTriggerPrice, 'f', -1, 64)
-				}
-				if ao.SLOrderPrice != nil && *ao.SLOrderPrice > 0 {
-					item.SLOrdPx = strconv.FormatFloat(*ao.SLOrderPrice, 'f', -1, 64)
-				}
-				if ao.SLTriggerPriceType != nil {
-					item.SLTriggerPxType = string(*ao.SLTriggerPriceType)
-				}
-				attach = append(attach, item)
+				attach = append(attach, buildOkxAttachAlgoOrd(ao))
 			}
 			req.AttachAlgoOrds = attach
 		}
@@ -810,6 +834,18 @@ func (a *TradeAdapter) PlaceStrategyOrder(ctx context.Context, params core.Strat
 		Quantity:         strconv.FormatFloat(params.Quantity, 'f', -1, 64),
 		Raw:              json.RawMessage(raw),
 	})
+}
+
+func (a *TradeAdapter) PlaceStrategyOrders(ctx context.Context, paramsList []core.StrategyOrderParams) []core.Result[core.StrategyOrder] {
+	results := make([]core.Result[core.StrategyOrder], len(paramsList))
+	for i := range paramsList {
+		p := paramsList[i]
+		if p.TradeType == "" {
+			p.TradeType = core.TradeTypeFutures
+		}
+		results[i] = a.PlaceStrategyOrder(ctx, p)
+	}
+	return results
 }
 
 type cancelAlgoOrderItem struct {

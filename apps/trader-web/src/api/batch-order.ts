@@ -15,12 +15,14 @@ export interface PlaceBatchStrategyParams {
 }
 
 export interface PlaceBatchStrategyResult {
-  success_count: number
-  failed_count: number
+  successCount: number
+  failedCount: number
+  symbols?: string[]
   results: Array<{
     success: boolean
     order?: any
     error?: { code: string; message: string }
+    symbol?: string
   }>
 }
 

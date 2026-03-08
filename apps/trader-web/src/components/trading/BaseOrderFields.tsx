@@ -7,7 +7,7 @@ type TradeMode = 'futures' | 'spot'
 /** 公共基础值：tradeType / side / positionSide / leverage / orderType */
 export interface BaseOrderValues {
   tradeType: TradeMode
-  side: OrderSide
+  side?: OrderSide
   positionSide?: PositionSide
   leverage?: number
   orderType: OrderType

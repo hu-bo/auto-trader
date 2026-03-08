@@ -3,6 +3,8 @@ import type { ILogger } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import type { Repository } from 'typeorm';
 import { NatsService } from './nats.service.js';
+import { ExchangeGrpcClient } from '../grpc/exchange-grpc.client.js';
+import { ExchangeService } from './exchange.service.js';
 import type { NatsConfig } from './nats.service.js';
 import { Order, OrderStatus } from '../entity/order.entity.js';
 
@@ -80,13 +82,19 @@ function mapStrategyStatusToOrderStatus(status: string): OrderStatus | null {
 }
 
 @Provide()
-@Scope(ScopeEnum.Singleton)
+@Scope(ScopeEnum.Singleton, { allowDowngrade: true })
 export class OrderUpdateService {
   @InjectEntityModel(Order)
   orderRepo?: Repository<Order>;
 
   @Inject()
   natsService!: NatsService;
+
+  @Inject()
+  exchangeGrpc!: ExchangeGrpcClient;
+
+  @Inject()
+  exchangeService!: ExchangeService;
 
   @Config('nats')
   natsConfig!: NatsConfig;
@@ -96,6 +104,7 @@ export class OrderUpdateService {
 
   private subscribedSubjects = new Set<string>();
   private exchangeSubjects = new Map<number, { orderSubject: string; strategySubject: string }>();
+  private grpcSubscriptions = new Map<string, { stop: () => void }>();
 
   isSubscribed(exchangeId: number): boolean {
     return this.exchangeSubjects.has(exchangeId);
@@ -142,7 +151,76 @@ export class OrderUpdateService {
     this.logger.info('[OrderUpdate] Subscribed for exchangeId=%s exchangeType=%s', exchangeId, ex);
   }
 
+  private normalizeTradeTypeForGrpc(tradeType: string): string {
+    return tradeType === 'usdm-algo' ? 'futures' : tradeType;
+  }
+
+  ensureGrpcSubscribed(token: string, tradeType: string): void {
+    const normalized = this.normalizeTradeTypeForGrpc(tradeType);
+    const key = `${token}:${normalized}`;
+    if (this.grpcSubscriptions.has(key)) return;
+    const sub = this.exchangeGrpc.startSubscribeOrders({ token, tradeType: normalized });
+    this.grpcSubscriptions.set(key, sub);
+    this.logger.info('[OrderUpdate] Started gRPC SubscribeOrders for tradeType=%s', normalized);
+  }
+
+  async bootstrapSubscriptions(): Promise<void> {
+    if (!this.orderRepo) return;
+
+    const openStatuses = [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED];
+    const rows = await this.orderRepo
+      .createQueryBuilder('order')
+      .select('order.userid', 'userid')
+      .addSelect('order.exchangeId', 'exchangeId')
+      .addSelect('order.tradeType', 'tradeType')
+      .where('order.status IN (:...statuses)', { statuses: openStatuses })
+      .groupBy('order.userid, order.exchangeId, order.tradeType')
+      .getRawMany();
+
+    if (!rows || rows.length === 0) return;
+
+    const tokenCache = new Map<string, { token: string; exchangeType: string }>();
+
+    for (const row of rows) {
+      const userid = Number(row.userid);
+      const exchangeId = Number(row.exchangeId);
+      const tradeType = String(row.tradeType || '').trim();
+      if (!userid || !exchangeId || !tradeType) continue;
+
+      const cacheKey = `${userid}:${exchangeId}`;
+      let cached = tokenCache.get(cacheKey);
+      if (!cached) {
+        try {
+          const exchange = await this.exchangeService.get(userid, exchangeId);
+          const creds = await this.exchangeService.getApiCredentials(userid, exchangeId);
+          const initResp = await this.exchangeGrpc.initAccount({
+            exchangeType: exchange.exchangeType,
+            apiKey: creds.apiKey,
+            apiSecret: creds.apiSecret,
+            passphrase: creds.passphrase,
+            demonet: exchange.isTestnet,
+            name: exchange.name,
+            accountId: exchangeId.toString(),
+          });
+          if (!initResp?.success || !initResp?.token) {
+            this.logger.warn('[OrderUpdate] InitAccount failed for exchangeId=%s', exchangeId);
+            continue;
+          }
+          cached = { token: initResp.token, exchangeType: exchange.exchangeType };
+          tokenCache.set(cacheKey, cached);
+        } catch (err) {
+          this.logger.warn('[OrderUpdate] InitAccount failed for exchangeId=%s: %s', exchangeId, err);
+          continue;
+        }
+      }
+
+      this.subscribeForToken(exchangeId, cached.exchangeType, cached.token);
+      this.ensureGrpcSubscribed(cached.token, tradeType);
+    }
+  }
+
   private async handleOrderUpdate(exchangeId: number, data: OrderUpdateData): Promise<void> {
+    console.log('handleOrderUpdate', exchangeId, data)
     if (!this.orderRepo) return;
     try {
       const status = mapCoreStatusToOrderStatus(data.status);
@@ -165,6 +243,7 @@ export class OrderUpdateService {
   }
 
   private async handleStrategyOrderUpdate(exchangeId: number, data: StrategyOrderUpdateData): Promise<void> {
+    console.log('handleStrategyOrderUpdate', exchangeId)
     if (!this.orderRepo) return;
     try {
       const status = mapStrategyStatusToOrderStatus(data.status);

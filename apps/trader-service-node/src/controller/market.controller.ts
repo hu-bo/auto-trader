@@ -148,9 +148,13 @@ export class MarketController {
           
           // Build symbol -> count maps
           const strategyCountMap = new Map<string, number>();
+          const strategyIdMap = new Map<string, number>();
           for (const order of runningStrategies) {
             for (const symbol of order.symbols) {
               strategyCountMap.set(symbol, (strategyCountMap.get(symbol) || 0) + 1);
+              if (!strategyIdMap.has(symbol)) {
+                strategyIdMap.set(symbol, order.id);
+              }
             }
           }
 
@@ -165,6 +169,7 @@ export class MarketController {
           if (data?.tickers) {
             for (const ticker of data.tickers) {
               (ticker as any).runningStrategies = strategyCountMap.get(ticker.symbol) || 0;
+              (ticker as any).runningStrategyId = strategyIdMap.get(ticker.symbol);
               (ticker as any).runningConditionals = conditionalCountMap.get(ticker.symbol) || 0;
             }
           }

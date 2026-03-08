@@ -2,6 +2,7 @@ package grpcserver
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	exchangepb "exchange-adapter-service/gen/exchange"
@@ -903,7 +904,7 @@ func (s *ExchangeService) PlaceStrategyOrder(ctx context.Context, req *exchangep
 		}
 		attachedOrders = []core.StrategyAttachedOrder{attached}
 	}
-
+	fmt.Println(5555, req.Quantity)
 	res := adapter.PlaceStrategyOrder(ctx, core.StrategyOrderParams{
 		Symbol:           req.Symbol,
 		TradeType:        tradeType,
@@ -991,14 +992,26 @@ func (s *ExchangeService) PlaceStrategyOrders(ctx context.Context, req *exchange
 			orderPrice = &op
 		}
 
-		// reduceOnly := false
-		// if oreq.ReduceOnly != nil {
-		// 	reduceOnly = oreq.GetReduceOnly()
-		// }
+		reduceOnly := false
+		if oreq.ReduceOnly != nil {
+			reduceOnly = oreq.GetReduceOnly()
+		}
 
 		clientAlgoID := ""
 		if oreq.ClientAlgoId != nil {
 			clientAlgoID = oreq.GetClientAlgoId()
+		}
+
+		var callbackRatio *float64
+		if oreq.CallbackRatio != nil {
+			cr := oreq.GetCallbackRatio()
+			callbackRatio = &cr
+		}
+
+		var activationPrice *float64
+		if oreq.ActivationPrice != nil {
+			ap := oreq.GetActivationPrice()
+			activationPrice = &ap
 		}
 
 		var attached []core.StrategyAttachedOrder
@@ -1058,9 +1071,11 @@ func (s *ExchangeService) PlaceStrategyOrders(ctx context.Context, req *exchange
 			TriggerPrice:     oreq.TriggerPrice,
 			TriggerPriceType: triggerPriceType,
 			OrderPrice:       orderPrice,
-			// ReduceOnly:       reduceOnly,
-			ClientAlgoID:   clientAlgoID,
-			AttachedOrders: attached,
+			ReduceOnly:       reduceOnly,
+			ClientAlgoID:     clientAlgoID,
+			CallbackRatio:    callbackRatio,
+			ActivationPrice:  activationPrice,
+			AttachedOrders:   attached,
 		})
 	}
 
@@ -1110,6 +1125,15 @@ func (s *ExchangeService) CancelStrategyOrder(ctx context.Context, req *exchange
 	if err != nil {
 		return &exchangepb.CancelStrategyOrderResponse{Success: false, Error: contract.Error(sessionErrorCode(err), err.Error())}, nil
 	}
+
+	svcLog.Info().
+		Str("exchange", string(cfg.Exchange)).
+		Str("symbol", req.Symbol).
+		Str("algo_id", req.AlgoId).
+		Str("token", req.Token).
+		Str("account_id", cfg.AccountID).
+		Bool("demonet", cfg.Demonet).
+		Msg("CancelStrategyOrder")
 
 	tradeType, err := contract.ProtoTradeTypeToCoreRequired(req.TradeType)
 	if err != nil {

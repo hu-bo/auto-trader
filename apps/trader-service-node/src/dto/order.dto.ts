@@ -27,8 +27,8 @@ export class ListOrdersQueryDTO extends OrderTokenQueryDTO {
 }
 
 export class CancelOrderBodyDTO {
-  @Rule(Joi.number().integer().positive().required())
-  exchangeId!: number;
+  @Rule(Joi.number().integer().positive().optional())
+  exchangeId?: number;
 }
 
 export class PlaceOrderBodyDTO {

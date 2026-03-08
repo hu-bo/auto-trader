@@ -148,7 +148,7 @@ func (a *WsUserDataAdapter) Subscribe(ctx context.Context, options core.WsSubscr
 	}
 	conn.listenKey = listenKey
 
-	if err := ws.ConnectWithListenKey(wsKey, listenKey); err != nil {
+	if err := a.connectWithRetry(ctx, ws, wsKey, listenKey); err != nil {
 		return err
 	}
 
@@ -161,6 +161,42 @@ func (a *WsUserDataAdapter) Subscribe(ctx context.Context, options core.WsSubscr
 
 	go a.keepAliveLoop(tt, conn)
 	return nil
+}
+
+func (a *WsUserDataAdapter) connectWithRetry(ctx context.Context, ws *binanceapi.WebsocketClient, wsKey bws.WsKey, listenKey string) error {
+	const maxAttempts = 3
+	delay := 2 * time.Second
+	if delay > 10*time.Second {
+		delay = 10 * time.Second
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err := ws.ConnectWithListenKey(wsKey, listenKey); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+
+		if ctx != nil {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+		}
+
+		if attempt < maxAttempts {
+			time.Sleep(delay)
+			if delay < 10*time.Second {
+				delay *= 2
+				if delay > 10*time.Second {
+					delay = 10 * time.Second
+				}
+			}
+		}
+	}
+	return lastErr
 }
 
 func (a *WsUserDataAdapter) Unsubscribe(ctx context.Context, tradeType *core.TradeType) error {

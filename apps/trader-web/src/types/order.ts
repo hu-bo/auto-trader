@@ -10,7 +10,7 @@ export type OrderStatus = 'new' | 'partially_filled' | 'filled' | 'canceled' | '
 
 export interface Order {
   orderid: string
-  exchangeId: string
+  exchangeId: number
   symbol: string
   tradeType: TradeType
   side: OrderSide
@@ -43,7 +43,7 @@ export interface PlaceOrderParams {
 }
 
 export interface OrderQuery {
-  exchangeId: string
+  exchangeId: number
   symbol?: string
   status?: OrderStatus
   limit?: number
@@ -52,7 +52,6 @@ export interface OrderQuery {
 }
 
 export interface CancelOrderParams {
-  exchangeId: string
   orderId: string
   symbol?: string
 }

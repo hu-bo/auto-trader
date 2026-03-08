@@ -23,14 +23,14 @@ interface BatchTradingFormJson {
   symbols: string[]
 }
 
-export interface BatchStrategyOrderFormProps {
+export interface BatchAlgoOrderFormProps {
   /** 交易类型，由外部传入，不可变 */
   tradeType: TradeMode
   onSubmit?: (params: PlaceBatchStrategyParams) => Promise<void>
   loading?: boolean
 }
 
-export const BatchStrategyOrderForm: React.FC<BatchStrategyOrderFormProps> = ({
+export const BatchAlgoOrderForm: React.FC<BatchAlgoOrderFormProps> = ({
   tradeType,
   onSubmit,
   loading = false,
@@ -120,7 +120,7 @@ export const BatchStrategyOrderForm: React.FC<BatchStrategyOrderFormProps> = ({
             block
             loading={loading || submittingAction === leftAction.key}
             disabled={isSubmitting && submittingAction !== leftAction.key}
-            style={{ height: 44, background: '#10b981', borderColor: '#10b981' }}
+            style={{ background: '#10b981', borderColor: '#10b981' }}
             onClick={() => submitBySide(leftAction.key, leftAction.side, leftAction.positionSide)}
           >
             {leftAction.label}
@@ -133,7 +133,7 @@ export const BatchStrategyOrderForm: React.FC<BatchStrategyOrderFormProps> = ({
             block
             loading={loading || submittingAction === rightAction.key}
             disabled={isSubmitting && submittingAction !== rightAction.key}
-            style={{ height: 44, background: '#ef4444', borderColor: '#ef4444' }}
+            style={{ background: '#ef4444', borderColor: '#ef4444' }}
             onClick={() => submitBySide(rightAction.key, rightAction.side, rightAction.positionSide)}
           >
             {rightAction.label}
