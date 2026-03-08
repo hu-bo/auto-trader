@@ -68,6 +68,9 @@ steps:
       - echo "== Package release artifact =="
       - cd /drone/src
       - mkdir -p release/strategy-engine/dist release/strategy-engine/wheels
+      - cp apps/strategy-engine/pyproject.toml release/strategy-engine/
+      - cp apps/strategy-engine/poetry.lock release/strategy-engine/
+      - cp -r apps/strategy-engine/app release/strategy-engine/
       - cp apps/strategy-engine/dist/strategy_engine-*.whl release/strategy-engine/dist/
       - cp wheels/hquant-*.whl release/strategy-engine/wheels/
       - cp wheels/hquant_logger-*.whl release/strategy-engine/wheels/
