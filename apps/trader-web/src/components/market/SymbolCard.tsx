@@ -32,7 +32,7 @@ export const SymbolCard: React.FC<SymbolCardProps> = ({ data, onClick }) => {
     <div
       onClick={() => onClick?.(data.symbol)}
       style={{
-        padding: 16,
+        padding: 12,
         borderRadius: 8,
         border: '1px solid var(--semi-color-border)',
         background: 'var(--semi-color-bg-1)',
@@ -51,7 +51,7 @@ export const SymbolCard: React.FC<SymbolCardProps> = ({ data, onClick }) => {
       }}
     >
       {/* 顶部：symbol + tags */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Text strong style={{ fontSize: 16 }}>{data.symbol}</Text>
           {hasStrategies && (
@@ -80,16 +80,9 @@ export const SymbolCard: React.FC<SymbolCardProps> = ({ data, onClick }) => {
       </div>
 
       {/* 价格 */}
-      <div style={{ marginBottom: 8 }}>
+      <div style={{ marginBottom: 4 }}>
         <Text style={{ fontSize: 20, fontWeight: 700, color }}>
           {data.lastPrice.toFixed(data.lastPrice >= 1 ? 2 : 6)}
-        </Text>
-      </div>
-
-      {/* 24h交易量 (USDT) */}
-      <div style={{ marginBottom: 4 }}>
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          USDT: {formatVolume(data.quoteVolume24h)}
         </Text>
       </div>
 
@@ -97,6 +90,12 @@ export const SymbolCard: React.FC<SymbolCardProps> = ({ data, onClick }) => {
       <div>
         <Text type="tertiary" style={{ fontSize: 12 }}>
           Vol {formatVolume(data.volume24h)}
+        </Text>
+        <Text type="tertiary" style={{ marginRight: 12 }}>
+          <span style={{width: '10px'}}></span>
+        </Text>
+        <Text type="tertiary" style={{ fontSize: 12 }}>
+          Vol(USDT) {formatVolume(data.quoteVolume24h)}
         </Text>
       </div>
     </div>

@@ -195,7 +195,7 @@ export const BatchStrategyOrderForm: React.FC<BatchStrategyOrderFormProps> = ({
           suffix="%"
           style={{ width: '100%' }}
           rules={[{ required: true, message: '请输入价格偏移' }]}
-          helpText="0为实时价格，正数是高于价格，负数是低于价格（买入常用负数，卖出常用正数）"
+          helpText="0为实时价格，正数是高于价格，负数是低于价格"
         />
 
       }
