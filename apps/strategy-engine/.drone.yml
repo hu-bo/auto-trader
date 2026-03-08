@@ -82,7 +82,7 @@ steps:
   - name: scp
     image: appleboy/drone-scp
     settings:
-      debug: true
+      debug: false
       source:
         - strategy-engine.tar.gz
       host:
