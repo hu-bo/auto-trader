@@ -11,12 +11,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential git curl && \
     rm -rf /var/lib/apt/lists/*
 
-# 复制 wheel
-COPY wheels/*.whl /tmp/
+# 安装 Poetry
+RUN pip install --no-cache-dir poetry==1.8.3
+
+# 复制项目文件
+COPY pyproject.toml poetry.lock ./
 COPY packages/ /app/packages/
 
-# 安装依赖，使用缓存
-RUN pip install --cache-dir $PIP_CACHE_DIR /tmp/*.whl
+# 配置 Poetry 不创建虚拟环境
+RUN poetry config virtualenvs.create false
+
+# 安装依赖项
+RUN poetry install --only main --no-interaction --no-ansi
 
 EXPOSE 9004 9005
 
