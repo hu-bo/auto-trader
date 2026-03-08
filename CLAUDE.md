@@ -19,7 +19,8 @@ pnpm clean                # Remove all node_modules
 # Single package operations
 pnpm --filter <package-name> build
 pnpm --filter <package-name> test
-pnpm --filter trader-web dev     # Run frontend dev server
+pnpm --filter trader-web dev
+pnpm --filter trader-service-node dev
 ```
 
 ### Go (workspace mode)
@@ -57,16 +58,17 @@ cargo test
 
 ### Service Communication
 - **gRPC**: exchange-adapter-service ↔ trader-service-node (contracts in `packages/contracts/proto/`)
-- **NATS**: Message broker for market data and signals between all services
+- **NATS**: Message broker for market data and signals between services
 - **REST/WebSocket**: trader-web ↔ trader-service-node
 
 ### Directory Structure
 ```
 apps/                           # Deployable services
 ├── exchange-adapter-service/   # Go - Exchange API bridge, gRPC server
-├── trader-service-node/        # Midway.js - Main trading/user API backend
+├── trader-service-node/        # Midway.js - Trading/user API backend
 ├── trader-web/                 # React+Vite - Frontend
-└── strategy-engine/            # Python FastAPI - ML/strategy engine
+├── strategy-engine/            # Python FastAPI - Strategy engine
+└── chart-demo/                 # Vite - K-line chart demo
 
 pkg/                            # Go shared libraries
 ├── exchange-adapter/           # Unified exchange interface (Binance, OKX, Bybit)
@@ -76,12 +78,16 @@ pkg/                            # Go shared libraries
 ├── logger/                     # Structured logging (zerolog wrapper)
 └── risk/                       # Risk control engine
 
-packages/                       # TypeScript/Rust/Python shared packages
+packages/                       # Shared packages (TS/Rust/Python)
 ├── contracts/                  # Proto definitions (source of truth for types)
 ├── hquant-rs/                  # Rust - High-perf indicators/backtesting
 ├── hquant-js/                  # TypeScript bindings for hquant-rs
+├── hquant-py/                  # Python strategy/indicator helpers
 ├── klinecharts-pro/            # Custom K-line charting component
-└── casdoor/                    # Auth/SSO integration
+├── casdoor/                    # Auth/SSO integration (TS)
+├── casdoor-py/                 # Auth/SSO integration (Python)
+├── logger-js/                  # JS logger
+└── logger-py/                  # Python logger
 ```
 
 ### Data Flow
@@ -108,4 +114,3 @@ Market Data (NATS) → strategy-engine → Signal → NATS
 - `pnpm-workspace.yaml` - pnpm workspace config
 - `turbo.json` - Turbo build pipeline
 - `packages/contracts/proto/*.proto` - gRPC/data structure definitions
-

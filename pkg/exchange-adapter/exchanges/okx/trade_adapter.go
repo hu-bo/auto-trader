@@ -252,6 +252,7 @@ type submitOrderRequest struct {
 	OrdType    string `json:"ordType"`
 	Sz         string `json:"sz"`
 	Px         string `json:"px,omitempty"`
+	TgtCcy     string `json:"tgtCcy,omitempty"`
 	PosSide    string `json:"posSide,omitempty"`
 	ClOrdID    string `json:"clOrdId,omitempty"`
 	ReduceOnly string `json:"reduceOnly,omitempty"`
@@ -276,6 +277,9 @@ func (a *TradeAdapter) DoPlaceOrder(ctx context.Context, params core.PlaceOrderP
 		OrdType: toRawOrderType(params.OrderType),
 		Sz:      params.Quantity,
 		ClOrdID: params.ClientOrderID,
+	}
+	if params.TradeType == core.TradeTypeSpot {
+		req.TgtCcy = "base_ccy"
 	}
 
 	if params.OrderType == core.OrderTypeLimit || params.OrderType == core.OrderTypeMakerOnly {
@@ -365,6 +369,9 @@ func (a *TradeAdapter) DoBatchPlaceOrder(
 			OrdType: toRawOrderType(p.OrderType),
 			Sz:      p.Quantity,
 			ClOrdID: p.ClientOrderID,
+		}
+		if p.TradeType == core.TradeTypeSpot {
+			req.TgtCcy = "base_ccy"
 		}
 		if p.OrderType == core.OrderTypeLimit || p.OrderType == core.OrderTypeMakerOnly {
 			if p.Price != nil {

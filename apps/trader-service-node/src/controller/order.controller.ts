@@ -101,6 +101,37 @@ export class OrderController {
     };
   }
 
+  private async resolveSpotBuyQuantity(params: {
+    exchangeType: string;
+    tradeType: string;
+    symbol: string;
+    side: string;
+    quantity: number;
+    price?: number | null;
+  }): Promise<number> {
+    const tradeType = this.normalizeTradeTypeForGrpc(params.tradeType);
+    const side = params.side.trim().toLowerCase();
+    if (tradeType !== 'spot' || side !== 'buy') {
+      return params.quantity;
+    }
+
+    const priceInput = params.price ?? null;
+    let priceForQty = (priceInput != null && Number.isFinite(priceInput) && priceInput > 0)
+      ? priceInput
+      : null;
+
+    if (!priceForQty) {
+      const tickerMap = await exchangeSync.getTickerPriceMap(params.exchangeType.toLowerCase(), tradeType);
+      const lastPrice = tickerMap.get(params.symbol);
+      if (!lastPrice || !Number.isFinite(lastPrice) || lastPrice <= 0) {
+        throw new httpError.BadRequestError('无法获取最新价格，无法计算买入数量');
+      }
+      priceForQty = lastPrice;
+    }
+
+    return params.quantity / priceForQty;
+  }
+
   private requireGrpcSuccess(resp: any, fallbackMessage: string): void {
     if (!resp?.success) {
       const errMsg = resp?.error?.message;
@@ -170,11 +201,19 @@ export class OrderController {
     const user = await this.userService.getOrCreateCurrentUser(this.ctx.state.user);
     const { token, exchangeType: tokenExchangeType } = await this.getTokenForExchange(body.exchangeId);
     await this.ensurePrecisionReady();
+    const resolvedQuantity = await this.resolveSpotBuyQuantity({
+      exchangeType: tokenExchangeType,
+      tradeType: body.tradeType,
+      symbol: body.symbol,
+      side: body.side,
+      quantity: body.quantity,
+      price: body.price,
+    });
     const normalizedOrder = this.normalizeOrderPrecision({
       exchangeType: tokenExchangeType,
       tradeType: body.tradeType,
       symbol: body.symbol,
-      quantity: body.quantity,
+      quantity: resolvedQuantity,
       price: body.price,
     });
 
