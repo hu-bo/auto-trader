@@ -42,10 +42,13 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
-          semi: ['@douyinfe/semi-ui'],
+          semi: ['@douyinfe/semi-ui-19'],
           charts: ['@hquant/klinecharts-pro'],
         },
       },
     },
+  },
+  worker: {
+    format: 'es',
   },
 })

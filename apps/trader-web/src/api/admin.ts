@@ -12,7 +12,7 @@ export const adminApi = {
     requestData.get<UserListResponse>('/admin/users', params),
 
   // 更新用户状态
-  updateUserStatus: (userId: string, data: UserStatusUpdate) =>
+  updateUserStatus: (userId: string | number, data: UserStatusUpdate) =>
     requestData.put<User>(`/admin/users/${userId}/status`, data),
 
   // 获取所有策略

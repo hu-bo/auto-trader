@@ -55,7 +55,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 <p style={{ marginBottom: 16 }}>
                   页面加载时发生错误，请尝试刷新页面。
                 </p>
-                {process.env.NODE_ENV === 'development' && this.state.error && (
+                {import.meta.env.DEV && this.state.error && (
                   <pre
                     style={{
                       padding: 12,

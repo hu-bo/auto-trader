@@ -1,5 +1,5 @@
-import type { TradeType, PositionSide } from './exchange'
-import type { OrderType } from './order'
+
+import type { OrderType, PositionSide, TradeType } from './order'
 
 export interface Position {
   id: string

@@ -118,7 +118,7 @@ const Orders: React.FC = () => {
           expired: 'grey',
         }
         return (
-          <Tag size="small" color={colorMap[status] || 'grey'}>
+          <Tag size="small" color={colorMap[status] || 'grey' as any}>
             {formatOrderStatus(status)}
           </Tag>
         )
@@ -132,7 +132,7 @@ const Orders: React.FC = () => {
     },
     {
       title: '操作',
-      fixed: 'right',
+      fixed: 'right' as const,
       width: 100,
       render: (_: unknown, record: Order) => {
         if (record.status !== 'new' && record.status !== 'partially_filled') {
