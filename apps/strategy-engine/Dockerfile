@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir poetry==1.8.3
 # 复制项目文件
 COPY pyproject.toml poetry.lock ./
 COPY app/ /app/app/
-COPY packages/ /app/packages/
+COPY packages/* /app/packages/
 COPY wheels/ /app/wheels/
 
 # 配置 Poetry 不创建虚拟环境
