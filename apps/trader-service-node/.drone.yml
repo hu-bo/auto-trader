@@ -36,10 +36,8 @@ steps:
       # - name: app-temp
       #   path: /temp/app
     environment:
-      MINIO_ACCESS_KEY:
-        from_secret: MINIO_ACCESS_KEY
-      MINIO_SECRET_KEY:
-        from_secret: MINIO_SECRET_KEY
+      API_CONFIG_TOKEN_SECRET:
+        from_secret: API_CONFIG_TOKEN_SECRET
     commands:
       # 基础环境
       - APP_NAME=trader-service-node
