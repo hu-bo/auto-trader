@@ -59,8 +59,8 @@ steps:
       - echo "== Build service wheel =="
       - cd apps/strategy-engine
       - mkdir -p certs/grpc
-      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.crt" -O certs/grpc/shared.crt'
-      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.key" -O certs/grpc/shared.key'
+      - 'curl -H "Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.crt" -o certs/grpc/shared.crt'
+      - 'curl -H "Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.key" -o certs/grpc/shared.key'
       - poetry build -f wheel -n
       - poetry export --only main -f requirements.txt --without-hashes -o /drone/src/requirements.txt
       - sed -i '/hquant-py/d;/logger-py/d;/^hquant[=<>@ ]/d;/^hquant-logger[=<>@ ]/d' /drone/src/requirements.txt
