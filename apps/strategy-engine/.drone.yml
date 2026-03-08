@@ -25,7 +25,7 @@ steps:
       CARGO_HOME: /root/.cargo
     volumes:
       - name: cargo-cache
-        path: /root/.cargo
+        path: /root/.cargo/git
     commands:
       - echo "== Building hquant wheel =="
       - cd packages/hquant-py
