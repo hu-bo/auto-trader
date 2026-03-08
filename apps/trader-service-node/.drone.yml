@@ -69,7 +69,7 @@ steps:
       - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.crt" -O certs/grpc/shared.crt'
       - cd $APP_DIR
       # 内网拉配置
-      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/trader-service-node/config.prod.ts" -O src/config/config.prod.ts'
+      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/trader-service-node/config.prod.ts" -O src/config/config.local.ts'
       # 单应用构建
       - pnpm run build
       # 复制证书到构建输出目录
