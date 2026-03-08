@@ -1,0 +1,136 @@
+kind: pipeline
+type: docker
+name: trader-service-node
+
+trigger:
+  branch:
+    - master
+
+volumes:
+  - name: pnpm-cache
+    host:
+      path: /var/lib/drone-cache/pnpm/trader-service-node
+  # - name: app-temp
+  #   host:
+  #     path: /temp/app
+
+steps:
+
+  # 1. 恢复 pnpm store 缓存
+  - name: restore-pnpm-cache
+    image: drillster/drone-volume-cache
+    volumes:
+      - name: pnpm-cache
+        path: /cache
+    settings:
+      restore: true
+      mount:
+        - /cache/pnpm-store
+
+  # 2. build & package (Next.js Standalone)
+  - name: build and package
+    image: node:20-alpine
+    volumes:
+      - name: pnpm-cache
+        path: /cache
+      # - name: app-temp
+      #   path: /temp/app
+    environment:
+      MINIO_ACCESS_KEY:
+        from_secret: MINIO_ACCESS_KEY
+      MINIO_SECRET_KEY:
+        from_secret: MINIO_SECRET_KEY
+    commands:
+      # 基础环境
+      - APP_NAME=trader-service-node
+      - APP_DIR=apps/$APP_NAME
+      - APP_DEPLOY_DIR=/drone/src/$APP_NAME-deploy
+
+      # 使用 corepack，避免 npm / yarn 污染
+      - corepack enable
+      - corepack prepare pnpm@9 --activate
+
+      # pnpm 缓存与镜像1
+      - pnpm config set store-dir /cache/pnpm-store
+      - pnpm config set registry https://registry.npmmirror.com/
+      # workspace 依赖安装（一次）
+      - pnpm -w install --no-frozen-lockfile --filter "$APP_NAME..."
+      # 构建本地依赖包
+      # - pnpm -r --filter './packages/ip-ban' run build
+      # - mkdir -p node_modules/@app-node
+      # - cp -r packages/ip-ban node_modules/@app-node/ip-ban
+      #  pnpm 官方生产裁剪（关键）
+      # - pnpm deploy --filter trader-service-node --node-linker=hoisted trader-service-node-deploy
+      - pnpm deploy --filter "$APP_NAME" --node-linker=hoisted "$APP_DEPLOY_DIR"
+      # 校验产物
+      - ls -al $APP_DEPLOY_DIR
+
+      # 拉取证书
+      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.key" -O certs/grpc/shared.key'
+      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.crt" -O certs/grpc/shared.crt'
+      - cd $APP_DIR
+      # 内网拉配置
+      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/trader-service-node/config.prod.ts" -O src/config/config.prod.ts'
+      # 单应用构建
+      - pnpm run build
+      # 复制证书到构建输出目录
+      - mkdir -p dist/certs/grpc
+      - cp certs/grpc/shared.crt dist/certs/grpc/
+      - cp certs/grpc/shared.key dist/certs/grpc/
+      # 打包
+      - tar -czf /drone/src/$APP_NAME.tar.gz -C . .
+
+  # 3. 保存 pnpm store 缓存
+  - name: rebuild-pnpm-cache
+    image: drillster/drone-volume-cache
+    volumes:
+      - name: pnpm-cache
+        path: /cache
+    settings:
+      rebuild: true
+      mount:
+        - /cache/pnpm-store
+  # 4. scp
+  - name: scp
+    image: appleboy/drone-scp
+    settings:
+      debug: false
+      source:
+        - trader-service-node.tar.gz
+      host:
+        from_secret: CURRENT_HOST
+      username: root
+      port: 22
+      password:
+        from_secret: SSH_PWD
+      target: /temp/app/
+  # 4. deploy
+  - name: deploy
+    image: appleboy/drone-ssh
+    environment:
+      API_CONFIG_TOKEN_SECRET:
+        from_secret: API_CONFIG_TOKEN_SECRET
+    settings:
+      host:
+        from_secret: CURRENT_HOST
+      username: root
+      password:
+        from_secret: SSH_PWD
+      port: 22
+      command_timeout: 2m
+      envs:
+        - API_CONFIG_TOKEN_SECRET
+      script:
+        - export APP_NAME=trader-service-node
+        - export APP_DIR=/data/app/$APP_NAME
+        # 清理旧版本
+        - rm -rf $APP_DIR
+        - mkdir -p $APP_DIR
+        # 解压新版本
+        - cd /temp/app
+        - tar xzf $APP_NAME.tar.gz -C $APP_DIR
+        - rm -f /temp/app/$APP_NAME.tar.gz
+        # 启动服务
+        - docker-compose -f docker-compose.yml up -d --force-recreate
+        - sleep 2
+        - docker logs $APP_NAME
