@@ -63,6 +63,9 @@ steps:
       - mkdir -p /drone/src/.cache/mod
       - go mod download
       - cd $APP_DIR
+      - mkdir -p certs/grpc
+      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.crt" -O certs/grpc/shared.crt'
+      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.key" -O certs/grpc/shared.key'
       - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/exchange-sync/config.prod.yaml" -O config.local.yaml'
       - cat config.local.yaml
       - go build -ldflags="-s -w" -o $APP_NAME ./cmd/main.go
