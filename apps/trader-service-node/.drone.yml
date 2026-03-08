@@ -74,8 +74,8 @@ steps:
       - pnpm run build
       # 复制证书到构建输出目录
       - mkdir -p dist/certs/grpc
-      - cp certs/grpc/shared.crt dist/certs/grpc/
-      - cp certs/grpc/shared.key dist/certs/grpc/
+      - cp /drone/src/certs/grpc/shared.crt dist/certs/grpc/
+      - cp /drone/src/certs/grpc/shared.key dist/certs/grpc/
       # 打包
       - tar -czf /drone/src/$APP_NAME.tar.gz -C . .
 
