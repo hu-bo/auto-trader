@@ -64,6 +64,7 @@ steps:
       - ls -al $APP_DEPLOY_DIR
 
       # 拉取证书
+      - mkdir -p certs/grpc
       - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.key" -O certs/grpc/shared.key'
       - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.crt" -O certs/grpc/shared.crt'
       - cd $APP_DIR
