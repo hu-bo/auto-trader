@@ -49,6 +49,7 @@ steps:
         rm -rf /var/lib/apt/lists/*
 
       - pip install --no-cache-dir "poetry==$POETRY_VERSION"
+      - pip install --no-cache-dir poetry-plugin-export
 
       - echo "== Build local wheels =="
       - pip wheel ./packages/logger-py -w /drone/src/wheels
