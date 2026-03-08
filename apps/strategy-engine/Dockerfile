@@ -5,7 +5,8 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_CACHE_DIR=/root/.cache/pip
+    PIP_CACHE_DIR=/root/.cache/pip \
+    PYTHONPATH=/app
 
 # 仅安装运行时必需依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -16,6 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt /app/requirements.txt
 COPY dist/ /app/dist/
 COPY wheels/ /app/wheels/
+COPY packages/contracts/output/python /app/python
+COPY certs/ /app/certs/
 
 RUN if [ ! -s /app/requirements.txt ]; then \
       echo "requirements.txt missing or empty" >&2; \
@@ -24,6 +27,11 @@ RUN if [ ! -s /app/requirements.txt ]; then \
 
 RUN if ! ls /app/dist/strategy_engine-*.whl >/dev/null 2>&1; then \
       echo "strategy_engine wheel missing in /app/dist" >&2; \
+      exit 1; \
+    fi
+
+RUN if [ ! -f /app/python/__init__.py ]; then \
+      echo "contracts python stubs missing at /app/python" >&2; \
       exit 1; \
     fi
 

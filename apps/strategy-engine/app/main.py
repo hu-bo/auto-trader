@@ -82,6 +82,10 @@ def create_app() -> FastAPI:
             port=settings.grpc_port,
             manager=manager,
             candle_subject_prefix=settings.upstream_subject_prefix,
+            tls_enabled=settings.grpc_tls_enabled,
+            cert_file=settings.grpc_tls_cert_file,
+            key_file=settings.grpc_tls_key_file,
+            ca_file=settings.grpc_tls_ca_file,
         )
         await grpc_server.start()
 
@@ -103,7 +107,8 @@ def create_app() -> FastAPI:
             f"Strategy engine started env={settings.app_env} "
             f"signal_nats={settings.signal_nats_url} "
             f"upstream_nats={upstream_url} "
-            f"grpc_port={settings.grpc_port}"
+            f"grpc_port={settings.grpc_port} "
+            f"grpc_tls={settings.grpc_tls_enabled}"
         )
 
         yield

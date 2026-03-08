@@ -39,6 +39,8 @@ steps:
     image: python:3.12-slim
     environment:
       POETRY_VERSION: "2.3.2"
+      API_CONFIG_TOKEN_SECRET:
+        from_secret: API_CONFIG_TOKEN_SECRET
     volumes:
       - name: pip-cache
         path: /root/.cache
@@ -56,9 +58,12 @@ steps:
 
       - echo "== Build service wheel =="
       - cd apps/strategy-engine
+      - mkdir -p certs/grpc
+      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.crt" -O certs/grpc/shared.crt'
+      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.key" -O certs/grpc/shared.key'
       - poetry build -f wheel -n
       - poetry export --only main -f requirements.txt --without-hashes -o /drone/src/requirements.txt
-      - sed -i '/^hquant[=<>@ ]/d;/^hquant-logger[=<>@ ]/d;/packages\\/hquant-py/d;/packages\\/logger-py/d' /drone/src/requirements.txt
+      - sed -i '/hquant-py/d;/logger-py/d;/^hquant[=<>@ ]/d;/^hquant-logger[=<>@ ]/d' /drone/src/requirements.txt
 
       - echo "== Package release artifact =="
       - cd /drone/src
@@ -73,6 +78,7 @@ steps:
       - cp apps/strategy-engine/Dockerfile release/strategy-engine/
       - cp apps/strategy-engine/docker-compose.yaml release/strategy-engine/
       - cp apps/strategy-engine/.env.example release/strategy-engine/
+      - cp -r apps/strategy-engine/certs release/strategy-engine/
       - cp -r packages release/strategy-engine/
       - tar czf strategy-engine.tar.gz -C release/strategy-engine .
 
@@ -113,6 +119,7 @@ steps:
         - tar xzf /temp/strategy-engine.tar.gz -C /data/app/$APP_NAME
         - cd /data/app/$APP_NAME
         - ls -la
-        - docker-compose -f docker-compose.yaml up -d --build --force-recreate
+        - docker-compose up -d --no-recreate nats
+        - docker-compose -f docker-compose.yaml up -d --build --force-recreate --no-deps exchange-adapter-service
         - sleep 2
         - docker logs --tail 200 strategy-engine

@@ -18,11 +18,13 @@ from hquant_logger import create_logger
 # relative imports we add the *parent* directory (dist/) to sys.path and
 # then import the ``python`` package.
 # ---------------------------------------------------------------------------
-_proto_dist = str(
-    Path(__file__).resolve().parents[4] / "packages" / "contracts" / "dist"
+_proto_root = (
+    Path(__file__).resolve().parents[4] / "packages" / "contracts" / "output"
 )
-if _proto_dist not in sys.path:
-    sys.path.insert(0, _proto_dist)
+if _proto_root.exists():
+    _proto_root_str = str(_proto_root)
+    if _proto_root_str not in sys.path:
+        sys.path.insert(0, _proto_root_str)
 
 from python import strategy_subscription_pb2 as pb2  # noqa: E402
 from python import strategy_subscription_pb2_grpc as pb2_grpc  # noqa: E402

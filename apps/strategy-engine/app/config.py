@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     history_preload_days: int = Field(default=3, alias="HISTORY_PRELOAD_DAYS")
 
     grpc_port: int = Field(default=9005, alias="GRPC_PORT")
+    grpc_tls_enabled: bool = Field(default=False, alias="GRPC_TLS_ENABLED")
+    grpc_tls_cert_file: str = Field(default="", alias="GRPC_TLS_CERT_FILE")
+    grpc_tls_key_file: str = Field(default="", alias="GRPC_TLS_KEY_FILE")
+    grpc_tls_ca_file: str = Field(default="", alias="GRPC_TLS_CA_FILE")
 
     candle_buffer_size: int = Field(default=1000, alias="CANDLE_BUFFER_SIZE")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
