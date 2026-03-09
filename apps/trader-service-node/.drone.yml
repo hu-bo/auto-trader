@@ -129,6 +129,7 @@ steps:
         - cd /temp/app
         - tar xzf $APP_NAME.tar.gz -C $APP_DIR
         - rm -f /temp/app/$APP_NAME.tar.gz
+        - cd $APP_DIR
         - ls -al
         # 启动服务
         - docker-compose -f docker-compose.yml up -d --force-recreate
