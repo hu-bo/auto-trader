@@ -55,9 +55,6 @@ steps:
       - pnpm -w install --no-frozen-lockfile --filter "$APP_NAME..."
       # 构建本地依赖包
 
-      # 校验产物
-      - ls -al $APP_DEPLOY_DIR
-
       # 拉取证书
       - mkdir -p certs/grpc
       - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.key" -O certs/grpc/shared.key'
@@ -74,6 +71,8 @@ steps:
       #  pnpm 官方生产裁剪（关键）
       # - pnpm deploy --filter trader-service-node --node-linker=hoisted trader-service-node-deploy
       - pnpm deploy --filter "$APP_NAME" --node-linker=hoisted "$APP_DEPLOY_DIR"
+            # 校验产物
+      - ls -al $APP_DEPLOY_DIR
       # 打包
       - tar -czf /drone/src/$APP_NAME.tar.gz -C $APP_DEPLOY_DIR .
 
