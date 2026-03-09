@@ -13,7 +13,7 @@ export default {
     port: parseIntOr(process.env.APP_PORT, 9003),
   },
   auth: {
-    mode: process.env.AUTH_MODE ?? 'mock',
+    mode: process.env.AUTH_MODE ?? 'casdoor',
   },
   casdoor: {
     endpoint: 'http://sso.8and1.cn',
