@@ -64,14 +64,15 @@ steps:
       - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/trader-service-node/config.prod.ts" -O src/config/config.local.ts'
       # 单应用构建
       - pnpm run build
-      # 复制证书到构建输出目录
-      - mkdir -p dist/certs/grpc
-      - cp /drone/src/certs/grpc/shared.crt dist/certs/grpc/
-      - cp /drone/src/certs/grpc/shared.key dist/certs/grpc/
       #  pnpm 官方生产裁剪（关键）
       # - pnpm deploy --filter trader-service-node --node-linker=hoisted trader-service-node-deploy
       - pnpm deploy --filter "$APP_NAME" --node-linker=hoisted "$APP_DEPLOY_DIR"
-            # 校验产物
+      - cp -r $APP_DIR/dist $APP_DEPLOY_DIR/
+      # copy cert
+      - mkdir -p $APP_DEPLOY_DIR/dist/certs/grpc
+      - cp /drone/src/certs/grpc/shared.crt $APP_DEPLOY_DIR/dist/certs/grpc/
+      - cp /drone/src/certs/grpc/shared.key $APP_DEPLOY_DIR/dist/certs/grpc/
+      # 校验产物
       - ls -al $APP_DEPLOY_DIR
       # 打包
       - tar -czf /drone/src/$APP_NAME.tar.gz -C $APP_DEPLOY_DIR .
