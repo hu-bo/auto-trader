@@ -36,6 +36,7 @@ import UnittestConfig from './config/config.unittest.js';
     {
       default: DefaultConfig,
       local: LocalConfig,
+      production: LocalConfig,
       unittest: UnittestConfig,
     },
   ],
