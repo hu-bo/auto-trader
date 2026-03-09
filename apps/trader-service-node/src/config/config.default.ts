@@ -35,7 +35,7 @@ export default {
     dataSource: {
       default: {
         type: 'postgres',
-        host: 'localhost',
+        host: process.env.NODE_ENV === 'production' ? 'postgres' : 'localhost',
         port: 15000,
         username: 'trader_user',
         password: '123456',

@@ -4,6 +4,16 @@
   "description": "",
   "private": true,
   "type": "module",
+  "scripts": {
+    "start": "NODE_ENV=production node ./bootstrap.js",
+    "dev": "cross-env NODE_ENV=local mwtsc --watch --run @midwayjs/mock/app",
+    "test": "cross-env NODE_ENV=unittest mocha",
+    "cov": "cross-env c8 --all --reporter=text --reporter=lcovonly npm run test",
+    "lint": "mwts check",
+    "lint:fix": "mwts fix",
+    "ci": "npm run cov",
+    "build": "mwtsc --cleanOutDir"
+  },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.0",
     "@bufbuild/protobuf": "^2.11.0",
@@ -46,16 +56,6 @@
   },
   "engines": {
     "node": ">=20.0.0"
-  },
-  "scripts": {
-    "start": "NODE_ENV=production node ./bootstrap.js",
-    "dev": "cross-env NODE_ENV=local mwtsc --watch --run @midwayjs/mock/app",
-    "test": "cross-env NODE_ENV=unittest mocha",
-    "cov": "cross-env c8 --all --reporter=text --reporter=lcovonly npm run test",
-    "lint": "mwts check",
-    "lint:fix": "mwts fix",
-    "ci": "npm run cov",
-    "build": "mwtsc --cleanOutDir"
   },
   "repository": {
     "type": "git",
