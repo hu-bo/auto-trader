@@ -48,7 +48,7 @@ steps:
       - corepack enable
       - corepack prepare pnpm@9 --activate
 
-      # pnpm 缓存与镜像1
+      # pnpm 缓存与镜像
       - pnpm config set store-dir /cache/pnpm-store
       - pnpm config set registry https://registry.npmmirror.com/
       # workspace 依赖安装（一次）
