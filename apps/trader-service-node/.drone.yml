@@ -67,7 +67,7 @@ steps:
       #  pnpm 官方生产裁剪（关键）
       # - pnpm deploy --filter trader-service-node --node-linker=hoisted trader-service-node-deploy
       - pnpm deploy --filter "$APP_NAME" --node-linker=hoisted "$APP_DEPLOY_DIR"
-      - cp -r $APP_DIR/dist $APP_DEPLOY_DIR/
+      - cp -r dist $APP_DEPLOY_DIR/
       # copy cert
       - mkdir -p $APP_DEPLOY_DIR/dist/certs/grpc
       - cp /drone/src/certs/grpc/shared.crt $APP_DEPLOY_DIR/dist/certs/grpc/
