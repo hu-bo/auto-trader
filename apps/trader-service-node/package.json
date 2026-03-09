@@ -12,7 +12,11 @@
     "lint": "mwts check",
     "lint:fix": "mwts fix",
     "ci": "npm run cov",
-    "build": "mwtsc --cleanOutDir"
+    "build": "mwtsc --cleanOutDir",
+    "typeorm": "ts-node --esm ./node_modules/typeorm/cli.js -d src/data-source.ts",
+    "migration:generate": "npm run typeorm -- migration:generate src/migrations/migration",
+    "migration:run": "npm run typeorm -- migration:run",
+    "migration:revert": "npm run typeorm -- migration:revert"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.0",
