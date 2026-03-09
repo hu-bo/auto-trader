@@ -63,6 +63,7 @@ steps:
       # 内网拉配置
       - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/trader-service-node/config.prod.ts" -O src/config/config.local.ts'
       - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/trader-service-node/config.prod.ts" -O src/config/config.prod.ts'
+      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/ssh/casdoor_jwt_key.pem" -O src/config/casdoor_jwt_key.pem'
       # 单应用构建
       - pnpm run build
       #  pnpm 官方生产裁剪（关键）
@@ -71,8 +72,8 @@ steps:
       - cp -r dist $APP_DEPLOY_DIR/
       # copy cert
       - mkdir -p $APP_DEPLOY_DIR/dist/certs/grpc
-      - cp /drone/src/certs/grpc/shared.crt $APP_DEPLOY_DIR/dist/certs/grpc/
-      - cp /drone/src/certs/grpc/shared.key $APP_DEPLOY_DIR/dist/certs/grpc/
+      - cp /drone/src/certs/grpc/shared.crt $APP_DEPLOY_DIR/certs/grpc/
+      - cp /drone/src/certs/grpc/shared.key $APP_DEPLOY_DIR/certs/grpc/
       # 校验产物
       - ls -al $APP_DEPLOY_DIR
       # 打包
