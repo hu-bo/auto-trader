@@ -35,13 +35,8 @@ const Positions: React.FC = () => {
   })
 
   const closeMutation = useMutation({
-    mutationFn: ({
-      positionId,
-      exchangeId,
-    }: {
-      positionId: string
-      exchangeId: string
-    }) => positionApi.close(positionId, { exchangeId }),
+    mutationFn: ({ positionId }: { positionId: string }) =>
+      positionApi.close(positionId, { exchangeId: selectedExchange!.id }),
     onSuccess: () => {
       Toast.success('平仓成功')
       queryClient.invalidateQueries({ queryKey: ['positions'] })
@@ -127,7 +122,6 @@ const Positions: React.FC = () => {
           onConfirm={() =>
             closeMutation.mutate({
               positionId: record.id,
-              exchangeId: record.exchangeId,
             })
           }
         >

@@ -26,7 +26,7 @@ export interface PositionQuery {
 }
 
 export interface ClosePositionParams {
-  exchangeId: string
+  exchangeId: number
   orderType?: OrderType
   price?: number
   clientOrderId?: string
