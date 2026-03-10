@@ -5,6 +5,7 @@ import type { PlaceBatchStrategyParams } from '@/api/batch-order'
 import { useTradingFormState } from '@/hooks'
 import type { OrderSide, PositionSide, OrderType, TradeType } from '@/types'
 import { getTradeActionPair, type FuturesActionMode, type FuturesPositionSide } from './tradeAction'
+import { storage, STORAGE_KEYS } from '@/utils/storage'
 
 type TradeMode = 'futures' | 'spot'
 
@@ -38,17 +39,22 @@ export const BatchAlgoOrderForm: React.FC<BatchAlgoOrderFormProps> = ({
   const [futuresActionMode, setFuturesActionMode] = React.useState<FuturesActionMode>('open')
   const [submittingAction, setSubmittingAction] = React.useState<string | null>(null)
 
+  const cachedFields = React.useMemo(() => {
+    const cached = storage.get<Partial<Pick<BatchTradingFormJson, 'leverage' | 'amountUSDT' | 'priceOffsetPercent' | 'stopLossPercent' | 'takeProfitPercent' | 'quantity'>>>(STORAGE_KEYS.ORDER_FORM_CACHE)
+    return cached ?? {}
+  }, [])
+
   const { values, onChange, setField, setFormApi, formApiRef } = useTradingFormState<BatchTradingFormJson>({
     tradeType,
     side: 'buy',
     orderType: 'algo',
     positionSide: 'long',
-    leverage: 10,
-    amountUSDT: 100,
-    priceOffsetPercent: 1,
-    stopLossPercent: 5,
-    takeProfitPercent: 10,
-    quantity: 0,
+    leverage: cachedFields.leverage ?? 10,
+    amountUSDT: cachedFields.amountUSDT ?? 100,
+    priceOffsetPercent: cachedFields.priceOffsetPercent ?? -1,
+    stopLossPercent: cachedFields.stopLossPercent ?? 5,
+    takeProfitPercent: cachedFields.takeProfitPercent ?? 6,
+    quantity: cachedFields.quantity ?? 0,
     price: undefined,
     symbols: [],
   })
@@ -97,6 +103,14 @@ export const BatchAlgoOrderForm: React.FC<BatchAlgoOrderFormProps> = ({
     setSubmittingAction(actionKey)
     try {
       await onSubmit(payload)
+      storage.set(STORAGE_KEYS.ORDER_FORM_CACHE, {
+        leverage: payload.leverage ?? values.leverage,
+        amountUSDT,
+        priceOffsetPercent: payload.priceOffsetPercent,
+        stopLossPercent: payload.stopLossPercent,
+        takeProfitPercent: payload.takeProfitPercent,
+        quantity: Number(submitValues.quantity ?? values.quantity),
+      })
     } finally {
       setSubmittingAction(null)
     }

@@ -23,12 +23,18 @@ export function useTradingFormState<T extends Record<string, any>>(initialValues
     setValues((prev) => ({ ...prev, [field]: value }))
   }, [])
 
+  const prevValuesRef = React.useRef<T | null>(null)
+
   React.useEffect(() => {
     const formApi = formApiRef.current
     if (!formApi) return
+    const prev = prevValuesRef.current
     Object.entries(values).forEach(([key, value]) => {
-      formApi.setValue(key, value)
+      if (!prev || prev[key] !== value) {
+        formApi.setValue(key, value)
+      }
     })
+    prevValuesRef.current = values
   }, [values])
 
   return {

@@ -71,6 +71,7 @@ export const BaseOrderFields: React.FC<BaseOrderFieldsProps> = ({
     <Form
       id={formId}
       onSubmit={onSubmit}
+      getFormApi={onFormApi}
       // wrapperCol={{ span: 19 }}
       // labelCol={{ span: 5 }}
       labelPosition='top'
@@ -83,8 +84,6 @@ export const BaseOrderFields: React.FC<BaseOrderFieldsProps> = ({
         orderType,
       }}
     >
-      <FormApiBridge onReady={onFormApi} />
-
       <Form.RadioGroup
         field="tradeType"
         label="交易类型"

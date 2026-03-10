@@ -284,7 +284,7 @@ export class OrderController {
     const tickerMap = await exchangeSync.getTickerPriceMap(exchangeType, grpcTradeType);
 
     // 4. Compute orders with precision truncation
-    const offset = Math.abs(body.priceOffsetPercent) / 100;
+    const offset = body.priceOffsetPercent / 100;
     const isFutures = body.tradeType === 'futures';
     const leverage = 1;
     type AttachedOrder = {
@@ -363,7 +363,7 @@ export class OrderController {
         }
         strategyType = resolved;
       }
-
+      console.log(quantity)
       orders.push({
         symbol,
         tradeType: grpcTradeType,
