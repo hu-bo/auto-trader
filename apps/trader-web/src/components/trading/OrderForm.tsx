@@ -13,12 +13,17 @@ import { orderApi } from '@/api'
 import { useAppStore } from '@/stores/appStore'
 import { useTradingFormState } from '@/hooks'
 import { BaseOrderFields, BaseOrderValues } from './BaseOrderFields'
+import { storage, STORAGE_KEYS } from '@/utils/storage'
 import type { TradeType, OrderSide, OrderType, PositionSide } from '@/types'
 import { getTradeActionPair, type FuturesActionMode, type FuturesPositionSide } from './tradeAction'
 
 type OrderFormJson = BaseOrderValues & {
   quantity: number
   price?: number
+  amountUSDT?: number
+  priceOffsetPercent?: number
+  takeProfitPercent?: number
+  stopLossPercent?: number
 }
 
 interface OrderFormProps {
@@ -46,9 +51,41 @@ export const OrderForm: React.FC<OrderFormProps> = ({ symbol, tradeType, onTrade
     orderType: 'limit',
     quantity: 0,
     price: undefined,
+    amountUSDT: undefined,
+    priceOffsetPercent: undefined,
+    takeProfitPercent: undefined,
+    stopLossPercent: undefined,
   })
   const queryClient = useQueryClient()
   const { selectedExchange } = useAppStore()
+  const cachedFormRef = React.useRef<Partial<OrderFormJson> | null>(null)
+  if (cachedFormRef.current === null) {
+    cachedFormRef.current = storage.get<Partial<OrderFormJson>>(STORAGE_KEYS.ORDER_FORM_CACHE, {}) || {}
+  }
+  const cachedForm = cachedFormRef.current
+
+  const persistCache = React.useCallback(
+    (patch: Partial<OrderFormJson> = {}) => {
+      const formApi = formApiRef.current
+      const formValues = (formApi?.getValues?.() as Record<string, unknown>) ?? {}
+      const merged: Record<string, unknown> = { ...formValues, ...patch }
+      delete merged.tradeType
+      storage.set(STORAGE_KEYS.ORDER_FORM_CACHE, merged)
+    },
+    [formApiRef],
+  )
+
+  const handleFormApi = React.useCallback(
+    (api: any) => {
+      setFormApi(api)
+      if (!cachedForm || Object.keys(cachedForm).length === 0) return
+      const { tradeType: _ignored, ...rest } = cachedForm
+      if (Object.keys(rest).length > 0) {
+        onChange(rest)
+      }
+    },
+    [cachedForm, onChange, setFormApi],
+  )
 
   React.useEffect(() => {
     if (values.tradeType !== tradeType) {
@@ -116,10 +153,11 @@ export const OrderForm: React.FC<OrderFormProps> = ({ symbol, tradeType, onTrade
   return (
     <BaseOrderFields
       formId="order-form"
-      onFormApi={setFormApi}
+      onFormApi={handleFormApi}
       values={values}
       onChange={(changed) => {
         onChange(changed)
+        persistCache(changed)
         if (changed.tradeType) {
           onTradeTypeChange?.(changed.tradeType)
         }
@@ -177,6 +215,11 @@ export const OrderForm: React.FC<OrderFormProps> = ({ symbol, tradeType, onTrade
         style={{ width: '100%' }}
         rules={[{ required: true, message: '请输入金额' }]}
         addonAfter="USDT"
+        onChange={(v) => {
+          const nextValue = v as number
+          setField('amountUSDT', nextValue)
+          persistCache({ amountUSDT: nextValue })
+        }}
       />
       {/* OrderForm 特有字段：订单类型、价格、数量 */}
       {values.orderType === 'limit' && (
@@ -186,6 +229,11 @@ export const OrderForm: React.FC<OrderFormProps> = ({ symbol, tradeType, onTrade
           placeholder="输入价格"
           rules={[{ required: true, message: '请输入价格' }]}
           style={{ width: '100%' }}
+          onChange={(v) => {
+            const nextValue = v as number
+            setField('price', nextValue)
+            persistCache({ price: nextValue })
+          }}
         />
       )}
       {
@@ -200,6 +248,11 @@ export const OrderForm: React.FC<OrderFormProps> = ({ symbol, tradeType, onTrade
           style={{ width: '100%' }}
           rules={[{ required: true, message: '请输入价格偏移' }]}
           helpText="0为实时价格，正数是高于价格，负数是低于价格"
+          onChange={(v) => {
+            const nextValue = v as number
+            setField('priceOffsetPercent', nextValue)
+            persistCache({ priceOffsetPercent: nextValue })
+          }}
         />
 
       }
@@ -216,6 +269,11 @@ export const OrderForm: React.FC<OrderFormProps> = ({ symbol, tradeType, onTrade
               suffix="%"
               style={{ width: '100%' }}
               rules={[{ required: true, message: '请输入止盈比例' }]}
+              onChange={(v) => {
+                const nextValue = v as number
+                setField('takeProfitPercent', nextValue)
+                persistCache({ takeProfitPercent: nextValue })
+              }}
             />
           </Col>
           <Col span={12} >
@@ -228,6 +286,11 @@ export const OrderForm: React.FC<OrderFormProps> = ({ symbol, tradeType, onTrade
               suffix="%"
               style={{ width: '100%' }}
               rules={[{ required: true, message: '请输入止损比例' }]}
+              onChange={(v) => {
+                const nextValue = v as number
+                setField('stopLossPercent', nextValue)
+                persistCache({ stopLossPercent: nextValue })
+              }}
             />
           </Col>
         </Row>

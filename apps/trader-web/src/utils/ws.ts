@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client'
-import { getStorage, STORAGE_KEYS } from './storage'
+import { storage, STORAGE_KEYS } from './storage'
 
 type EventHandler = (data: unknown) => void
 type ConnectionHandler = () => void
@@ -21,7 +21,7 @@ class WebSocketClient {
     if (this.socket?.connected) return
 
     const url = options.url || import.meta.env.VITE_WS_URL || ''
-    const token = getStorage<string>(STORAGE_KEYS.TOKEN)
+    const token = storage.get<string>(STORAGE_KEYS.TOKEN)
 
     this.socket = io(url, {
       autoConnect: options.autoConnect ?? true,

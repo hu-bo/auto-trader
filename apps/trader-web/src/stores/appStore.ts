@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { getStorage, setStorage, STORAGE_KEYS } from '@/utils/storage'
+import { storage, STORAGE_KEYS } from '@/utils/storage'
 import type { Exchange } from '@/types'
 
 type ThemeMode = 'light' | 'dark'
@@ -37,7 +37,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   tradingTradeType: 'spot',
 
   setTheme: (theme) => {
-    setStorage(STORAGE_KEYS.THEME, theme)
+    storage.set(STORAGE_KEYS.THEME, theme)
     document.body.setAttribute('theme-mode', theme)
     set({ theme })
   },
@@ -48,7 +48,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   setSidebarCollapsed: (collapsed) => {
-    setStorage(STORAGE_KEYS.SIDEBAR_COLLAPSED, collapsed)
+    storage.set(STORAGE_KEYS.SIDEBAR_COLLAPSED, collapsed)
     set({ sidebarCollapsed: collapsed })
   },
 
@@ -61,26 +61,26 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   setTradingSymbol: (symbol) => {
-    setStorage(STORAGE_KEYS.TRADING_SYMBOL, symbol)
+    storage.set(STORAGE_KEYS.TRADING_SYMBOL, symbol)
     set({ tradingSymbol: symbol })
   },
 
   setTradingInterval: (interval) => {
-    setStorage(STORAGE_KEYS.TRADING_INTERVAL, interval)
+    storage.set(STORAGE_KEYS.TRADING_INTERVAL, interval)
     set({ tradingInterval: interval })
   },
 
   setTradingTradeType: (tradeType) => {
-    setStorage(STORAGE_KEYS.TRADING_TRADE_TYPE, tradeType)
+    storage.set(STORAGE_KEYS.TRADING_TRADE_TYPE, tradeType)
     set({ tradingTradeType: tradeType })
   },
 
   initialize: () => {
-    const theme = getStorage<ThemeMode>(STORAGE_KEYS.THEME) || 'dark'
-    const sidebarCollapsed = getStorage<boolean>(STORAGE_KEYS.SIDEBAR_COLLAPSED) || false
-    const tradingSymbol = getStorage<string>(STORAGE_KEYS.TRADING_SYMBOL) || 'BTC-USDT'
-    const tradingInterval = getStorage<string>(STORAGE_KEYS.TRADING_INTERVAL) || '15m'
-    const tradingTradeType = getStorage<TradeTypeMode>(STORAGE_KEYS.TRADING_TRADE_TYPE) || 'spot'
+    const theme = storage.get<ThemeMode>(STORAGE_KEYS.THEME) || 'dark'
+    const sidebarCollapsed = storage.get<boolean>(STORAGE_KEYS.SIDEBAR_COLLAPSED) || false
+    const tradingSymbol = storage.get<string>(STORAGE_KEYS.TRADING_SYMBOL) || 'BTC-USDT'
+    const tradingInterval = storage.get<string>(STORAGE_KEYS.TRADING_INTERVAL) || '15m'
+    const tradingTradeType = storage.get<TradeTypeMode>(STORAGE_KEYS.TRADING_TRADE_TYPE) || 'spot'
 
     document.body.setAttribute('theme-mode', theme)
 

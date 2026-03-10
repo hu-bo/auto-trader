@@ -26,6 +26,7 @@ import { batchOrderApi } from '@/api/batch-order'
 import { useAppStore } from '@/stores/appStore'
 import { useMarketStore, getMarketSymbolsKey } from '@/stores/marketStore'
 import { useNavigateKeepParams } from '@/hooks'
+import { storage, STORAGE_KEYS } from '@/utils/storage'
 import type { TickerData } from '@/api/market'
 
 const { Title, Text } = Typography
@@ -33,18 +34,7 @@ const { Title, Text } = Typography
 type SortType = 'default' | 'volume_desc' | 'volume_asc' | 'change_desc' | 'change_asc'
 type FilterType = 'none' | 'gainers' | 'losers'
 
-const FILTER_CACHE_KEY = 'hquant_market_filter'
-
-function loadFilterCache(): { filterType: FilterType; topN: number } {
-  try {
-    const raw = localStorage.getItem(FILTER_CACHE_KEY)
-    return raw ? JSON.parse(raw) : { filterType: 'none', topN: 20 }
-  } catch { return { filterType: 'none', topN: 20 } }
-}
-
-function saveFilterCache(data: { filterType: FilterType; topN: number }) {
-  localStorage.setItem(FILTER_CACHE_KEY, JSON.stringify(data))
-}
+const DEFAULT_FILTER = { filterType: 'none', topN: 20 } as const
 
 const MarketList: React.FC = () => {
   const { selectedExchange, tradingTradeType, setTradingTradeType } = useAppStore()
@@ -66,7 +56,8 @@ const MarketList: React.FC = () => {
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set())
 
   // Filter state (cached)
-  const cachedFilter = loadFilterCache()
+  const cachedFilter =
+    storage.get<{ filterType: FilterType; topN: number }>(STORAGE_KEYS.MARKET_FILTER, DEFAULT_FILTER) || DEFAULT_FILTER
   const [filterType, setFilterType] = useState<FilterType>(cachedFilter.filterType)
   const [topN, setTopN] = useState(cachedFilter.topN)
   const [filterModalVisible, setFilterModalVisible] = useState(false)
@@ -161,7 +152,7 @@ const MarketList: React.FC = () => {
   const handleApplyFilter = () => {
     setFilterType(tempFilterType)
     setTopN(tempTopN)
-    saveFilterCache({ filterType: tempFilterType, topN: tempTopN })
+    storage.set(STORAGE_KEYS.MARKET_FILTER, { filterType: tempFilterType, topN: tempTopN })
     setFilterModalVisible(false)
     setSelectedSymbols(new Set())
   }
