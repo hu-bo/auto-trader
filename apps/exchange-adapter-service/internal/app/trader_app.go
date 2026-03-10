@@ -28,6 +28,7 @@ type App struct {
 	orderIdx *trading.OrderIndex
 	hub      *trading.OrderUpdateHub
 
+	grpcSvc *grpcserver.ExchangeService
 	grpcServer    *grpcserver.Server
 	httpServer    *httpapi.Server
 	natsPublisher *publisher.Publisher
@@ -176,6 +177,7 @@ func New(cfg *config.Config) (*App, error) {
 		manager:       manager,
 		orderIdx:      orderIdx,
 		hub:           hub,
+		grpcSvc:       svc,
 		grpcServer:    srv,
 		natsPublisher: natsPub,
 		marketApp:     marketApp,
@@ -200,6 +202,14 @@ func (a *App) Run() error {
 	if a.marketApp != nil {
 		if err := a.marketApp.Start(ctx); err != nil {
 			return err
+		}
+	}
+
+	if a.grpcSvc != nil && a.marketApp != nil {
+		if repo := a.marketApp.Repo(); repo != nil {
+			if err := a.grpcSvc.LoadSymbolPrecisionCache(ctx, repo); err != nil {
+				log.Warn().Err(err).Msg("failed to load symbol precision cache")
+			}
 		}
 	}
 

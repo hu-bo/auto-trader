@@ -10,6 +10,7 @@ export interface SymbolPrecision {
 type StepSpec = {
   scale: number;
   stepInt: number;
+  fractionDigits: number;
 };
 
 const countFractionDigits = (value: string): number => {
@@ -31,7 +32,7 @@ const parseStepSpec = (step: string | undefined): StepSpec | null => {
   const stepInt = Math.round(stepNumber * scale);
   if (!Number.isFinite(stepInt) || stepInt <= 0) return null;
 
-  return { scale, stepInt };
+  return { scale, stepInt, fractionDigits };
 };
 
 export const truncateToIncrement = (value: number, step: string | undefined): number => {
@@ -42,7 +43,8 @@ export const truncateToIncrement = (value: number, step: string | undefined): nu
 
   const scaledValue = Math.floor(value * spec.scale + 1e-9);
   const alignedValue = Math.floor(scaledValue / spec.stepInt) * spec.stepInt;
-  return alignedValue / spec.scale;
+  const raw = alignedValue / spec.scale;
+  return Number(raw.toFixed(spec.fractionDigits));
 };
 
 export const truncateToPrecision = (value: number, precision: number): number => {
@@ -50,7 +52,8 @@ export const truncateToPrecision = (value: number, precision: number): number =>
   if (!Number.isFinite(precision) || precision < 0) return value;
 
   const factor = 10 ** precision;
-  return Math.floor(value * factor) / factor;
+  const raw = Math.floor(value * factor) / factor;
+  return Number(raw.toFixed(precision));
 };
 
 /** cache key: `${exchange}:${tradeType}:${symbol}` */

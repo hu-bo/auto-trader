@@ -38,7 +38,7 @@ export const BatchAlgoOrderForm: React.FC<BatchAlgoOrderFormProps> = ({
   const [futuresActionMode, setFuturesActionMode] = React.useState<FuturesActionMode>('open')
   const [submittingAction, setSubmittingAction] = React.useState<string | null>(null)
 
-  const { values, onChange, setField, reset, setFormApi, formApiRef } = useTradingFormState<BatchTradingFormJson>({
+  const { values, onChange, setField, setFormApi, formApiRef } = useTradingFormState<BatchTradingFormJson>({
     tradeType,
     side: 'buy',
     orderType: 'algo',
@@ -97,7 +97,6 @@ export const BatchAlgoOrderForm: React.FC<BatchAlgoOrderFormProps> = ({
     setSubmittingAction(actionKey)
     try {
       await onSubmit(payload)
-      reset()
     } finally {
       setSubmittingAction(null)
     }

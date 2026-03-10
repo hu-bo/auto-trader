@@ -3,11 +3,16 @@ package grpcserver
 import (
 	"context"
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	exchangepb "exchange-adapter-service/gen/exchange"
 	"exchange-adapter-service/internal/config"
 	"exchange-adapter-service/internal/contract"
+	"exchange-adapter-service/internal/storage"
 	"exchange-adapter-service/internal/session"
 	"exchange-adapter-service/internal/trading"
 
@@ -25,6 +30,36 @@ const (
 	defaultAutoSubscribeOnOrder = true
 )
 
+type symbolPrecision struct {
+	TickSize          string
+	StepSize          string
+	PricePrecision    int
+	QuantityPrecision int
+}
+
+type precisionCache struct {
+	mu       sync.RWMutex
+	items    map[string]symbolPrecision
+	loadedAt time.Time
+}
+
+func (c *precisionCache) get(key string) (symbolPrecision, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.items == nil {
+		return symbolPrecision{}, false
+	}
+	val, ok := c.items[key]
+	return val, ok
+}
+
+func (c *precisionCache) set(next map[string]symbolPrecision) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items = next
+	c.loadedAt = time.Now()
+}
+
 type ExchangeService struct {
 	exchangepb.UnimplementedExchangeServiceServer
 
@@ -34,6 +69,8 @@ type ExchangeService struct {
 	manager  *trading.Manager
 	orderIdx *trading.OrderIndex
 	hub      *trading.OrderUpdateHub
+
+	precision precisionCache
 }
 
 func NewExchangeService(cfg *config.Config, store *session.Store, manager *trading.Manager, orderIdx *trading.OrderIndex, hub *trading.OrderUpdateHub) *ExchangeService {
@@ -44,6 +81,49 @@ func NewExchangeService(cfg *config.Config, store *session.Store, manager *tradi
 		orderIdx: orderIdx,
 		hub:      hub,
 	}
+}
+
+func (s *ExchangeService) LoadSymbolPrecisionCache(ctx context.Context, repo storage.Repository) error {
+	if s == nil {
+		return fmt.Errorf("service is nil")
+	}
+	if repo == nil {
+		svcLog.Warn().Msg("symbol precision cache skipped: repository not available")
+		return nil
+	}
+
+	exchanges := []string{
+		string(core.ExchangeBinance),
+		string(core.ExchangeOKX),
+		string(core.ExchangeBybit),
+	}
+
+	next := make(map[string]symbolPrecision)
+	for _, ex := range exchanges {
+		symbols, err := repo.GetSymbolInfos(ctx, ex)
+		if err != nil {
+			svcLog.Warn().Err(err).Str("exchange", ex).Msg("failed to load symbol infos for precision cache")
+			continue
+		}
+		for _, info := range symbols {
+			key := precisionKey(ex, info.TradeType, info.Symbol)
+			next[key] = symbolPrecision{
+				TickSize:          strings.TrimSpace(info.TickSize),
+				StepSize:          strings.TrimSpace(info.StepSize),
+				PricePrecision:    info.PricePrecision,
+				QuantityPrecision: info.QuantityPrecision,
+			}
+		}
+	}
+
+	if len(next) == 0 {
+		svcLog.Warn().Msg("symbol precision cache not loaded (empty)")
+		return nil
+	}
+
+	s.precision.set(next)
+	svcLog.Info().Int("count", len(next)).Msg("symbol precision cache loaded")
+	return nil
 }
 
 func (s *ExchangeService) InitAccount(ctx context.Context, req *exchangepb.InitAccountRequest) (*exchangepb.InitAccountResponse, error) {
@@ -122,6 +202,132 @@ func (s *ExchangeService) InitAccount(ctx context.Context, req *exchangepb.InitA
 	}
 
 	return &exchangepb.InitAccountResponse{Success: true, Token: token}, nil
+}
+
+func precisionKey(exchange string, tradeType string, symbol string) string {
+	return strings.ToLower(strings.TrimSpace(exchange)) + ":" +
+		strings.ToLower(strings.TrimSpace(tradeType)) + ":" +
+		strings.ToUpper(strings.TrimSpace(symbol))
+}
+
+func stepFromPrecision(precision int) string {
+	if precision < 0 {
+		return ""
+	}
+	if precision == 0 {
+		return "1"
+	}
+	return "0." + strings.Repeat("0", precision-1) + "1"
+}
+
+func alignByStep(value float64, step string, formatter func(float64, string) (string, error)) float64 {
+	if !isFinite(value) {
+		return value
+	}
+	step = strings.TrimSpace(step)
+	if step == "" {
+		return value
+	}
+	out, err := formatter(value, step)
+	if err != nil {
+		return value
+	}
+	fv, err := strconv.ParseFloat(out, 64)
+	if err != nil {
+		return value
+	}
+	return fv
+}
+
+func isFinite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}
+
+func (s *ExchangeService) getPrecision(ex core.Exchange, tt core.TradeType, symbol string) (symbolPrecision, bool) {
+	if s == nil {
+		return symbolPrecision{}, false
+	}
+	if tt == "" || symbol == "" {
+		return symbolPrecision{}, false
+	}
+	key := precisionKey(string(ex), string(tt), symbol)
+	if prec, ok := s.precision.get(key); ok {
+		return prec, true
+	}
+	if ex == core.ExchangeOKX && tt == core.TradeTypeFutures {
+		upper := strings.ToUpper(strings.TrimSpace(symbol))
+		if strings.HasSuffix(upper, "-SWAP") {
+			trimmed := strings.TrimSuffix(upper, "-SWAP")
+			key = precisionKey(string(ex), string(tt), trimmed)
+			return s.precision.get(key)
+		}
+	}
+	return symbolPrecision{}, false
+}
+
+func (s *ExchangeService) normalizeQuantity(ex core.Exchange, tt core.TradeType, symbol string, qty float64) float64 {
+	if !(qty > 0) {
+		return qty
+	}
+	prec, ok := s.getPrecision(ex, tt, symbol)
+	if !ok {
+		return qty
+	}
+	step := prec.StepSize
+	if step == "" {
+		step = stepFromPrecision(prec.QuantityPrecision)
+	}
+	return alignByStep(qty, step, core.FormatQuantity)
+}
+
+func (s *ExchangeService) normalizePrice(ex core.Exchange, tt core.TradeType, symbol string, price float64) float64 {
+	if !(price > 0) {
+		return price
+	}
+	prec, ok := s.getPrecision(ex, tt, symbol)
+	if !ok {
+		return price
+	}
+	step := prec.TickSize
+	if step == "" {
+		step = stepFromPrecision(prec.PricePrecision)
+	}
+	return alignByStep(price, step, core.FormatPrice)
+}
+
+func (s *ExchangeService) normalizePricePtr(ex core.Exchange, tt core.TradeType, symbol string, price *float64) *float64 {
+	if price == nil {
+		return nil
+	}
+	np := s.normalizePrice(ex, tt, symbol, *price)
+	return &np
+}
+
+func (s *ExchangeService) normalizeAttachedOrders(ex core.Exchange, tt core.TradeType, symbol string, orders []core.StrategyAttachedOrder) []core.StrategyAttachedOrder {
+	if len(orders) == 0 {
+		return orders
+	}
+	out := make([]core.StrategyAttachedOrder, 0, len(orders))
+	for _, ao := range orders {
+		if ao.TPTriggerPrice != nil {
+			v := s.normalizePrice(ex, tt, symbol, *ao.TPTriggerPrice)
+			ao.TPTriggerPrice = &v
+		}
+		if ao.TPOrderPrice != nil {
+			v := s.normalizePrice(ex, tt, symbol, *ao.TPOrderPrice)
+			ao.TPOrderPrice = &v
+		}
+		if ao.SLTriggerPrice != nil {
+			v := s.normalizePrice(ex, tt, symbol, *ao.SLTriggerPrice)
+			ao.SLTriggerPrice = &v
+		}
+		if ao.SLOrderPrice != nil {
+			v := s.normalizePrice(ex, tt, symbol, *ao.SLOrderPrice)
+			ao.SLOrderPrice = &v
+		}
+		out = append(out, ao)
+	}
+	return out
 }
 
 func (s *ExchangeService) ValidateToken(ctx context.Context, req *exchangepb.ValidateTokenRequest) (*exchangepb.ValidateTokenResponse, error) {
@@ -241,13 +447,19 @@ func (s *ExchangeService) PlaceOrder(ctx context.Context, req *exchangepb.PlaceO
 		return &exchangepb.PlaceOrderResponse{Success: false, Error: contract.Error("ADAPTER_ERROR", err.Error())}, nil
 	}
 
+	normalizedQty := s.normalizeQuantity(cfg.Exchange, tradeType, req.Symbol, req.Quantity)
+	normalizedPrice := s.normalizePricePtr(cfg.Exchange, tradeType, req.Symbol, price)
+	if !(normalizedQty > 0) {
+		return &exchangepb.PlaceOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, "quantity must be > 0")}, nil
+	}
+
 	res := adapter.PlaceOrder(ctx, core.PlaceOrderParams{
 		Symbol:        req.Symbol,
 		TradeType:     tradeType,
 		Side:          side,
 		OrderType:     orderType,
-		Quantity:      req.Quantity,
-		Price:         price,
+		Quantity:      normalizedQty,
+		Price:         normalizedPrice,
 		PositionSide:  posSide,
 		Leverage:      leverageFloat,
 		ClientOrderID: clientOrderID,
@@ -342,13 +554,16 @@ func (s *ExchangeService) PlaceOrders(ctx context.Context, req *exchangepb.Place
 			}
 		}
 
+		normalizedQty := s.normalizeQuantity(cfg.Exchange, tt, oreq.Symbol, oreq.Quantity)
+		normalizedPrice := s.normalizePricePtr(cfg.Exchange, tt, oreq.Symbol, price)
+
 		paramsList = append(paramsList, core.PlaceOrderParams{
 			Symbol:        oreq.Symbol,
 			TradeType:     tt,
 			Side:          side,
 			OrderType:     ot,
-			Quantity:      oreq.Quantity,
-			Price:         price,
+			Quantity:      normalizedQty,
+			Price:         normalizedPrice,
 			PositionSide:  posSide,
 			Leverage:      leverageFloat,
 			ClientOrderID: clientOrderID,
@@ -904,22 +1119,35 @@ func (s *ExchangeService) PlaceStrategyOrder(ctx context.Context, req *exchangep
 		}
 		attachedOrders = []core.StrategyAttachedOrder{attached}
 	}
-	fmt.Println(5555, req.Quantity)
+
+	normalizedQty := s.normalizeQuantity(cfg.Exchange, tradeType, req.Symbol, req.Quantity)
+	normalizedTriggerPrice := s.normalizePrice(cfg.Exchange, tradeType, req.Symbol, req.TriggerPrice)
+	normalizedOrderPrice := s.normalizePricePtr(cfg.Exchange, tradeType, req.Symbol, orderPrice)
+	normalizedActivationPrice := s.normalizePricePtr(cfg.Exchange, tradeType, req.Symbol, activationPrice)
+	normalizedAttached := s.normalizeAttachedOrders(cfg.Exchange, tradeType, req.Symbol, attachedOrders)
+
+	if !(normalizedQty > 0) {
+		return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, "quantity must be > 0")}, nil
+	}
+	if !(normalizedTriggerPrice > 0) {
+		return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error(core.ErrorInvalidParams, "trigger_price must be > 0")}, nil
+	}
+
 	res := adapter.PlaceStrategyOrder(ctx, core.StrategyOrderParams{
 		Symbol:           req.Symbol,
 		TradeType:        tradeType,
 		Side:             side,
 		StrategyType:     strategyType,
-		Quantity:         req.Quantity,
+		Quantity:         normalizedQty,
 		PositionSide:     posSide,
-		TriggerPrice:     req.TriggerPrice,
+		TriggerPrice:     normalizedTriggerPrice,
 		TriggerPriceType: triggerPriceType,
-		OrderPrice:       orderPrice,
+		OrderPrice:       normalizedOrderPrice,
 		ReduceOnly:       reduceOnly,
 		ClientAlgoID:     clientAlgoID,
 		CallbackRatio:    callbackRatio,
-		ActivationPrice:  activationPrice,
-		AttachedOrders:   attachedOrders,
+		ActivationPrice:  normalizedActivationPrice,
+		AttachedOrders:   normalizedAttached,
 	})
 	if !res.Ok {
 		return &exchangepb.PlaceStrategyOrderResponse{Success: false, Error: contract.Error(res.Error.Code, res.Error.Message)}, nil
@@ -1061,21 +1289,27 @@ func (s *ExchangeService) PlaceStrategyOrders(ctx context.Context, req *exchange
 			attached = []core.StrategyAttachedOrder{ao}
 		}
 
+		normalizedQty := s.normalizeQuantity(cfg.Exchange, tt, oreq.Symbol, oreq.Quantity)
+		normalizedTriggerPrice := s.normalizePrice(cfg.Exchange, tt, oreq.Symbol, oreq.TriggerPrice)
+		normalizedOrderPrice := s.normalizePricePtr(cfg.Exchange, tt, oreq.Symbol, orderPrice)
+		normalizedActivationPrice := s.normalizePricePtr(cfg.Exchange, tt, oreq.Symbol, activationPrice)
+		normalizedAttached := s.normalizeAttachedOrders(cfg.Exchange, tt, oreq.Symbol, attached)
+
 		paramsList = append(paramsList, core.StrategyOrderParams{
 			Symbol:           oreq.Symbol,
 			TradeType:        tt,
 			Side:             side,
 			StrategyType:     st,
-			Quantity:         oreq.Quantity,
+			Quantity:         normalizedQty,
 			PositionSide:     posSide,
-			TriggerPrice:     oreq.TriggerPrice,
+			TriggerPrice:     normalizedTriggerPrice,
 			TriggerPriceType: triggerPriceType,
-			OrderPrice:       orderPrice,
+			OrderPrice:       normalizedOrderPrice,
 			ReduceOnly:       reduceOnly,
 			ClientAlgoID:     clientAlgoID,
 			CallbackRatio:    callbackRatio,
-			ActivationPrice:  activationPrice,
-			AttachedOrders:   attached,
+			ActivationPrice:  normalizedActivationPrice,
+			AttachedOrders:   normalizedAttached,
 		})
 	}
 

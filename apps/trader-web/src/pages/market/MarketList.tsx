@@ -76,6 +76,7 @@ const MarketList: React.FC = () => {
   // Order modals
   const [strategyModalVisible, setStrategyModalVisible] = useState(false)
   const [batchOrderModalVisible, setBatchOrderModalVisible] = useState(false)
+  const [batchFormKey, setBatchFormKey] = useState(0)
   const [selectedSymbol, setSelectedSymbol] = useState<TickerData | null>(null)
 
   const { data: symbolsData, isLoading } = useQuery({
@@ -371,11 +372,15 @@ const MarketList: React.FC = () => {
       <Modal
         title={`创建条件单 (${selectionCount} 个交易对)`}
         visible={batchOrderModalVisible}
-        onCancel={() => setBatchOrderModalVisible(false)}
+        onCancel={() => {
+          setBatchOrderModalVisible(false)
+          setBatchFormKey((prev) => prev + 1)
+        }}
         footer={<div style={{ height: '1px' }} />}
         width={600}
       >
         <BatchAlgoOrderForm
+          key={`batch-form-${batchFormKey}`}
           tradeType={tradingTradeType}
           onSubmit={handleBatchOrder}
         />
