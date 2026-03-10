@@ -17,7 +17,23 @@ volumes:
 steps:
 
 # -------------------------------------------------
-# 1️⃣ 构建 Rust 扩展 (hquant-py)1
+# 0️⃣ 恢复缓存
+# -------------------------------------------------
+  - name: restore-cache
+    image: drillster/drone-volume-cache
+    volumes:
+      - name: pip-cache
+        path: /cache/pip
+      - name: cargo-cache
+        path: /cache/cargo
+    settings:
+      restore: true
+      cache_key: [ DRONE_REPO_OWNER, DRONE_REPO_NAME, DRONE_BRANCH ]
+      mount:
+        - /drone/src/.cache/
+
+# -------------------------------------------------
+# 1️⃣ 构建 Rust 扩展 (hquant-py)
 # -------------------------------------------------
   - name: build-hquant
     image: ghcr.io/pyo3/maturin:latest
@@ -83,7 +99,23 @@ steps:
       - tar czf strategy-engine.tar.gz -C release/strategy-engine .
 
 # -------------------------------------------------
-# 3️⃣ SCP 上传1
+# 3️⃣ 重建缓存
+# -------------------------------------------------
+  - name: rebuild-cache
+    image: drillster/drone-volume-cache
+    volumes:
+      - name: pip-cache
+        path: /cache/pip
+      - name: cargo-cache
+        path: /cache/cargo
+    settings:
+      rebuild: true
+      cache_key: [ DRONE_REPO_OWNER, DRONE_REPO_NAME, DRONE_BRANCH ]
+      mount:
+        - /drone/src/.cache/
+
+# -------------------------------------------------
+# 4️⃣ SCP 上传
 # -------------------------------------------------
   - name: scp
     image: appleboy/drone-scp
@@ -100,7 +132,7 @@ steps:
       target: /temp
 
 # -------------------------------------------------
-# 4️⃣ 远程部署
+# 5️⃣ 远程部署
 # -------------------------------------------------
   - name: deploy
     image: appleboy/drone-ssh
