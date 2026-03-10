@@ -1,3 +1,4 @@
+import '@douyinfe/semi-ui/react19-adapter';
 import '@/styles/tailwind.css'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
