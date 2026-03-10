@@ -19,10 +19,10 @@ import type { Exchange, ExchangeCreate, ExchangeType } from '@/types'
 
 const { Title } = Typography
 
-const EXCHANGE_TYPES: { value: ExchangeType; label: string }[] = [
+const EXCHANGE_TYPES: { value: ExchangeType; label: string; disabled?: boolean }[] = [
   { value: 'binance', label: 'Binance' },
   { value: 'okx', label: 'OKX' },
-  { value: 'bybit', label: 'Bybit' }
+  { value: 'bybit', label: 'Bybit', disabled: true }
 ]
 
 const ExchangeConfig: React.FC = () => {
