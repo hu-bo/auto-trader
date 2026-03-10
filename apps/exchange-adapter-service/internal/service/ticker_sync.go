@@ -22,11 +22,9 @@ type TickerSyncService struct {
 	redis        *storage.RedisClient
 	binanceWS    *binanceAdapter.WsPublicAdapter
 	okxWS        *okxAdapter.WsPublicAdapter
-	mu           sync.RWMutex
 	stopChan     chan struct{}
 	wg           sync.WaitGroup
-	tickerCache  map[string]*TickerData
-	cacheMu      sync.RWMutex
+	tickerCache  *utils.Cache[*TickerData]
 	volumeFilter float64
 	proxySOCKS   string
 }
@@ -51,7 +49,7 @@ func NewTickerSyncService(redis *storage.RedisClient, proxyHTTP, proxySOCKS stri
 	return &TickerSyncService{
 		redis:        redis,
 		stopChan:     make(chan struct{}),
-		tickerCache:  make(map[string]*TickerData),
+		tickerCache:  utils.NewCache[*TickerData](),
 		volumeFilter: 0.3, // Filter bottom 30% by volume
 		proxySOCKS:   proxySOCKS,
 	}
@@ -186,10 +184,7 @@ func (s *TickerSyncService) handleBinanceTicker(ticker marketdata.TickerUpdate) 
 	}
 
 	key := s.getTickerKey("binance", ticker.Symbol, string(ticker.TradeType))
-
-	s.cacheMu.Lock()
-	s.tickerCache[key] = tickerData
-	s.cacheMu.Unlock()
+	s.tickerCache.Set(key, tickerData, 0)
 }
 
 func (s *TickerSyncService) handleOKXTicker(ticker marketdata.TickerUpdate) {
@@ -212,9 +207,7 @@ func (s *TickerSyncService) handleOKXTicker(ticker marketdata.TickerUpdate) {
 	}
 
 	key := s.getTickerKey("okx", ticker.Symbol, string(ticker.TradeType))
-	s.cacheMu.Lock()
-	s.tickerCache[key] = tickerData
-	s.cacheMu.Unlock()
+	s.tickerCache.Set(key, tickerData, 0)
 }
 
 func (s *TickerSyncService) syncToRedis(ctx context.Context) {
@@ -236,18 +229,15 @@ func (s *TickerSyncService) syncToRedis(ctx context.Context) {
 }
 
 func (s *TickerSyncService) flushToRedis(ctx context.Context) {
-	s.cacheMu.RLock()
-	if len(s.tickerCache) == 0 {
-		s.cacheMu.RUnlock()
+	snapshot := s.tickerCache.Snapshot()
+	if len(snapshot) == 0 {
 		return
 	}
 
-	// Copy cache to avoid holding lock too long
-	tickers := make(map[string]interface{}, len(s.tickerCache))
-	for k, v := range s.tickerCache {
+	tickers := make(map[string]interface{}, len(snapshot))
+	for k, v := range snapshot {
 		tickers[k] = v
 	}
-	s.cacheMu.RUnlock()
 
 	// Batch save to Redis with 60s expiration
 	if err := s.redis.MSet(ctx, tickers, 60*time.Second); err != nil {
@@ -270,12 +260,9 @@ func (s *TickerSyncService) GetTicker(ctx context.Context, exchange, symbol, tra
 	key := s.getTickerKey(exchange, symbol, tradeType)
 
 	// Try cache first
-	s.cacheMu.RLock()
-	if ticker, ok := s.tickerCache[key]; ok {
-		s.cacheMu.RUnlock()
+	if ticker, ok := s.tickerCache.Get(key); ok {
 		return ticker, nil
 	}
-	s.cacheMu.RUnlock()
 
 	// Fallback to Redis
 	var ticker TickerData
@@ -287,30 +274,27 @@ func (s *TickerSyncService) GetTicker(ctx context.Context, exchange, symbol, tra
 
 // GetTickerPriceMap 返回 symbol -> lastPrice 的映射
 func (s *TickerSyncService) GetTickerPriceMap(exchange, tradeType string) map[string]float64 {
-	s.cacheMu.RLock()
-	defer s.cacheMu.RUnlock()
-
 	prefix := fmt.Sprintf("ticker:%s:%s:", exchange, tradeType)
 	priceMap := make(map[string]float64)
-	for key, ticker := range s.tickerCache {
+	s.tickerCache.Range(func(key string, ticker *TickerData) bool {
 		if len(key) >= len(prefix) && key[:len(prefix)] == prefix {
 			priceMap[ticker.Symbol] = ticker.LastPrice
 		}
-	}
+		return true
+	})
 	return priceMap
 }
 
 func (s *TickerSyncService) GetTickers(ctx context.Context, exchange, tradeType string) ([]TickerData, error) {
 	// Try cache first
-	s.cacheMu.RLock()
 	prefix := fmt.Sprintf("ticker:%s:%s:", exchange, tradeType)
 	tickers := make([]TickerData, 0)
-	for key, ticker := range s.tickerCache {
+	s.tickerCache.Range(func(key string, ticker *TickerData) bool {
 		if len(key) >= len(prefix) && key[:len(prefix)] == prefix {
 			tickers = append(tickers, *ticker)
 		}
-	}
-	s.cacheMu.RUnlock()
+		return true
+	})
 
 	if len(tickers) > 0 {
 		logTicker.Debug().

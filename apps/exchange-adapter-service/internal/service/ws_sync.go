@@ -54,8 +54,7 @@ type WsSyncService struct {
 	natsPublisher *publisher.Publisher
 
 	// 已订阅的交易对
-	subscribed map[string]bool // symbol:exchange:tradeType -> true
-	subMu      sync.RWMutex
+	subscribed *utils.Cache[bool] // symbol:exchange:tradeType -> true
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -72,7 +71,7 @@ func NewWsSyncService(cfg *config.Config, repo storage.Repository, natsPublisher
 		repo:            repo,
 		clients:         make(map[exchange.ExchangeName]exchange.Exchange),
 		streams:         make(map[exchange.ExchangeName]*aggregator.WSAggregator),
-		subscribed:      make(map[string]bool),
+		subscribed:      utils.NewCache[bool](),
 		updateThrottler: utils.NewKeyedThrottler(10 * time.Second), // 每个 symbol 10s 一次
 		tickerThrottler: utils.NewKeyedThrottler(5 * time.Second),  // 每个 symbol 5s 一次
 		natsPublisher:   natsPublisher,
@@ -225,16 +224,13 @@ func (s *WsSyncService) Subscribe(exchangeName exchange.ExchangeName, symbols []
 	// 过滤已订阅的
 	newSymbols := make([]exchange.SubscribeRequest, 0)
 	newKeys := make([]string, 0)
-	s.subMu.Lock()
 	for _, sym := range symbols {
 		key := sym.Symbol + ":" + string(exchangeName) + ":" + string(sym.TradeType)
-		if !s.subscribed[key] {
-			s.subscribed[key] = true
+		if s.subscribed.SetIfAbsent(key, true, 0) {
 			newSymbols = append(newSymbols, sym)
 			newKeys = append(newKeys, key)
 		}
 	}
-	s.subMu.Unlock()
 
 	if len(newSymbols) == 0 {
 		return nil
@@ -246,11 +242,9 @@ func (s *WsSyncService) Subscribe(exchangeName exchange.ExchangeName, symbols []
 		Msg("Subscribing symbols")
 
 	rollback := func() {
-		s.subMu.Lock()
 		for _, key := range newKeys {
-			delete(s.subscribed, key)
+			s.subscribed.Delete(key)
 		}
-		s.subMu.Unlock()
 	}
 
 	if err := stream.SubCandle15m(newSymbols, nil); err != nil {
@@ -276,12 +270,10 @@ func (s *WsSyncService) Unsubscribe(exchangeName exchange.ExchangeName, symbols 
 		return nil
 	}
 
-	s.subMu.Lock()
 	for _, sym := range symbols {
-		delete(s.subscribed, sym+":"+string(exchangeName)+":spot")
-		delete(s.subscribed, sym+":"+string(exchangeName)+":futures")
+		s.subscribed.Delete(sym + ":" + string(exchangeName) + ":spot")
+		s.subscribed.Delete(sym + ":" + string(exchangeName) + ":futures")
 	}
-	s.subMu.Unlock()
 
 	return stream.Unsubscribe(symbols)
 }

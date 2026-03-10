@@ -6,7 +6,6 @@ import (
 	"math"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	exchangepb "exchange-adapter-service/gen/exchange"
@@ -15,6 +14,7 @@ import (
 	"exchange-adapter-service/internal/storage"
 	"exchange-adapter-service/internal/session"
 	"exchange-adapter-service/internal/trading"
+	"exchange-adapter-service/internal/utils"
 
 	"github.com/pkg/exchange-adapter/core"
 	"github.com/pkg/logger"
@@ -37,29 +37,6 @@ type symbolPrecision struct {
 	QuantityPrecision int
 }
 
-type precisionCache struct {
-	mu       sync.RWMutex
-	items    map[string]symbolPrecision
-	loadedAt time.Time
-}
-
-func (c *precisionCache) get(key string) (symbolPrecision, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.items == nil {
-		return symbolPrecision{}, false
-	}
-	val, ok := c.items[key]
-	return val, ok
-}
-
-func (c *precisionCache) set(next map[string]symbolPrecision) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.items = next
-	c.loadedAt = time.Now()
-}
-
 type ExchangeService struct {
 	exchangepb.UnimplementedExchangeServiceServer
 
@@ -70,7 +47,7 @@ type ExchangeService struct {
 	orderIdx *trading.OrderIndex
 	hub      *trading.OrderUpdateHub
 
-	precision precisionCache
+	precision *utils.Cache[symbolPrecision]
 }
 
 func NewExchangeService(cfg *config.Config, store *session.Store, manager *trading.Manager, orderIdx *trading.OrderIndex, hub *trading.OrderUpdateHub) *ExchangeService {
@@ -80,6 +57,7 @@ func NewExchangeService(cfg *config.Config, store *session.Store, manager *tradi
 		manager:  manager,
 		orderIdx: orderIdx,
 		hub:      hub,
+		precision: utils.NewCache[symbolPrecision](),
 	}
 }
 
@@ -121,7 +99,7 @@ func (s *ExchangeService) LoadSymbolPrecisionCache(ctx context.Context, repo sto
 		return nil
 	}
 
-	s.precision.set(next)
+	s.precision.Replace(next, 0)
 	svcLog.Info().Int("count", len(next)).Msg("symbol precision cache loaded")
 	return nil
 }
@@ -251,7 +229,7 @@ func (s *ExchangeService) getPrecision(ex core.Exchange, tt core.TradeType, symb
 		return symbolPrecision{}, false
 	}
 	key := precisionKey(string(ex), string(tt), symbol)
-	if prec, ok := s.precision.get(key); ok {
+	if prec, ok := s.precision.Get(key); ok {
 		return prec, true
 	}
 	if ex == core.ExchangeOKX && tt == core.TradeTypeFutures {
@@ -259,7 +237,7 @@ func (s *ExchangeService) getPrecision(ex core.Exchange, tt core.TradeType, symb
 		if strings.HasSuffix(upper, "-SWAP") {
 			trimmed := strings.TrimSuffix(upper, "-SWAP")
 			key = precisionKey(string(ex), string(tt), trimmed)
-			return s.precision.get(key)
+			return s.precision.Get(key)
 		}
 	}
 	return symbolPrecision{}, false
