@@ -745,7 +745,7 @@ func (a *TradeAdapter) PlaceStrategyOrder(ctx context.Context, params core.Strat
 		Sz:      strconv.FormatFloat(params.Quantity, 'f', -1, 64),
 	}
 	req.TgtCcy = "base_ccy"
-
+	fmt.Println("req", req.Sz)
 	if params.TradeType != core.TradeTypeSpot && params.PositionSide != nil {
 		req.PosSide = string(*params.PositionSide)
 	}

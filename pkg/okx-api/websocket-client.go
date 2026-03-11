@@ -343,14 +343,13 @@ func (w *wsConn) pingLoop() {
 		case <-w.stopCh:
 			return
 		case <-ticker.C:
+			w.writeMu.Lock()
 			w.mu.Lock()
 			conn := w.conn
 			w.mu.Unlock()
-			if conn == nil {
-				continue
+			if conn != nil {
+				_ = conn.WriteMessage(websocket.TextMessage, []byte("ping"))
 			}
-			w.writeMu.Lock()
-			_ = conn.WriteMessage(websocket.TextMessage, []byte("ping"))
 			w.writeMu.Unlock()
 		}
 	}
@@ -484,12 +483,6 @@ func canonicalJSONKey(v any) string {
 }
 
 func (w *wsConn) sendOp(ctx context.Context, op string, args []map[string]any) error {
-	w.mu.Lock()
-	conn := w.conn
-	w.mu.Unlock()
-	if conn == nil {
-		return fmt.Errorf("okx ws not connected (%s)", w.endpoint)
-	}
 	payload := map[string]any{
 		"op":   op,
 		"args": args,
@@ -501,6 +494,12 @@ func (w *wsConn) sendOp(ctx context.Context, op string, args []map[string]any) e
 	_ = ctx
 	w.writeMu.Lock()
 	defer w.writeMu.Unlock()
+	w.mu.Lock()
+	conn := w.conn
+	w.mu.Unlock()
+	if conn == nil {
+		return fmt.Errorf("okx ws not connected (%s)", w.endpoint)
+	}
 	return conn.WriteMessage(websocket.TextMessage, b)
 }
 
@@ -539,13 +538,14 @@ func (w *wsConn) ensureLogin(ctx context.Context) error {
 		return err
 	}
 
+	w.writeMu.Lock()
 	w.mu.Lock()
 	conn := w.conn
 	w.mu.Unlock()
 	if conn == nil {
+		w.writeMu.Unlock()
 		return fmt.Errorf("okx ws not connected")
 	}
-	w.writeMu.Lock()
 	err = conn.WriteMessage(websocket.TextMessage, b)
 	w.writeMu.Unlock()
 	if err != nil {
