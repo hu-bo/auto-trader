@@ -51,17 +51,18 @@ export class UserService {
     const existing = await repo.findOne({ where: { casdoorid } });
 
     if (existing) {
-      existing.role =  casdoorUser.roles ? casdoorUser.roles[0].name : '';
+      existing.role =  casdoorUser.roles && casdoorUser.roles[0] ? casdoorUser.roles[0].name : '';
       await  repo.save(existing);
       return existing
     };
 
-    const username = String(casdoorUser.name ?? casdoorid).trim() || casdoorid;
+    const username = String(casdoorUser.name).trim() || casdoorid;
+    console.log(username)
     const created = repo.create({
       casdoorid,
       username,
       displayname: String(casdoorUser.displayName ?? '').trim(),
-      role: casdoorUser.roles ? casdoorUser.roles[0].name : '',
+      role: casdoorUser.roles && casdoorUser.roles[0] ? casdoorUser.roles[0].name : '',
       isadmin: Boolean(casdoorUser.isAdmin || casdoorUser.isGlobalAdmin),
       isactive: !Boolean(casdoorUser.isForbidden),
     });
@@ -82,7 +83,6 @@ export class UserService {
     const role = casdoorUser.roles ? casdoorUser.roles[0].name : '';
     const isadmin = Boolean(casdoorUser.isAdmin || casdoorUser.isGlobalAdmin);
     const isactive = !Boolean(casdoorUser.isForbidden);
-    console.log(casdoorUser.roles)
     const existing = await repo.findOne({ where: { casdoorid } });
     if (!existing) {
       const created = repo.create({

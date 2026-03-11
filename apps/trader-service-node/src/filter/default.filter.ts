@@ -1,6 +1,9 @@
 import { Catch, MidwayHttpError } from '@midwayjs/core';
 import { Context } from '@midwayjs/koa';
 import { apiFail } from '../util/api-response.js';
+import { logger } from '../common/logger.js';
+const errorLogger = logger.child('error')
+
 
 @Catch()
 export class DefaultErrorFilter {
@@ -10,7 +13,7 @@ export class DefaultErrorFilter {
       err instanceof Error ? err.message : status === 500 ? 'Internal Server Error' : String(err);
 
     ctx.status = status;
-    ctx.logger.error(err);
+    errorLogger.error(message);
     return apiFail(message);
   }
 }

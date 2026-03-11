@@ -18,6 +18,7 @@ export class AuthMiddleware implements IMiddleware<Context, NextFunction> {
 
   resolve() {
     return async (ctx: Context, next: NextFunction) => {
+  
       if (isExcludedPath(ctx.path)) {
         return await next();
       }
@@ -73,7 +74,6 @@ export class AuthMiddleware implements IMiddleware<Context, NextFunction> {
           ctx.body = apiFail('Invalid or expired token');
           return;
         }
-
         ctx.state.user = user;
         await next();
       } catch (err) {
