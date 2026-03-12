@@ -16,7 +16,7 @@ volumes:
       path: /data/app/exchange-adapter-service
 
 steps:
-  # 1. 恢复 缓存
+  # 1. 恢复 缓存1
   - name: restore-cache
     image: drillster/drone-volume-cache
     volumes:

@@ -48,12 +48,19 @@ export class UserController {
   @Get('/current')
   async current() {
     const casdoorUser = await this.ctx.state.user
-    const user = await this.userService.getUser({
-      casdoorid: casdoorUser.id
-    })
-    if (!user) {
-      return apiFail(`${casdoorUser.displayName} 不存在`)
+    try {
+      await this.userService.getOrCreateCurrentUser(casdoorUser);
+      const user = await this.userService.getUser({
+        casdoorid: casdoorUser.id
+      })
+      if (!user) {
+        return apiFail(`${casdoorUser.displayName} 不存在`)
+      }
+      return apiOk(user);
+    } catch (error: any) {
+      return apiFail(error.message)
     }
-    return apiOk(user);
+
+
   }
 }

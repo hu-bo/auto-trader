@@ -370,7 +370,7 @@ export class OrderController {
         side,
         positionSide: posSide,
         strategyType,
-        quantity,
+        quantity: exchange.exchangeType === 'okx' ? body.amountUSDT : quantity,
         triggerPrice: entryPrice,
         triggerPriceType: 'last',
         orderPrice: entryPrice,
