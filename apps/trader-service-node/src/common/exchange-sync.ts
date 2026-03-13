@@ -5,6 +5,7 @@ export interface SymbolPrecision {
   quantityPrecision: number;
   tickSize: string;
   stepSize: string;
+  contractValue?: number;
 }
 
 type StepSpec = {
@@ -33,6 +34,12 @@ const parseStepSpec = (step: string | undefined): StepSpec | null => {
   if (!Number.isFinite(stepInt) || stepInt <= 0) return null;
 
   return { scale, stepInt, fractionDigits };
+};
+
+const parsePositiveNumber = (value: unknown): number | null => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
 };
 
 export const truncateToIncrement = (value: number, step: string | undefined): number => {
@@ -120,11 +127,13 @@ class ExchangeSync {
           });
           const symbols: any[] = resp.data?.data?.symbols ?? [];
           for (const s of symbols) {
+            const contractValue = parsePositiveNumber(s.contractValue ?? s.contract_value);
             next.set(`${exchange}:${tradeType}:${s.symbol}`, {
               pricePrecision: s.pricePrecision ?? 0,
               quantityPrecision: s.quantityPrecision ?? 0,
               tickSize: s.tickSize ?? '',
               stepSize: s.stepSize ?? '',
+              contractValue: contractValue ?? undefined,
             });
           }
         } catch (err: any) {
@@ -140,6 +149,21 @@ class ExchangeSync {
 
   getSymbolPrecision(exchange: string, tradeType: string, symbol: string): SymbolPrecision | undefined {
     return this.precisionCache.get(`${exchange}:${tradeType}:${symbol}`);
+  }
+
+  getContractValue(exchange: string, tradeType: string, symbol: string): number | undefined {
+    return this.getSymbolPrecision(exchange, tradeType, symbol)?.contractValue;
+  }
+
+  getContractValueMap(exchange: string, tradeType: string, symbols: string[]): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const symbol of symbols) {
+      const value = this.getContractValue(exchange, tradeType, symbol);
+      if (value != null) {
+        out.set(symbol, value);
+      }
+    }
+    return out;
   }
 
   /** 按精度向下截断价格 */

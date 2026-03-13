@@ -286,6 +286,10 @@ export class OrderController {
     // 4. Compute orders with precision truncation
     const offset = body.priceOffsetPercent / 100;
     const isFutures = body.tradeType === 'futures';
+    const isOkxFutures = exchangeType === 'okx' && grpcTradeType === 'futures';
+    const contractValueMap = isOkxFutures
+      ? exchangeSync.getContractValueMap(exchangeType, grpcTradeType, body.symbols)
+      : new Map<string, number>();
     const leverage = 1;
     type AttachedOrder = {
       type: 'take_profit' | 'stop_loss';
@@ -335,7 +339,15 @@ export class OrderController {
       }
 
 
-      const quantityRaw = body.amountUSDT / entryPrice;
+      const spotQuantityRaw = body.amountUSDT / entryPrice;
+      let quantityRaw = spotQuantityRaw;
+      if (isOkxFutures) {
+        const contractValue = contractValueMap.get(symbol) ?? 1;
+        if (!contractValueMap.has(symbol)) {
+          this.logger.warn('[BatchStrategy] Missing contractValue for %s, fallback to 1', symbol);
+        }
+        quantityRaw = spotQuantityRaw * contractValue;
+      }
 
       const quantity = tq(quantityRaw, symbol);
       if (quantity <= 0) {
@@ -363,14 +375,13 @@ export class OrderController {
         }
         strategyType = resolved;
       }
-      console.log(quantity)
       orders.push({
         symbol,
         tradeType: grpcTradeType,
         side,
         positionSide: posSide,
         strategyType,
-        quantity: exchange.exchangeType === 'okx' ? body.amountUSDT : quantity,
+        quantity,
         triggerPrice: entryPrice,
         triggerPriceType: 'last',
         orderPrice: entryPrice,
