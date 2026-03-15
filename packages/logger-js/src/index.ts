@@ -30,7 +30,7 @@ function createTransport(): pino.TransportSingleOptions {
       // then appends timestamp during rotation.
       filename: 'app',
       interval: '1d',
-      maxFiles: 30,
+      retentionDays: 30,
       mkdir: true,
       timestampFormat: 'iso',
     },
