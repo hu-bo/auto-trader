@@ -58,7 +58,8 @@ function createTransport() {
       // then appends timestamp during rotation.
       filename: "app",
       interval: "1d",
-      maxFiles: 30,
+      immutable: true,
+      retentionDays: 30,
       mkdir: true,
       timestampFormat: "iso"
     }
