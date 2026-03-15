@@ -69,7 +69,8 @@ export LOG_DIR=/var/log/trader
 
 生产环境使用按天滚动：
 
-- 文件名：`{yyyy}-{mm}-{dd}.log`
+- 当前写入文件：`app.log`
+- 轮转文件名：`app-YYYYMMDDHHMMSS.log`（由 `timestampFormat: 'iso'` 生成）
 - 滚动周期：`1d`
 - 保留天数：`30`（`maxFiles: 30`）
 - 自动创建目录：`mkdir: true`

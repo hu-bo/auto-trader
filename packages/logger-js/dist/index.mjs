@@ -20,10 +20,13 @@ function createTransport() {
     target: "pino-transport-rotating-file",
     options: {
       dir: path.resolve(LOG_DIR),
-      filename: "{yyyy}-{mm}-{dd}.log",
+      // pino-transport-rotating-file treats `filename` as a base name,
+      // then appends timestamp during rotation.
+      filename: "app",
       interval: "1d",
       maxFiles: 30,
-      mkdir: true
+      mkdir: true,
+      timestampFormat: "iso"
     }
   };
 }
