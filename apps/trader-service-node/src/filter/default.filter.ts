@@ -1,8 +1,9 @@
 import { Catch, MidwayHttpError } from '@midwayjs/core';
 import { Context } from '@midwayjs/koa';
 import { apiFail } from '../util/api-response.js';
-import { logger } from '../common/logger.js';
-const errorLogger = logger.child('error')
+import { createScopedLogger } from '../common/logger.js';
+
+const errorLogger = createScopedLogger('DefaultErrorFilter');
 
 
 @Catch()

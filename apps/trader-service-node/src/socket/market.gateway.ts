@@ -1,9 +1,9 @@
-import { Provide, Scope, ScopeEnum, Init, Inject, Logger, App } from '@midwayjs/core';
-import type { ILogger } from '@midwayjs/core';
+import { Provide, Scope, ScopeEnum, Init, Inject, App } from '@midwayjs/core';
 import type { Application } from '@midwayjs/koa';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { createServer } from 'http';
 import { NatsService } from '../service/nats.service.js';
+import { createScopedLogger } from '../common/logger.js';
 
 interface SubscriptionKey {
   exchange: string;
@@ -22,8 +22,7 @@ export class MarketGateway {
   @Inject()
   natsService!: NatsService;
 
-  @Logger()
-  logger!: ILogger;
+  private readonly logger = createScopedLogger('MarketGateway');
 
   @App('koa')
   app!: Application;

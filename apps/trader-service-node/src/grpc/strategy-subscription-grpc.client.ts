@@ -1,11 +1,11 @@
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
-import { Config, Logger, Provide, Scope, ScopeEnum, httpError } from '@midwayjs/core';
-import type { ILogger } from '@midwayjs/core';
+import { Config, Provide, Scope, ScopeEnum, httpError } from '@midwayjs/core';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { GrpcTlsConfig, StrategyEngineConfig } from '../types/index.js';
 import { resolveGrpcChannelSecurity } from './grpc-tls.js';
+import { createScopedLogger } from '../common/logger.js';
 
 function mapGrpcError(err: grpc.ServiceError): Error {
   const message = err.details || err.message || 'gRPC request failed';
@@ -44,8 +44,7 @@ export class StrategySubscriptionGrpcClient {
   @Config('grpcTls')
   grpcTls!: GrpcTlsConfig;
 
-  @Logger()
-  logger!: ILogger;
+  private readonly logger = createScopedLogger('StrategySubscriptionGrpcClient');
 
   private client?: SubscriptionServiceClient;
 

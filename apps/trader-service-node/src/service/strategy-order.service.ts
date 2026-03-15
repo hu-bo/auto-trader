@@ -1,10 +1,10 @@
-import { Inject, Logger, Provide, httpError } from '@midwayjs/core';
-import type { ILogger } from '@midwayjs/core';
+import { Inject, Provide, httpError } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import type { Repository } from 'typeorm';
 import { StrategyOrder } from '../entity/strategy-order.entity.js';
 import { RiskConfig } from '../entity/risk-config.entity.js';
 import { StrategySubscriptionGrpcClient } from '../grpc/strategy-subscription-grpc.client.js';
+import { createScopedLogger } from '../common/logger.js';
 
 type StrategyOrderCreateParams = {
   userid: number;
@@ -62,8 +62,7 @@ export class StrategyOrderService {
   @Inject()
   strategyGrpcClient!: StrategySubscriptionGrpcClient;
 
-  @Logger()
-  logger!: ILogger;
+  private readonly logger = createScopedLogger('StrategyOrderService');
 
   private requireRepo(): Repository<StrategyOrder> {
     if (!this.orderRepo) {

@@ -1,8 +1,8 @@
-import { Inject, Logger, Provide, httpError } from '@midwayjs/core';
-import type { ILogger } from '@midwayjs/core';
+import { Inject, Provide, httpError } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import type { Repository } from 'typeorm';
 import { Order, OrderStatus } from '../entity/order.entity.js';
+import { createScopedLogger } from '../common/logger.js';
 
 type OrderListParams = {
   userid: number;
@@ -18,8 +18,7 @@ export class OrderService {
   @InjectEntityModel(Order)
   orderRepo?: Repository<Order>;
 
-  @Logger()
-  logger!: ILogger;
+  private readonly logger = createScopedLogger('OrderService');
 
   private requireRepo(): Repository<Order> {
     if (!this.orderRepo) {

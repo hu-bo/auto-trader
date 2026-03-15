@@ -1,9 +1,9 @@
-import { Provide, Init, Destroy, Config, Logger } from '@midwayjs/core';
-import { ILogger } from '@midwayjs/logger';
+import { Provide, Init, Destroy, Config } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Repository } from 'typeorm';
 import { Signal } from '../entity/signal.entity.js';
 import { connect, NatsConnection, StringCodec } from 'nats';
+import { createScopedLogger } from '../common/logger.js';
 
 interface SignalMessage {
   signal_id?: string;
@@ -30,8 +30,7 @@ export class SignalService {
     prefix: string;
   };
 
-  @Logger()
-  logger!: ILogger;
+  private readonly logger = createScopedLogger('SignalService');
 
   private nc?: NatsConnection;
   private sc = StringCodec();

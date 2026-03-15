@@ -1,5 +1,8 @@
 import { Middleware, IMiddleware } from '@midwayjs/core';
 import { NextFunction, Context } from '@midwayjs/koa';
+import { createScopedLogger } from '../common/logger.js';
+
+const logger = createScopedLogger('ReportMiddleware');
 
 @Middleware()
 export class ReportMiddleware implements IMiddleware<Context, NextFunction> {
@@ -11,7 +14,7 @@ export class ReportMiddleware implements IMiddleware<Context, NextFunction> {
       // 这里可以拿到下一个中间件或者控制器的返回值
       const result = await next();
       // 控制器之后执行的逻辑
-      ctx.logger.info(
+      logger.info(
         `Report in "${ctx.req.url}", rt = ${
           Date.now() - startTime
         }ms`

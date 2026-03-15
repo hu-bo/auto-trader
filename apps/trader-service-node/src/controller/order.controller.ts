@@ -1,5 +1,4 @@
-import { Body, Config, Controller, Get, Inject, Logger, Param, Post, Query, httpError } from '@midwayjs/core';
-import type { ILogger } from '@midwayjs/core';
+import { Body, Config, Controller, Get, Inject, Param, Post, Query, httpError } from '@midwayjs/core';
 import type { Context } from '@midwayjs/koa';
 import { ExchangeGrpcClient } from '../grpc/exchange-grpc.client.js';
 import { ExchangeService } from '../service/exchange.service.js';
@@ -7,6 +6,7 @@ import { OrderService } from '../service/order.service.js';
 import { OrderUpdateService } from '../service/order-update.service.js';
 import { UserService } from '../service/user.service.js';
 import { exchangeSync } from '../common/exchange-sync.js';
+import { createScopedLogger } from '../common/logger.js';
 import { apiOk } from '../util/api-response.js';
 import { OrderStatus } from '../entity/order.entity.js';
 import { CancelOrderBodyDTO, ListOrdersQueryDTO, OrderIdParamDTO, OrderTokenQueryDTO, PlaceOrderBodyDTO } from '../dto/order.dto.js';
@@ -33,8 +33,7 @@ export class OrderController {
   @Inject()
   orderUpdateService!: OrderUpdateService;
 
-  @Logger()
-  logger!: ILogger;
+  private readonly logger = createScopedLogger('OrderController');
 
   @Config('exchangeAdapter')
   exchangeAdapterConfig!: ExchangeAdapterConfig;

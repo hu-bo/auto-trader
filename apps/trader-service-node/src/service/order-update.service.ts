@@ -1,5 +1,4 @@
-import { Config, Inject, Logger, Provide, Scope, ScopeEnum } from '@midwayjs/core';
-import type { ILogger } from '@midwayjs/core';
+import { Config, Inject, Provide, Scope, ScopeEnum } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import type { Repository } from 'typeorm';
 import { NatsService } from './nats.service.js';
@@ -7,6 +6,7 @@ import { ExchangeGrpcClient } from '../grpc/exchange-grpc.client.js';
 import { ExchangeService } from './exchange.service.js';
 import type { NatsConfig } from './nats.service.js';
 import { Order, OrderStatus } from '../entity/order.entity.js';
+import { createScopedLogger } from '../common/logger.js';
 
 interface OrderUpdateData {
   orderId: string;
@@ -99,8 +99,7 @@ export class OrderUpdateService {
   @Config('nats')
   natsConfig!: NatsConfig;
 
-  @Logger()
-  logger!: ILogger;
+  private readonly logger = createScopedLogger('OrderUpdateService');
 
   private subscribedSubjects = new Set<string>();
   private exchangeSubjects = new Map<number, { orderSubject: string; strategySubject: string }>();

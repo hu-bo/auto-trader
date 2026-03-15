@@ -1,11 +1,11 @@
-import { Autoload, Init, Inject, Logger, Provide, Scope, ScopeEnum } from '@midwayjs/core';
-import type { ILogger } from '@midwayjs/core';
+import { Autoload, Init, Inject, Provide, Scope, ScopeEnum } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import type { Repository } from 'typeorm';
 import { StrategyOrder } from '../entity/strategy-order.entity.js';
 import { StrategySubscriptionGrpcClient } from '../grpc/strategy-subscription-grpc.client.js';
 import { SignalNatsService } from './signal-nats.service.js';
 import { StrategyOrderService } from './strategy-order.service.js';
+import { createScopedLogger } from '../common/logger.js';
 
 @Autoload()
 @Provide()
@@ -23,8 +23,7 @@ export class StrategySyncService {
   @InjectEntityModel(StrategyOrder)
   orderRepo!: Repository<StrategyOrder>;
 
-  @Logger()
-  logger!: ILogger;
+  private readonly logger = createScopedLogger('StrategySyncService');
 
   @Init()
   async init() {

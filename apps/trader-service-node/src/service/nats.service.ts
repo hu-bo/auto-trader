@@ -1,6 +1,6 @@
-import { Config, Init, Destroy, Provide, Scope, ScopeEnum, Logger } from '@midwayjs/core';
-import type { ILogger } from '@midwayjs/core';
+import { Config, Init, Destroy, Provide, Scope, ScopeEnum } from '@midwayjs/core';
 import { connect, NatsConnection, Subscription, StringCodec } from 'nats';
+import { createScopedLogger } from '../common/logger.js';
 
 export interface NatsConfig {
   url: string;
@@ -15,8 +15,7 @@ export class NatsService {
   @Config('nats')
   natsConfig!: NatsConfig;
 
-  @Logger()
-  logger!: ILogger;
+  private readonly logger = createScopedLogger('NatsService');
 
   private nc: NatsConnection | null = null;
   private sc = StringCodec();
