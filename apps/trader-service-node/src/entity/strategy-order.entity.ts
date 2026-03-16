@@ -59,22 +59,22 @@ export class StrategyOrder {
   @Column({ type: 'jsonb', default: [] })
   symbols!: string[];
 
-  @Column({ name: 'amount_buy', default: 0 })
+  @Column({ name: 'amount_buy', type: 'float', default: 0 })
   amountBuy!: number;
 
-  @Column({ name: 'amount_sell', default: 0 })
+  @Column({ name: 'amount_sell', type: 'float', default: 0 })
   amountSell!: number;
 
-  @Column({ name: 'amount_buy_long', default: 0 })
+  @Column({ name: 'amount_buy_long', type: 'float', default: 0 })
   amountBuyLong!: number;
 
-  @Column({ name: 'amount_sell_long', default: 0 })
+  @Column({ name: 'amount_sell_long', type: 'float', default: 0 })
   amountSellLong!: number;
 
-  @Column({ name: 'amount_buy_short', default: 0 })
+  @Column({ name: 'amount_buy_short', type: 'float', default: 0 })
   amountBuyShort!: number;
 
-  @Column({ name: 'amount_sell_short', default: 0 })
+  @Column({ name: 'amount_sell_short', type: 'float', default: 0 })
   amountSellShort!: number;
 
   @Column({ type: 'boolean', default: false })
