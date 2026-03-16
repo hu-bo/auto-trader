@@ -62,19 +62,19 @@ export class StrategyOrder {
   @Column({ name: 'amount_buy', default: 0 })
   amountBuy!: number;
 
-  @CreateDateColumn({ name: 'amount_sell', default: 0 })
+  @Column({ name: 'amount_sell', default: 0 })
   amountSell!: number;
 
   @Column({ name: 'amount_buy_long', default: 0 })
   amountBuyLong!: number;
 
-  @CreateDateColumn({ name: 'amount_sell_long',  default: 0 })
+  @Column({ name: 'amount_sell_long', default: 0 })
   amountSellLong!: number;
 
   @Column({ name: 'amount_buy_short', default: 0 })
   amountBuyShort!: number;
 
-  @CreateDateColumn({ name: 'amount_sell_short',  default: 0 })
+  @Column({ name: 'amount_sell_short', default: 0 })
   amountSellShort!: number;
 
   @Column({ type: 'boolean', default: false })
