@@ -24,7 +24,7 @@ import { useMarketStore, getMarketSymbolsKey } from '@/stores/marketStore'
 import { StrategyEditor } from '@/components/editor/StrategyEditor'
 import { formatDateTime, formatPrice } from '@/utils/format'
 import type { DebugStep, DebugResponse, DebugBar } from '@/api/debug'
-import type { CandleData } from '@/api/market'
+import type { CandleData, SymbolData } from '@/api/market'
 
 const { Title, Text } = Typography
 
@@ -44,8 +44,10 @@ LET ma_slow = SMA(close, 26)
 IF rsi < 30 AND ma_fast > ma_slow THEN BUY("oversold reversal")
 IF rsi > 70 AND ma_fast < ma_slow THEN SELL("overbought reversal")`
 
+const EMPTY_SYMBOLS: SymbolData[] = []
+
 const StrategyDebugger: React.FC = () => {
-  const { selectedExchange } = useAppStore()
+  const selectedExchange = useAppStore((state) => state.selectedExchange)
   const exchange = selectedExchange?.exchangeType?.toLowerCase() || 'binance'
 
   // Editor state
@@ -66,14 +68,14 @@ const StrategyDebugger: React.FC = () => {
 
   // Load symbols (from store)
   const symbolsKey = getMarketSymbolsKey(exchange, tradeType)
-  const symbols = useMarketStore((state) => state.symbolsByKey[symbolsKey] || [])
+  const symbols = useMarketStore((state) => state.symbolsByKey[symbolsKey] ?? EMPTY_SYMBOLS)
   const fetchSymbols = useMarketStore((state) => state.fetchSymbols)
 
   useEffect(() => {
     fetchSymbols(exchange, tradeType)
   }, [exchange, tradeType, fetchSymbols])
 
-  const symbolOptions = symbols.map((s: { symbol: string }) => ({
+  const symbolOptions = symbols.map((s) => ({
     value: s.symbol,
     label: s.symbol,
   }))

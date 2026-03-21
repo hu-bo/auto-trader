@@ -60,7 +60,8 @@ def create_app() -> FastAPI:
         subscriber = CandleSubscriber(upstream_nats, on_candle)
 
         # History preloader for exchange-adapter-service
-        preloader = HistoryPreloader(settings.exchange_adapter_url)
+        preloader = HistoryPreloader(settings.exchange_adapter_url, api_key=settings.exchange_adapter_api_key)
+
 
         # Publish signals to local NATS
         executor = StrategyExecutor(
