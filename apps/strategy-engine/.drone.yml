@@ -52,7 +52,7 @@ steps:
 # 2️⃣ 构建 Python 服务
 # -------------------------------------------------
   - name: build-service
-    image: python:3.12-slim
+    image: python:3.12
     environment:
       POETRY_VERSION: "2.3.2"
       API_CONFIG_TOKEN_SECRET:
