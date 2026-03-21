@@ -28,15 +28,21 @@ _BARS_PER_DAY: dict[str, int] = {
 class HistoryPreloader:
     """Fetches historical candle data from exchange-adapter-service REST API."""
 
-    def __init__(self, base_url: str, *, timeout: float = 30.0) -> None:
+    def __init__(self, base_url: str, *, api_key: str = "", timeout: float = 30.0) -> None:
         self._base_url = base_url.rstrip("/")
+        self._api_key = api_key
         self._timeout = timeout
+
+    @property
+    def _headers(self) -> dict[str, str]:
+        return {"X-API-Key": self._api_key} if self._api_key else {}
 
     async def fetch_candles(
         self,
         *,
         exchange: str,
         symbol: str,
+        trade_type: str = "spot",
         period: str,
         days: int = 3,
     ) -> list[Candle]:
@@ -50,10 +56,11 @@ class HistoryPreloader:
         now_ms = int(time.time() * 1000)
         start_time_ms = now_ms - days * 86_400_000
 
-        url = f"{self._base_url}/api/candles"
+        url = f"{self._base_url}/api/v1/market/candles"
         params: dict[str, Any] = {
             "exchange": exchange,
             "symbol": symbol,
+            "trade_type": trade_type,
             "period": period,
             "limit": limit,
             "start_time": start_time_ms,
@@ -71,7 +78,7 @@ class HistoryPreloader:
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.get(url, params=params)
+                resp = await client.get(url, params=params, headers=self._headers)
                 resp.raise_for_status()
         except httpx.HTTPError as exc:
             logger.warning(

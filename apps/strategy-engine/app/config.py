@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     exchange_adapter_url: str = Field(
         default="http://localhost:9100", alias="EXCHANGE_ADAPTER_URL"
     )
+    exchange_adapter_api_key: str = Field(default="", alias="EXCHANGE_ADAPTER_API_KEY")
     history_preload_days: int = Field(default=3, alias="HISTORY_PRELOAD_DAYS")
 
     grpc_port: int = Field(default=9005, alias="GRPC_PORT")

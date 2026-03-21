@@ -268,71 +268,119 @@ func (r *PostgresRepository) UpdateCandleIfExists(ctx context.Context, candle ex
 }
 
 // GetCandles 查询历史K线 (跨年份分表查询)
-func (r *PostgresRepository) GetCandles(ctx context.Context, exchangeName, symbol, period string, startTime, endTime int64, limit int) ([]exchange.NormalizedCandle, error) {
-	years := r.partition.GetYearsInRange(startTime, endTime)
-
-	var allCandles []exchange.NormalizedCandle
+func (r *PostgresRepository) GetCandles(ctx context.Context, exchangeName, symbol, tradeType, period string, startTime, endTime int64, limit int) ([]exchange.NormalizedCandle, error) {
 	hasLimit := limit > 0
+	hasStartTime := startTime > 0
 
-	// 按年份正序查询 (旧数据优先)
-	for i := 0; i < len(years); i++ {
-		year := years[i]
-		tableName := r.partition.GetTableNameByYear(year)
-
-		// 检查表是否存在
-		if !r.tableExists(ctx, tableName) {
-			continue
+	// 当有 limit 时，从最新年份倒序查，取够 limit 条最新数据后停止
+	if hasLimit {
+		var years []int
+		if hasStartTime {
+			years = r.partition.GetYearsInRange(startTime, endTime)
+		} else {
+			// 无 startTime 限制，只查最近 2 年的分表，倒序遍历取最新数据
+			endYear := r.partition.getYearFromTimestamp(endTime)
+			years = []int{endYear - 1, endYear}
 		}
 
-		baseQuery := fmt.Sprintf(`
-			SELECT symbol, exchange, trade_type, period, timestamp,
-			       open, high, low, close, volume, buy_volume, COALESCE(symbol_family, '')
-			FROM %s
-			WHERE exchange = $1 AND symbol = $2 AND period = $3
-			  AND timestamp >= $4 AND timestamp <= $5
-			ORDER BY timestamp ASC
-		`, tableName)
+		var allCandles []exchange.NormalizedCandle
+		// 倒序遍历年份，优先取最新数据
+		for i := len(years) - 1; i >= 0; i-- {
+			year := years[i]
+			tableName := r.partition.GetTableNameByYear(year)
+			if !r.tableExists(ctx, tableName) {
+				continue
+			}
 
-		if hasLimit {
 			remaining := limit - len(allCandles)
 			if remaining <= 0 {
 				break
 			}
 
-			query := baseQuery + "\nLIMIT $6"
-			rows, err := r.pool.Query(ctx, query, exchangeName, symbol, period, startTime, endTime, remaining)
+			var (
+				query string
+				args  []interface{}
+			)
+			if hasStartTime {
+				query = fmt.Sprintf(`
+					SELECT symbol, exchange, trade_type, period, timestamp,
+					       open, high, low, close, volume, buy_volume, COALESCE(symbol_family, '')
+					FROM %s
+					WHERE exchange = $1 AND symbol = $2 AND trade_type = $3 AND period = $4
+					  AND timestamp >= $5 AND timestamp <= $6
+					ORDER BY timestamp DESC
+					LIMIT $7
+				`, tableName)
+				args = []interface{}{exchangeName, symbol, tradeType, period, startTime, endTime, remaining}
+			} else {
+				query = fmt.Sprintf(`
+					SELECT symbol, exchange, trade_type, period, timestamp,
+					       open, high, low, close, volume, buy_volume, COALESCE(symbol_family, '')
+					FROM %s
+					WHERE exchange = $1 AND symbol = $2 AND trade_type = $3 AND period = $4
+					  AND timestamp <= $5
+					ORDER BY timestamp DESC
+					LIMIT $6
+				`, tableName)
+				args = []interface{}{exchangeName, symbol, tradeType, period, endTime, remaining}
+			}
+
+			rows, err := r.pool.Query(ctx, query, args...)
 			if err != nil {
 				return nil, err
 			}
-
 			for rows.Next() {
 				var c exchange.NormalizedCandle
-				err := rows.Scan(
+				if err := rows.Scan(
 					&c.Symbol, &c.Exchange, &c.TradeType, &c.Period, &c.Timestamp,
 					&c.Open, &c.High, &c.Low, &c.Close, &c.Volume, &c.BuyVolume, &c.SymbolFamily,
-				)
-				if err != nil {
+				); err != nil {
 					rows.Close()
 					return nil, err
 				}
 				allCandles = append(allCandles, c)
 			}
 			rows.Close()
+		}
+
+		// 截取 limit 并按时间升序返回
+		if len(allCandles) > limit {
+			allCandles = allCandles[:limit]
+		}
+		sort.Slice(allCandles, func(i, j int) bool {
+			return allCandles[i].Timestamp < allCandles[j].Timestamp
+		})
+		return allCandles, nil
+	}
+
+	// 无 limit：按时间范围全量查询
+	years := r.partition.GetYearsInRange(startTime, endTime)
+	var allCandles []exchange.NormalizedCandle
+	for _, year := range years {
+		tableName := r.partition.GetTableNameByYear(year)
+		if !r.tableExists(ctx, tableName) {
 			continue
 		}
 
-		rows, err := r.pool.Query(ctx, baseQuery, exchangeName, symbol, period, startTime, endTime)
+		query := fmt.Sprintf(`
+			SELECT symbol, exchange, trade_type, period, timestamp,
+			       open, high, low, close, volume, buy_volume, COALESCE(symbol_family, '')
+			FROM %s
+			WHERE exchange = $1 AND symbol = $2 AND trade_type = $3 AND period = $4
+			  AND timestamp >= $5 AND timestamp <= $6
+			ORDER BY timestamp ASC
+		`, tableName)
+
+		rows, err := r.pool.Query(ctx, query, exchangeName, symbol, tradeType, period, startTime, endTime)
 		if err != nil {
 			return nil, err
 		}
-
 		for rows.Next() {
 			var c exchange.NormalizedCandle
-			err := rows.Scan(
+			if err := rows.Scan(
 				&c.Symbol, &c.Exchange, &c.TradeType, &c.Period, &c.Timestamp,
 				&c.Open, &c.High, &c.Low, &c.Close, &c.Volume, &c.BuyVolume, &c.SymbolFamily,
-			)
-			if err != nil {
+			); err != nil {
 				rows.Close()
 				return nil, err
 			}
@@ -341,16 +389,9 @@ func (r *PostgresRepository) GetCandles(ctx context.Context, exchangeName, symbo
 		rows.Close()
 	}
 
-	// 按时间戳升序排序
 	sort.Slice(allCandles, func(i, j int) bool {
 		return allCandles[i].Timestamp < allCandles[j].Timestamp
 	})
-
-	// 截取 limit
-	if hasLimit && len(allCandles) > limit {
-		allCandles = allCandles[:limit]
-	}
-
 	return allCandles, nil
 }
 
@@ -810,14 +851,14 @@ func (r *PostgresRepository) GetAllSymbolsSyncStatus(ctx context.Context, exchan
 		FROM symbol_sync_status
 		WHERE exchange = $1
 	`
-	
+
 	args := []interface{}{exchangeName}
-	
+
 	if tradeType != "" {
 		query += " AND trade_type = $2"
 		args = append(args, tradeType)
 	}
-	
+
 	query += " ORDER BY symbol"
 
 	rows, err := r.pool.Query(ctx, query, args...)

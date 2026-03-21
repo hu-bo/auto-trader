@@ -20,7 +20,7 @@ type Repository interface {
 	UpdateCandleIfExists(ctx context.Context, candle exchange.NormalizedCandle) (bool, error)
 
 	// GetCandles 查询历史K线
-	GetCandles(ctx context.Context, exchangeName, symbol, period string, startTime, endTime int64, limit int) ([]exchange.NormalizedCandle, error)
+	GetCandles(ctx context.Context, exchangeName, symbol, tradeType, period string, startTime, endTime int64, limit int) ([]exchange.NormalizedCandle, error)
 
 	// GetLatestCandle 获取最新K线
 	GetLatestCandle(ctx context.Context, exchangeName, symbol, tradeType, period string) (*exchange.NormalizedCandle, error)

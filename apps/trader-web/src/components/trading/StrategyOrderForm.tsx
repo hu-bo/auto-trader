@@ -2,9 +2,7 @@ import React from 'react'
 import {
   Form,
   Button,
-  Card,
   Toast,
-  TagInput,
   Select,
   Descriptions,
 } from '@douyinfe/semi-ui-19'
@@ -12,6 +10,7 @@ import { IconLink } from '@douyinfe/semi-icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { strategyApi, strategyOrderApi, exchangeApi, riskConfigApi } from '@/api'
 import { useNavigateKeepParams, useTradingFormState } from '@/hooks'
+import { useMarketStore } from '@/stores/marketStore'
 import { BaseOrderFields } from './BaseOrderFields'
 import type { RiskConfig, RiskConfigPreset, OrderSide, PositionSide, OrderType, StrategyOrder } from '@/types'
 
@@ -161,6 +160,73 @@ export const StrategyOrderForm: React.FC<StrategyOrderFormProps> = ({
       setField('exchangeId', resolvedExchangeId)
     }
   }, [resolvedExchangeId, values.exchangeId, setField])
+
+  const [allSymbols, setAllSymbols] = React.useState<Array<{
+    ticker: string
+    name: string
+    exchange: string
+    market: string
+  }>>([])
+  const [symbolsLoading, setSymbolsLoading] = React.useState(false)
+
+  const selectedExchangeType = React.useMemo(() => {
+    if (!values.exchangeId || !exchanges) return undefined
+    const selected = exchanges.find((e) => String(e.id) === String(values.exchangeId))
+    return selected?.exchangeType
+  }, [values.exchangeId, exchanges])
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    const loadSymbols = async () => {
+      if (!selectedExchangeType) {
+        setAllSymbols([])
+        return
+      }
+
+      setSymbolsLoading(true)
+      setAllSymbols([])
+      try {
+        const store = useMarketStore.getState()
+        await store.fetchSymbols(selectedExchangeType, values.tradeType)
+        const syncEnabled = store.getSyncEnabledSymbols(selectedExchangeType, values.tradeType)
+        const symbols = syncEnabled.map((s: any) => ({
+          ticker: s.symbol,
+          name: `${s.baseCurrency}/${s.quoteCurrency}[${selectedExchangeType}][${s.tradeType}]`,
+          exchange: s.exchange,
+          market: s.tradeType,
+        }))
+        console.log(symbols)
+        if (!cancelled) {
+          setAllSymbols(symbols)
+        }
+      } catch {
+        if (!cancelled) {
+          setAllSymbols([])
+        }
+      } finally {
+        if (!cancelled) {
+          setSymbolsLoading(false)
+        }
+      }
+    }
+
+    loadSymbols()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedExchangeType, values.tradeType])
+  console.log(allSymbols)
+  const symbolOptions = React.useMemo(() => {
+    const options = allSymbols.map((s) => ({ value: s.ticker, label: s.name }))
+    const optionMap = new Map(options.map((o) => [o.value, o]))
+    values.symbols.forEach((symbol) => {
+      if (!optionMap.has(symbol)) {
+        optionMap.set(symbol, { value: symbol, label: symbol })
+      }
+    })
+    return Array.from(optionMap.values())
+  }, [allSymbols, values.symbols])
 
   const createMutation = useMutation({
     mutationFn: strategyOrderApi.create,
@@ -356,11 +422,19 @@ export const StrategyOrderForm: React.FC<StrategyOrderFormProps> = ({
         )}
       </div>
 
-      <Form.TagInput
+      <Form.Select
         field='symbols'
+        multiple
+        filter
+        optionList={symbolOptions}
         label="交易对"
-        placeholder="输入交易对后按回车，如 BTC-USDT"
-        rules={[{ required: true, message: '请输入交易对' }]}
+        placeholder={values.exchangeId ? '请选择交易对（可多选）' : '请先选择交易所'}
+        rules={[{ required: true, message: '请选择交易对' }]}
+        disabled={!values.exchangeId}
+        loading={symbolsLoading}
+        onChange={(v) => {
+          setField('symbols', Array.isArray(v) ? (v as string[]) : [])
+        }}
         style={{ width: '100%' }}
       />
 

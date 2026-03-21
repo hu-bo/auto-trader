@@ -244,6 +244,7 @@ class StrategyManager:
             candles = await self._preloader.fetch_candles(
                 exchange=req.exchange,
                 symbol=req.symbol,
+                trade_type=req.trade_type,
                 period=req.period,
                 days=self._preload_days,
             )

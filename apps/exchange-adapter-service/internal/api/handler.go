@@ -223,10 +223,10 @@ func (h *Handler) GetTracePrice(c echo.Context) error {
 // GetCandles 获取历史K线
 // GET /api/candles?exchange=binance&symbol=BTC-USDT&period=15m&limit=100&start_time=xxx&end_time=xxx
 func (h *Handler) GetCandles(c echo.Context) error {
-	defaultStart, defaultEnd := utils.Period1d.Interval(1)
 	req := struct {
 		Exchange  string `query:"exchange" validate:"required"`
 		Symbol    string `query:"symbol" validate:"required"`
+		TradeType string `query:"trade_type"`
 		Period    string `query:"period" validate:"required"`
 		Limit     int    `query:"limit" validate:"gte=0"`
 		StartTime int64  `query:"start_time"`
@@ -236,12 +236,16 @@ func (h *Handler) GetCandles(c echo.Context) error {
 	}{
 		Exchange:  strings.TrimSpace(c.QueryParam("exchange")),
 		Symbol:    strings.TrimSpace(c.QueryParam("symbol")),
+		TradeType: "spot",
 		Period:    "15m",
 		Limit:     300,
-		StartTime: defaultStart,
-		EndTime:   defaultEnd,
+		StartTime: 0,
+		EndTime:   time.Now().UnixMilli(),
 	}
 	errs := make([]ErrorItem, 0)
+	if t := strings.TrimSpace(c.QueryParam("trade_type")); t != "" {
+		req.TradeType = normalizeTradeTypeParam(t)
+	}
 	if p := strings.TrimSpace(c.QueryParam("period")); p != "" {
 		req.Period = p
 	}
@@ -335,7 +339,7 @@ func (h *Handler) GetCandles(c echo.Context) error {
 			sourceEnd = req.EndTime
 		}
 
-		sourceCandles, fetchErr := h.repo.GetCandles(c.Request().Context(), req.Exchange, req.Symbol, string(sourcePeriod), sourceStart, sourceEnd, sourceLimit)
+		sourceCandles, fetchErr := h.repo.GetCandles(c.Request().Context(), req.Exchange, req.Symbol, req.TradeType, string(sourcePeriod), sourceStart, sourceEnd, sourceLimit)
 		if fetchErr != nil {
 			return Error(c, http.StatusInternalServerError, ErrCodeInternal, fetchErr.Error())
 		}
@@ -347,7 +351,7 @@ func (h *Handler) GetCandles(c echo.Context) error {
 
 		candles = filterCandlesByRangeAndLimit(aggregated, req.StartTime, req.EndTime, req.Limit)
 	} else {
-		candles, err = h.repo.GetCandles(c.Request().Context(), req.Exchange, req.Symbol, req.Period, req.StartTime, req.EndTime, req.Limit)
+		candles, err = h.repo.GetCandles(c.Request().Context(), req.Exchange, req.Symbol, req.TradeType, req.Period, req.StartTime, req.EndTime, req.Limit)
 		if err != nil {
 			return Error(c, http.StatusInternalServerError, ErrCodeInternal, err.Error())
 		}

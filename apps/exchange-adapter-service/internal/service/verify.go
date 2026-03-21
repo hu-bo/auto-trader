@@ -125,7 +125,7 @@ func (s *VerifyService) VerifyCandles(ctx context.Context, exchangeName exchange
 	// 逐条对比
 	for _, remote := range remoteCandles {
 		// 从数据库查询对应时间的本地数据
-		localCandles, err := s.repo.GetCandles(ctx, string(exchangeName), symbol, string(period), remote.Timestamp, remote.Timestamp+1, 1)
+		localCandles, err := s.repo.GetCandles(ctx, string(exchangeName), symbol, string(tradeType), string(period), remote.Timestamp, remote.Timestamp+1, 1)
 		if err != nil {
 			logVerify.Warn().Err(err).
 				Str("symbol", symbol).
