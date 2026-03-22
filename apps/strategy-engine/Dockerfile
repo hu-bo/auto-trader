@@ -1,48 +1,86 @@
-FROM python:3.12-slim
+# =============================================================================
+# Stage 1: Rust Builder — compile hquant-rs → hquant Python wheel via maturin
+# =============================================================================
+FROM rust:1.83-slim-bookworm AS rust-builder
 
-WORKDIR /app
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_CACHE_DIR=/root/.cache/pip \
-    PYTHONPATH=/app
-
-# 仅安装运行时必需依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+        python3-dev \
+        python3-pip \
+        pkg-config \
+    && pip3 install --break-system-packages maturin \
+    && rm -rf /var/lib/apt/lists/*
 
-# 仅依赖 CI 产出的构建物（不再在镜像内运行 Poetry）
-COPY requirements.txt /app/requirements.txt
-COPY dist/ /app/dist/
-COPY wheels/ /app/wheels/
-COPY packages/contracts/output/python /app/python
-COPY certs/ /app/certs/
+WORKDIR /build
 
-RUN if [ ! -s /app/requirements.txt ]; then \
-      echo "requirements.txt missing or empty" >&2; \
-      exit 1; \
-    fi
+# --- Cargo dependency cache layer ---
+# Copy only manifests first so dependency downloads are cached separately
+COPY packages/hquant-rs/Cargo.toml packages/hquant-rs/Cargo.lock ./hquant-rs/
+COPY packages/hquant-rs/build.rs ./hquant-rs/
 
-RUN if ! ls /app/dist/strategy_engine-*.whl >/dev/null 2>&1; then \
-      echo "strategy_engine wheel missing in /app/dist" >&2; \
-      exit 1; \
-    fi
+# Create a dummy lib.rs so `cargo fetch` can resolve the dependency graph
+RUN mkdir -p hquant-rs/src && echo "" > hquant-rs/src/lib.rs \
+    && cd hquant-rs && cargo fetch
 
-RUN if [ ! -f /app/python/__init__.py ]; then \
-      echo "contracts python stubs missing at /app/python" >&2; \
-      exit 1; \
-    fi
+# --- Copy real Rust source ---
+COPY packages/hquant-rs/src/ ./hquant-rs/src/
 
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# --- Copy maturin / hquant-py project ---
+COPY packages/hquant-py/ ./hquant-py/
 
-RUN if ls /app/wheels/*.whl >/dev/null 2>&1; then \
-      pip install --no-cache-dir /app/wheels/*.whl; \
-    fi
+# Build the wheel (maturin reads manifest-path = "../hquant-rs/Cargo.toml")
+RUN cd hquant-py && maturin build --release \
+    && mkdir -p /wheels && cp /build/hquant-rs/target/wheels/*.whl /wheels/
 
-RUN pip install --no-cache-dir --no-deps /app/dist/strategy_engine-*.whl
+
+# =============================================================================
+# Stage 2: Python Builder — install deps, build logger-py wheel, collect all
+# =============================================================================
+FROM python:3.11-slim-bookworm AS py-builder
+
+RUN pip install --no-cache-dir poetry hatchling
+
+WORKDIR /build
+
+# --- Build logger-py wheel ---
+COPY packages/logger-py/ ./logger-py/
+RUN pip wheel --no-deps --wheel-dir /wheels ./logger-py/
+
+# --- Copy hquant wheel from Stage 1 ---
+COPY --from=rust-builder /wheels/*.whl /wheels/
+
+# --- Export Poetry deps (excluding path deps) ---
+COPY apps/strategy-engine/pyproject.toml apps/strategy-engine/poetry.lock ./app/
+WORKDIR /build/app
+RUN poetry export -f requirements.txt --without-hashes \
+    | grep -v "^hquant " | grep -v "^hquant-logger " > requirements.txt
+
+# --- Install all deps + wheels into system site-packages ---
+RUN pip install --no-cache-dir --no-deps /wheels/*.whl \
+    && pip install --no-cache-dir -r requirements.txt
+
+# --- Copy application source ---
+COPY apps/strategy-engine/app/ /build/app/app/
+
+
+# =============================================================================
+# Stage 3: Runtime — minimal image with only site-packages + app source
+# =============================================================================
+FROM python:3.11-slim-bookworm AS runtime
+
+# Copy installed Python packages from builder
+COPY --from=py-builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
+COPY --from=py-builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
+
+# Copy application source
+WORKDIR /app
+COPY --from=py-builder /build/app/app/ ./app/
+
+# Non-root user
+RUN groupadd --gid 1000 appuser \
+    && useradd --uid 1000 --gid appuser --shell /bin/sh appuser \
+    && chown -R appuser:appuser /app
+USER appuser
 
 EXPOSE 9004 9005
 
-CMD ["sh", "-lc", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT:-9004}"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9004"]
