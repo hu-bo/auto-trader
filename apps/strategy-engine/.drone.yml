@@ -152,6 +152,6 @@ steps:
         - cd /data/app/$APP_NAME
         - ls -la
         - docker-compose up -d --no-recreate nats
-        - docker-compose -f docker-compose.yaml up -d --build --force-recreate --no-deps exchange-adapter-service
+        - docker-compose -f docker-compose.yaml up -d --build --force-recreate --no-deps strategy-engine
         - sleep 2
         - docker logs --tail 200 strategy-engine
