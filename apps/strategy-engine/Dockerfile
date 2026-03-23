@@ -37,7 +37,7 @@ RUN cd hquant-py && maturin build --release \
 # =============================================================================
 FROM python:3.11-slim-bookworm AS py-builder
 
-RUN pip install --no-cache-dir poetry hatchling
+RUN pip install --no-cache-dir poetry poetry-plugin-export hatchling
 
 WORKDIR /build
 
