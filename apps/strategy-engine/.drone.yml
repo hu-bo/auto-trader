@@ -7,122 +7,69 @@ trigger:
     - master
 
 volumes:
-  - name: pip-cache
+  - name: docker-sock
     host:
-      path: /var/lib/drone-cache/pip
-  - name: cargo-cache
-    host:
-      path: /var/lib/drone-cache/cargo
+      path: /var/run/docker.sock
 
 steps:
-
-# -------------------------------------------------
-# 0️⃣ 恢复缓存
-# -------------------------------------------------
-  - name: restore-cache
-    image: drillster/drone-volume-cache
-    volumes:
-      - name: pip-cache
-        path: /cache/pip
-      - name: cargo-cache
-        path: /cache/cargo
-    settings:
-      restore: true
-      cache_key: [ DRONE_REPO_OWNER, DRONE_REPO_NAME, DRONE_BRANCH ]
-      mount:
-        - /drone/src/.cache/
-
-# -------------------------------------------------
-# 1️⃣ 构建 Rust 扩展 (hquant-py)
-# -------------------------------------------------
-  - name: build-hquant
-    image: ghcr.io/pyo3/maturin:latest
+  # 1. inject-config — SSH 到服务器预创建目录、拉取 .env 和 gRPC 证书
+  - name: inject-config
+    image: appleboy/drone-ssh
     environment:
-      CARGO_HOME: /root/.cargo
-    volumes:
-      - name: cargo-cache
-        path: /root/.cargo/git
-    commands:
-      - echo "== Building hquant wheel =="
-      - cd packages/hquant-py
-      - maturin build --release --strip -i /opt/python/cp312-cp312/bin/python -o /drone/src/wheels 
-      - ls -lah /drone/src/wheels
-
-# -------------------------------------------------
-# 2️⃣ 构建 Python 服务
-# -------------------------------------------------
-  - name: build-service
-    image: python:3.12
-    environment:
-      POETRY_VERSION: "2.3.2"
       API_CONFIG_TOKEN_SECRET:
         from_secret: API_CONFIG_TOKEN_SECRET
-    volumes:
-      - name: pip-cache
-        path: /root/.cache
-    commands:
-      - echo "== Installing build deps =="
-      - apt-get update && apt-get install -y --no-install-recommends \
-          build-essential git curl wget && \
-        rm -rf /var/lib/apt/lists/*
-
-      - pip install --no-cache-dir "poetry==$POETRY_VERSION"
-      - pip install --no-cache-dir poetry-plugin-export
-
-      - echo "== Build local wheels =="
-      - pip wheel ./packages/logger-py -w /drone/src/wheels
-
-      - echo "== Build service wheel =="
-      - cd apps/strategy-engine
-      - mkdir -p certs/grpc
-      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.crt" -O certs/grpc/shared.crt'
-      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.key" -O certs/grpc/shared.key'
-      - poetry build -f wheel -n
-      - poetry export --only main -f requirements.txt --without-hashes -o /drone/src/requirements.txt
-      - sed -i '/hquant/d;/logger-py/d' /drone/src/requirements.txt
-
-      - echo "== Package release artifact =="
-      - cd /drone/src
-      - mkdir -p release/strategy-engine/dist release/strategy-engine/wheels
-      - cp /drone/src/requirements.txt release/strategy-engine/requirements.txt
-      - cp apps/strategy-engine/pyproject.toml release/strategy-engine/
-      - cp apps/strategy-engine/poetry.lock release/strategy-engine/
-      - cp -r apps/strategy-engine/app release/strategy-engine/
-      - cp apps/strategy-engine/dist/strategy_engine-*.whl release/strategy-engine/dist/
-      - cp wheels/hquant-*.whl release/strategy-engine/wheels/
-      - cp wheels/hquant_logger-*.whl release/strategy-engine/wheels/
-      - cp apps/strategy-engine/Dockerfile release/strategy-engine/
-      - cp apps/strategy-engine/docker-compose.yaml release/strategy-engine/
-      - cp apps/strategy-engine/.env.example release/strategy-engine/
-      - cp -r apps/strategy-engine/certs release/strategy-engine/
-      - cp -r packages release/strategy-engine/
-      - tar czf strategy-engine.tar.gz -C release/strategy-engine .
-
-# -------------------------------------------------
-# 3️⃣ 重建缓存
-# -------------------------------------------------
-  - name: rebuild-cache
-    image: drillster/drone-volume-cache
-    volumes:
-      - name: pip-cache
-        path: /cache/pip
-      - name: cargo-cache
-        path: /cache/cargo
     settings:
-      rebuild: true
-      cache_key: [ DRONE_REPO_OWNER, DRONE_REPO_NAME, DRONE_BRANCH ]
-      mount:
-        - /drone/src/.cache/
+      host:
+        from_secret: HOST_HONKONG_1
+      username: root
+      password:
+        from_secret: SSH_PWD
+      port: 22
+      command_timeout: 2m
+      envs:
+        - API_CONFIG_TOKEN_SECRET
+      script:
+        - export APP_NAME=strategy-engine
+        - export APP_DIR=/data/app/$APP_NAME
+        - mkdir -p $APP_DIR/certs/grpc
+        # 拉取 .env 配置
+        - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/strategy-engine/env" -O $APP_DIR/.env'
+        - echo "=== .env pulled ==="
+        - cat $APP_DIR/.env
+        # 拉取 gRPC 证书
+        - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.crt" -O $APP_DIR/certs/grpc/shared.crt'
+        - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.key" -O $APP_DIR/certs/grpc/shared.key'
+        - echo "=== gRPC certs pulled ==="
+        - ls -la $APP_DIR/certs/grpc/
 
-# -------------------------------------------------
-# 4️⃣ SCP 上传
-# -------------------------------------------------
+  # 2. build — 使用 docker CLI 执行多阶段构建，构建上下文为仓库根目录
+  - name: build
+    image: docker:27-cli
+    volumes:
+      - name: docker-sock
+        path: /var/run/docker.sock
+    commands:
+      - docker build -f apps/strategy-engine/Dockerfile -t strategy-engine:latest .
+      - docker images strategy-engine:latest
+
+  # 3. save-image — docker save 导出镜像为 tar.gz
+  - name: save-image
+    image: docker:27-cli
+    volumes:
+      - name: docker-sock
+        path: /var/run/docker.sock
+    commands:
+      - docker save strategy-engine:latest | gzip > strategy-engine-image.tar.gz
+      - ls -lh strategy-engine-image.tar.gz
+
+  # 4. scp — 传输 tar.gz 和 docker-compose.yaml 到服务器
   - name: scp
     image: appleboy/drone-scp
     settings:
-      debug: false
+      debug: true
       source:
-        - strategy-engine.tar.gz
+        - strategy-engine-image.tar.gz
+        - apps/strategy-engine/docker-compose.yaml
       host:
         from_secret: CURRENT_HOST
       username: root
@@ -131,9 +78,7 @@ steps:
         from_secret: SSH_PWD
       target: /temp
 
-# -------------------------------------------------
-# 5️⃣ 远程部署
-# -------------------------------------------------
+  # 5. deploy — SSH 到服务器执行 docker load、docker-compose 重启、健康检查和日志输出
   - name: deploy
     image: appleboy/drone-ssh
     settings:
@@ -143,15 +88,22 @@ steps:
       password:
         from_secret: SSH_PWD
       port: 22
-      command_timeout: 10m
+      command_timeout: 5m
       script:
         - export APP_NAME=strategy-engine
-        - mkdir -p /data/app/$APP_NAME
-        - rm -rf /data/app/$APP_NAME/*
-        - tar xzf /temp/strategy-engine.tar.gz -C /data/app/$APP_NAME
-        - cd /data/app/$APP_NAME
-        - ls -la
-        - docker-compose up -d --no-recreate nats
-        - docker-compose -f docker-compose.yaml up -d --build --force-recreate --no-deps exchange-adapter-service
-        - sleep 2
-        - docker logs --tail 200 strategy-engine
+        - export APP_DIR=/data/app/$APP_NAME
+        # 加载 Docker 镜像
+        - docker load < /temp/strategy-engine-image.tar.gz
+        - rm -f /temp/strategy-engine-image.tar.gz
+        - docker images strategy-engine:latest
+        # 复制 docker-compose.yaml
+        - cp /temp/apps/strategy-engine/docker-compose.yaml $APP_DIR/docker-compose.yaml
+        - cd $APP_DIR
+        # 重启服务
+        - docker-compose up -d --no-recreate nats redis
+        - docker-compose up -d --force-recreate --no-deps strategy-engine
+        # 健康检查
+        - sleep 5
+        - 'curl -sf http://localhost:9004/health && echo " === Health check passed ===" || echo " === Health check failed ==="'
+        # 输出日志
+        - docker logs --tail 50 strategy-engine

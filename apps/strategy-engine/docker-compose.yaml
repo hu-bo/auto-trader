@@ -15,31 +15,27 @@ services:
     networks:
       - shared_network
   strategy-engine:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: strategy-engine:latest
     container_name: strategy-engine
     restart: always
     depends_on:
-      - nats
-      - redis
-    environment:
-      APP_ENV: production
-      APP_PORT: 9004
-      GRPC_PORT: 9005
-      GRPC_TLS_ENABLED: "true"
-      GRPC_TLS_CERT_FILE: /app/certs/grpc/shared.crt
-      GRPC_TLS_KEY_FILE: /app/certs/grpc/shared.key
-      GRPC_TLS_CA_FILE: /app/certs/grpc/shared.crt
-      LOG_LEVEL: INFO
+      nats:
+        condition: service_healthy
+    env_file:
+      - .env
+    volumes:
+      - ./certs/grpc:/app/certs/grpc:ro
     ports:
       - "9004:9004"
       - "9005:9005"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9004/health')\" || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - shared_network
-
-volumes:
-  redis_data:
 
 networks:
   shared_network:
