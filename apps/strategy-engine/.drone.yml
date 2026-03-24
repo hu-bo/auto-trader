@@ -66,7 +66,7 @@ steps:
   - name: scp
     image: appleboy/drone-scp
     settings:
-      debug: true
+      debug: false
       source:
         - strategy-engine-image.tar.gz
         - apps/strategy-engine/docker-compose.yaml
@@ -100,7 +100,7 @@ steps:
         - cp /temp/apps/strategy-engine/docker-compose.yaml $APP_DIR/docker-compose.yaml
         - cd $APP_DIR
         # 重启服务
-        - docker-compose up -d --no-recreate nats redis
+        - docker-compose up -d --no-recreate nats
         - docker-compose up -d --force-recreate --no-deps strategy-engine
         # 健康检查
         - sleep 5
