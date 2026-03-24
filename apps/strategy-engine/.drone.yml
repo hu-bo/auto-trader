@@ -20,7 +20,7 @@ steps:
         from_secret: API_CONFIG_TOKEN_SECRET
     settings:
       host:
-        from_secret: HOST_HONKONG_1
+        from_secret: CURRENT_HOST
       username: root
       password:
         from_secret: SSH_PWD
