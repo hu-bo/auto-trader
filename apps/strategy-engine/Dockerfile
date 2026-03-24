@@ -52,7 +52,7 @@ COPY --from=rust-builder /wheels/*.whl /wheels/
 COPY apps/strategy-engine/pyproject.toml apps/strategy-engine/poetry.lock ./app/
 WORKDIR /build/app
 RUN poetry export -f requirements.txt --without-hashes \
-    | grep -v "^hquant " | grep -v "^hquant-logger " > requirements.txt
+    | grep -v "^hquant[= @]" | grep -v "^hquant-logger[= @]" | grep -v "file://" > requirements.txt
 
 # --- Install all deps + wheels into system site-packages ---
 RUN pip install --no-cache-dir --no-deps /wheels/*.whl \
