@@ -32,17 +32,19 @@ api_logger.info('Request received', method='GET', path='/users')
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
-| `NODE_ENV` | `development` | `development` or `production` |
+| `APP_ENV` / `NODE_ENV` | `development` | Runtime environment. `NODE_ENV` has higher priority when both are set |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
-| `LOG_DIR` | `logs` | Log directory (production only) |
+| `LOG_DIR` | `logs` | Log directory for file sink |
+| `LOG_TO_FILE` | auto | Force file logging: `true/false` (`auto`: production on, development off) |
 
 ## Development vs Production
 
-**Development (`NODE_ENV=development`):**
+**Development (`APP_ENV=development` or `NODE_ENV=development`):**
 - Colorized console output
 - Human-readable format
+- File sink can be enabled with `LOG_TO_FILE=true`
 
-**Production (`NODE_ENV=production`):**
+**Production (`APP_ENV=production` or `NODE_ENV=production`):**
 - JSON structured logs
 - Daily rotation at midnight
 - 30 days retention
