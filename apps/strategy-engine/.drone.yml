@@ -79,7 +79,7 @@ steps:
       - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.key" -O certs/grpc/shared.key'
       - poetry build -f wheel -n
       - poetry export --only main -f requirements.txt --without-hashes -o /drone/src/requirements.txt
-      - sed -i '/hquant-py/d;/logger-py/d;/^hquant[=<>@ ]/d;/^hquant-logger[=<>@ ]/d' /drone/src/requirements.txt
+      - sed -i '/hquant/d;/logger-py/d' /drone/src/requirements.txt
 
       - echo "== Package release artifact =="
       - cd /drone/src
