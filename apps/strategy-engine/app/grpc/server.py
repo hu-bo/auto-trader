@@ -10,9 +10,11 @@ from hquant_logger import create_logger
 # ---------------------------------------------------------------------------
 # Import generated gRPC stubs -- same sys.path setup as subscription_service.
 # ---------------------------------------------------------------------------
-_proto_root = (
-    Path(__file__).resolve().parents[4] / "packages" / "contracts" / "output"
-)
+# Try Docker path first, fallback to local dev path
+_proto_root = Path("/app/proto")
+if not _proto_root.exists():
+    _proto_root = Path(__file__).resolve().parents[4] / "packages" / "contracts" / "output"
+
 if _proto_root.exists():
     _proto_root_str = str(_proto_root)
     if _proto_root_str not in sys.path:

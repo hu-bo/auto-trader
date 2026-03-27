@@ -75,6 +75,9 @@ COPY --from=py-builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 WORKDIR /app
 COPY --from=py-builder /build/app/app/ ./app/
 
+# Copy generated gRPC/proto stubs
+COPY packages/contracts/output/python/ ./proto/python/
+
 # Non-root user
 RUN groupadd --gid 1000 appuser \
     && useradd --uid 1000 --gid appuser --shell /bin/sh appuser \
