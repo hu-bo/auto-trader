@@ -324,74 +324,101 @@ steps:
 
 适用于: `strategy-engine`
 
-```yaml
-# apps/strategy-engine/.drone.yml
-kind: pipeline
-type: docker
-name: strategy-engine
+Strategy Engine 是基于 FastAPI 的量化策略信号引擎，依赖 Rust 编译的 Python 扩展包 (`hquant-py`)，因此采用多阶段 Docker 构建 + 镜像导出 SCP 的部署模式（不使用 Docker Registry）。
 
-trigger:
-  branch:
-    - master
+#### 3.1 多阶段 Docker 构建
 
-steps:
-  # 1. 注入配置
-  - name: inject-config
-    image: appleboy/drone-ssh
-    settings:
-      host:
-        from_secret: CURRENT_HOST
-      username: root
-      password:
-        from_secret: SSH_PWD
-      port: 22
-      command_timeout: 2m
-      script:
-        - APP_NAME=strategy-engine
-        - APP_DIR=/data/app/$APP_NAME
-        - mkdir -p $APP_DIR/config
-        - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/exchange-service/env" -O config/.env'
+Dockerfile 位于 `apps/strategy-engine/Dockerfile`，构建上下文为**仓库根目录**（因为需要访问 `packages/` 下的共享包）。
 
-  # 2. 构建 Docker 镜像
-  - name: build
-    image: plugins/docker
-    settings:
-      repo: auto-trader/strategy-engine
-      tags:
-        - latest
-        - ${DRONE_COMMIT_SHA:0:8}
-      dockerfile: apps/strategy-engine/Dockerfile
-      context: apps/strategy-engine
+| 阶段 | 基础镜像 | 职责 |
+|------|---------|------|
+| Stage 1: `rust-builder` | `rust:1.83-slim-bookworm` | 安装 maturin + Python dev headers，编译 `hquant-rs` 生成 Python wheel |
+| Stage 2: `py-builder` | `python:3.11-slim-bookworm` | 构建 `logger-py` wheel，poetry export 生成 requirements.txt，pip install 所有依赖 |
+| Stage 3: `runtime` | `python:3.11-slim-bookworm` | 仅复制 site-packages + 应用源码，非 root 用户运行，暴露端口 9004/9005 |
 
-  # 3. 部署
-  - name: deploy
-    image: appleboy/drone-ssh
-    settings:
-      host:
-        from_secret: CURRENT_HOST
-      username: root
-      password:
-        from_secret: SSH_PWD
-      port: 22
-      command_timeout: 3m
-      script:
-        - APP_NAME=strategy-engine
-        - APP_DIR=/data/app/$APP_NAME
-        - cd $APP_DIR
+构建流程：
 
-        # 拉取最新镜像
-        - docker pull auto-trader/strategy-engine:latest
+```
+rust:1.83-slim-bookworm          python:3.11-slim-bookworm         python:3.11-slim-bookworm
+┌──────────────────────┐        ┌──────────────────────┐         ┌──────────────────────┐
+│  hquant-rs (Rust)    │        │  logger-py wheel     │         │  site-packages       │
+│  + maturin build     │──whl──▶│  + hquant whl        │──copy──▶│  + app/ 源码          │
+│  → hquant-*.whl      │        │  + poetry deps       │         │  + uvicorn           │
+└──────────────────────┘        └──────────────────────┘         └──────────────────────┘
+     Stage 1                         Stage 2                          Stage 3 (最终镜像)
+```
 
-        # 重启服务
-        - docker-compose down
-        - docker-compose up -d
+缓存优化要点：
+- Stage 1 先复制 `Cargo.toml` / `Cargo.lock` 做 `cargo fetch`，再复制源码，避免依赖未变时重复下载
+- Stage 2 先复制 `pyproject.toml` / `poetry.lock` 安装依赖，再复制应用源码
 
-        # 健康检查
-        - sleep 10
-        - curl -f http://localhost:9101/health || exit 1
+#### 3.2 Drone CI 流水线
 
-        # 查看日志
-        - docker logs --tail 50 $APP_NAME
+流水线配置文件: `apps/strategy-engine/.drone.yml`
+
+触发条件: `master` 分支推送
+
+| 阶段 | 说明 |
+|------|------|
+| `inject-config` | SSH 到服务器，从 Config Server 拉取 `.env` 配置和 gRPC 证书 (`shared.crt`, `shared.key`) |
+| `build` | 使用 `docker:27-cli` 挂载宿主机 Docker socket，执行 `docker build -f apps/strategy-engine/Dockerfile -t strategy-engine:latest .` |
+| `save-image` | `docker save strategy-engine:latest \| gzip > strategy-engine-image.tar.gz` |
+| `scp` | 将 `strategy-engine-image.tar.gz` 和 `docker-compose.yaml` 传输到服务器 `/temp` |
+| `deploy` | SSH 到服务器执行 `docker load`，`docker-compose up -d --force-recreate --no-deps strategy-engine`，健康检查 + 日志输出 |
+
+#### 3.3 Drone Secrets 清单
+
+| Secret | 说明 |
+|--------|------|
+| `HOST_HONKONG_1` | 部署服务器 IP（inject-config 步骤使用） |
+| `CURRENT_HOST` | 部署服务器 IP（scp / deploy 步骤使用） |
+| `SSH_PWD` | SSH 登录密码 |
+| `API_CONFIG_TOKEN_SECRET` | Config Server (`config.8and1.cn`) 访问令牌 |
+
+#### 3.4 手动部署步骤
+
+```bash
+# 1. 在仓库根目录构建镜像
+docker build -f apps/strategy-engine/Dockerfile -t strategy-engine:latest .
+
+# 2. 导出镜像
+docker save strategy-engine:latest | gzip > strategy-engine-image.tar.gz
+
+# 3. 传输到服务器
+scp strategy-engine-image.tar.gz root@<server>:/temp/
+
+# 4. 在服务器上加载镜像
+ssh root@<server>
+docker load < /temp/strategy-engine-image.tar.gz
+
+# 5. 重启服务
+cd /data/app/strategy-engine
+docker-compose up -d --force-recreate --no-deps strategy-engine
+
+# 6. 验证健康检查
+curl -sf http://localhost:9004/health
+
+# 7. 查看日志
+docker logs --tail 50 strategy-engine
+```
+
+#### 3.5 回滚步骤
+
+```bash
+# 方法一: 使用旧的 tar.gz 回滚
+# 如果保留了上一次部署的镜像文件:
+docker load < /temp/strategy-engine-image-prev.tar.gz
+cd /data/app/strategy-engine
+docker-compose up -d --force-recreate --no-deps strategy-engine
+
+# 方法二: 使用 docker tag 预留回滚版本
+# 部署前先保存当前版本:
+docker tag strategy-engine:latest strategy-engine:rollback
+
+# 部署新版本后如需回滚:
+docker tag strategy-engine:rollback strategy-engine:latest
+cd /data/app/strategy-engine
+docker-compose up -d --force-recreate --no-deps strategy-engine
 ```
 
 ---
