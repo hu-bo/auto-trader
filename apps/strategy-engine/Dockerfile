@@ -59,7 +59,7 @@ COPY --from=rust-builder /wheels/*.whl /wheels/
 COPY apps/strategy-engine/pyproject.toml apps/strategy-engine/poetry.lock ./app/
 WORKDIR /build/app
 RUN poetry export -f requirements.txt --without-hashes \
-    | grep -v -E "^hquant[ =@]" | grep -v -E "^hquant-logger[ =@]" > requirements.txt
+    | grep -v "^hquant[= @]" | grep -v "^hquant-logger[= @]" | grep -v "file://" > requirements.txt
 
 RUN pip install --no-cache-dir --no-deps /wheels/*.whl \
     && pip install --no-cache-dir -r requirements.txt
@@ -79,6 +79,10 @@ COPY --from=py-builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 WORKDIR /app
 COPY --from=py-builder /build/app/app/ ./app/
 
+# Copy generated gRPC/proto stubs
+COPY packages/contracts/output/python/ ./proto/python/
+
+# Non-root user
 RUN groupadd --gid 1000 appuser \
     && useradd --uid 1000 --gid appuser --shell /bin/sh appuser \
     && chown -R appuser:appuser /app

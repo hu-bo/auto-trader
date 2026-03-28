@@ -11,10 +11,24 @@ from loguru import logger as _loguru_logger
 
 __all__ = ["create_logger", "Logger"]
 
-NODE_ENV = os.getenv("NODE_ENV", "development")
-IS_DEV = NODE_ENV != "production"
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-LOG_DIR = Path(os.getenv("LOG_DIR", "logs"))
+
+def _resolve_runtime_config() -> tuple[str, bool, str, Path, bool]:
+    # `APP_ENV` is used by Python services in this monorepo, while
+    # `NODE_ENV` is kept for backward compatibility.
+    app_env = os.getenv("APP_ENV", "").strip().lower()
+    node_env = os.getenv("NODE_ENV", "").strip().lower()
+    env = node_env or app_env or "development"
+    is_dev = env != "production"
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_dir = Path(os.getenv("LOG_DIR", "logs"))
+    log_to_file = os.getenv("LOG_TO_FILE", "").strip().lower()
+    if log_to_file in {"1", "true", "yes", "on"}:
+        file_enabled = True
+    elif log_to_file in {"0", "false", "no", "off"}:
+        file_enabled = False
+    else:
+        file_enabled = not is_dev
+    return env, is_dev, log_level, log_dir, file_enabled
 
 
 class Logger:
@@ -68,9 +82,11 @@ def create_logger(service: str) -> Logger:
         Logger instance with child() method for creating scoped loggers
 
     Environment Variables:
-        NODE_ENV: 'development' | 'production' (default: 'development')
+        APP_ENV/NODE_ENV: 'development' | 'production' (default: 'development')
+            NODE_ENV takes precedence when both are set.
         LOG_LEVEL: DEBUG | INFO | WARNING | ERROR | CRITICAL (default: 'INFO')
-        LOG_DIR: Log directory for production (default: 'logs')
+        LOG_DIR: Log directory for file sink (default: 'logs')
+        LOG_TO_FILE: true/false, force file sink on/off (default: auto by env)
 
     Example:
         >>> logger = create_logger('my-service')
@@ -81,13 +97,15 @@ def create_logger(service: str) -> Logger:
     if not service:
         raise ValueError("service name is required for logger initialization")
 
+    env, is_dev, log_level, log_dir, file_enabled = _resolve_runtime_config()
+
     # Remove default handler
     _loguru_logger.remove()
 
     # Base context
     context = {
         "service": service,
-        "env": NODE_ENV,
+        "env": env,
         "pid": os.getpid(),
         "scope": "main",
     }
@@ -110,20 +128,20 @@ def create_logger(service: str) -> Logger:
             base += f" {kv_str}"
         return base + "\n"
 
-    if IS_DEV:
+    if is_dev:
         # Development: colorized console output
         _loguru_logger.add(
             sys.stderr,
-            level=LOG_LEVEL,
+            level=log_level,
             colorize=True,
             format=_dev_format,
         )
-    else:
-        # Production: rotating JSON log files
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
+    if file_enabled:
+        # File sink: rotating JSON log files
+        log_dir.mkdir(parents=True, exist_ok=True)
         _loguru_logger.add(
-            LOG_DIR / "{time:YYYY-MM-DD}.log",
-            level=LOG_LEVEL,
+            log_dir / "{time:YYYY-MM-DD}.log",
+            level=log_level,
             rotation="00:00",
             retention="30 days",
             compression="zip",

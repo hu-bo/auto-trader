@@ -6,6 +6,7 @@ import { AuthGuard, AdminGuard, GuestGuard } from './guards'
 import { lazy, Suspense } from 'react'
 import { Loading } from '@/components/common'
 
+const Home = lazy(() => import('@/pages/home/Home'))
 const Login = lazy(() => import('@/pages/auth/Login'))
 const Callback = lazy(() => import('@/pages/auth/Callback'))
 const Dashboard = lazy(() => import('@/pages/dashboard/Dashboard'))
@@ -30,6 +31,14 @@ const LazyPage = ({ children }: { children: React.ReactNode }) => (
 )
 
 export const router = createBrowserRouter([
+  {
+    path: '/home',
+    element: (
+      <LazyPage>
+        <Home />
+      </LazyPage>
+    ),
+  },
   {
     path: '/login',
     element: (
