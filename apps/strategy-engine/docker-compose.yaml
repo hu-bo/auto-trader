@@ -20,6 +20,9 @@ services:
     restart: always
     env_file:
       - .env
+    environment:
+      GRPC_TLS_CERT_FILE: /app/certs/grpc/shared.crt
+      GRPC_TLS_KEY_FILE: /app/certs/grpc/shared.key
     volumes:
       - ./certs/grpc:/app/certs/grpc:ro
     ports:
