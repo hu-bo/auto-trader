@@ -82,6 +82,9 @@ COPY --from=py-builder /build/app/app/ ./app/
 # Copy generated gRPC/proto stubs
 COPY packages/contracts/output/python/ ./proto/python/
 
+# Copy TLS certificates
+COPY certs/grpc/ ./certs/grpc/
+
 # Non-root user
 RUN groupadd --gid 1000 appuser \
     && useradd --uid 1000 --gid appuser --shell /bin/sh appuser \
