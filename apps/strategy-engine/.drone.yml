@@ -12,7 +12,7 @@ volumes:
       path: /var/run/docker.sock
 
 steps:
-  # 1. inject-config — SSH 到服务器预创建目录、拉取 .env 和 gRPC 证书
+  # 1. inject-config — SSH 到服务器预创建目录、拉取 .env 和 gRPC 证书1
   - name: inject-config
     image: appleboy/drone-ssh
     environment:
