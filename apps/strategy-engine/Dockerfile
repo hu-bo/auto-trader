@@ -66,6 +66,7 @@ RUN pip install --no-cache-dir --no-deps /wheels/*.whl \
 
 # --- 最后才 COPY 源码（改业务代码不触发 pip install） ---
 COPY apps/strategy-engine/app/ /build/app/app/
+COPY apps/strategy-engine/certs/ /build/app/certs/
 
 
 # =============================================================================
@@ -81,9 +82,6 @@ COPY --from=py-builder /build/app/app/ ./app/
 
 # Copy generated gRPC/proto stubs
 COPY packages/contracts/output/python/ ./proto/python/
-
-# Copy TLS certificates
-COPY certs/ ./certs/
 
 # Non-root user
 RUN groupadd --gid 1000 appuser \
