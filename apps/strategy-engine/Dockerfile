@@ -79,7 +79,7 @@ COPY --from=py-builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 
 WORKDIR /app
 COPY --from=py-builder /build/app/app/ ./app/
-
+COPY --from=py-builder /build/app/certs/ ./certs/
 # Copy generated gRPC/proto stubs
 COPY packages/contracts/output/python/ ./proto/python/
 
