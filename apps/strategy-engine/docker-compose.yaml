@@ -23,6 +23,7 @@ services:
     environment:
       GRPC_TLS_CERT_FILE: /app/certs/grpc/shared.crt
       GRPC_TLS_KEY_FILE: /app/certs/grpc/shared.key
+      GRPC_TLS_CA_FILE: /app/certs/grpc/shared.crt
     ports:
       - "9004:9004"
       - "9005:9005"
