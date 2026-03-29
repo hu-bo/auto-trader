@@ -51,6 +51,8 @@ steps:
     environment:
       DOCKER_BUILDKIT: 1
     commands:
+      - pwd
+      - ls -a
       - docker build
           --cache-from=strategy-engine:cache
           -t strategy-engine:latest
