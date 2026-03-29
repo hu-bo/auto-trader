@@ -12,37 +12,7 @@ volumes:
       path: /var/run/docker.sock
 
 steps:
-  # 1. inject-config — SSH 到服务器预创建目录、拉取 .env 和 gRPC 证书1
-  - name: inject-config
-    image: appleboy/drone-ssh
-    environment:
-      API_CONFIG_TOKEN_SECRET:
-        from_secret: API_CONFIG_TOKEN_SECRET
-    settings:
-      host:
-        from_secret: CURRENT_HOST
-      username: root
-      password:
-        from_secret: SSH_PWD
-      port: 22
-      command_timeout: 2m
-      envs:
-        - API_CONFIG_TOKEN_SECRET
-      script:
-        - export APP_NAME=strategy-engine
-        - export APP_DIR=/data/app/$APP_NAME
-        - mkdir -p $APP_DIR/certs/grpc
-        # 拉取 .env 配置
-        - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/strategy-engine/env" -O $APP_DIR/.env'
-        - echo "=== .env pulled ==="
-        - cat $APP_DIR/.env
-        # 拉取 gRPC 证书
-        - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.crt" -O $APP_DIR/certs/grpc/shared.crt'
-        - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.key" -O $APP_DIR/certs/grpc/shared.key'
-        - echo "=== gRPC certs pulled ==="
-        - ls -la $APP_DIR/certs/grpc/
-
-  # 2. build — BuildKit + cache-from 复用上次构建层
+  # 1. build — BuildKit + cache-from 复用上次构建层
   - name: build
     image: docker:27-cli
     volumes:
@@ -51,8 +21,18 @@ steps:
     environment:
       DOCKER_BUILDKIT: 1
     commands:
+      - export APP_NAME=strategy-engine
+      - export APP_DIR=/drone/src/apps/$APP_NAME
+      - mkdir -p $APP_DIR/certs/grpc
+      # 拉取 .env 配置
+      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/strategy-engine/env" -O $APP_DIR/.env'
+      - echo "=== .env pulled ==="
+      - cat $APP_DIR/.env
+      # 拉取 gRPC 证书
+      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.crt" -O $APP_DIR/certs/grpc/shared.crt'
+      - 'wget --header="Authorization: Bearer $API_CONFIG_TOKEN_SECRET" "http://config.8and1.cn/api/pull/certs/grpc/shared.key" -O $APP_DIR/certs/grpc/shared.key'
       - pwd
-      - ls -a
+      - ls apps/strategy-engine -a
       - docker build
           --cache-from=strategy-engine:cache
           -t strategy-engine:latest
