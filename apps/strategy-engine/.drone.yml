@@ -20,6 +20,8 @@ steps:
         path: /var/run/docker.sock
     environment:
       DOCKER_BUILDKIT: 1
+      API_CONFIG_TOKEN_SECRET:
+        from_secret: API_CONFIG_TOKEN_SECRET
     commands:
       - export APP_NAME=strategy-engine
       - export APP_DIR=/drone/src/apps/$APP_NAME
