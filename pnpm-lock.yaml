@@ -115,8 +115,8 @@ importers:
         specifier: ^3.20.19
         version: 3.20.22
       '@midwayjs/validation':
-        specifier: ^4.0.0-beta.7
-        version: 4.0.0-beta.14
+        specifier: 4.0.0-beta.7
+        version: 4.0.0-beta.7
       '@midwayjs/validation-joi':
         specifier: ^4.0.0-beta.7
         version: 4.0.0-beta.14
@@ -1415,6 +1415,10 @@ packages:
 
   '@midwayjs/validation@4.0.0-beta.14':
     resolution: {integrity: sha512-9aFdOtPESNT2hlE7xSxOeDZzlZvQGAIzbJGXXN2av41IwBs+uyesNYUIDE+QJqGyraGWpYbJWqrN4IIRp8nuEA==}
+    engines: {node: '>=20'}
+
+  '@midwayjs/validation@4.0.0-beta.7':
+    resolution: {integrity: sha512-t30Do9IOZtpQgXtBKJOMiTRNboLDC1JQXXhjwh3ACbbDadDOWh0DIZhkuDNpZLn/c2xr/vQ7vHitAor5/i/sOA==}
     engines: {node: '>=20'}
 
   '@noble/hashes@1.8.0':
@@ -7610,6 +7614,10 @@ snapshots:
       '@midwayjs/validation': 4.0.0-beta.14
 
   '@midwayjs/validation@4.0.0-beta.14':
+    dependencies:
+      '@midwayjs/i18n': 4.0.0-beta.14
+
+  '@midwayjs/validation@4.0.0-beta.7':
     dependencies:
       '@midwayjs/i18n': 4.0.0-beta.14
 
