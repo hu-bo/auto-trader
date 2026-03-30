@@ -27,14 +27,14 @@
     "@hquant/contracts": "workspace:*",
     "@hquant/logger-js": "workspace:^",
     "@midwayjs/bootstrap": "^4.0.0",
-    "@midwayjs/core": "^4.0.0",
-    "@midwayjs/i18n": "4.0.0-beta.7",
-    "@midwayjs/info": "^4.0.0-beta.7",
-    "@midwayjs/koa": "^4.0.0-beta.7",
-    "@midwayjs/logger": "^4.0.0",
+    "@midwayjs/core": "~4.0.0",
+    "@midwayjs/i18n": "4.0.0-beta.17",
+    "@midwayjs/info": "~4.0.0",
+    "@midwayjs/koa": "~4.0.0",
+    "@midwayjs/logger": "~4.0.0",
     "@midwayjs/typeorm": "^3.20.19",
-    "@midwayjs/validation": "4.0.0-beta.7",
-    "@midwayjs/validation-joi": "4.0.0-beta.7",
+    "@midwayjs/validation": "~4.0.0",
+    "@midwayjs/validation-joi": "~4.0.0",
     "ai": "^4.0.0",
     "axios": "^1.7.8",
     "joi": "^17.13.3",
@@ -48,7 +48,7 @@
     "typeorm": "^0.3.28"
   },
   "devDependencies": {
-    "@midwayjs/mock": "^4.0.0-beta.7",
+    "@midwayjs/mock": "~4.0.0",
     "@types/lodash-es": "^4.17.12",
     "@types/mocha": "^10.0.1",
     "@types/node": "20",
@@ -59,11 +59,6 @@
     "mwtsc": "^1.4.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "@midwayjs/i18n": "4.0.0-beta.7"
-    }
   },
   "engines": {
     "node": ">=20.0.0"
