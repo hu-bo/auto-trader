@@ -88,7 +88,7 @@ export class StrategySyncService {
           successCount++;
           this.logger.info(
             '[StrategySync] Re-subscribed order=%d symbol=%s instance_key=%s',
-            order.id, symbol, result?.instance_key ?? 'N/A'
+            order.id, symbol, result?.instanceKey ?? 'N/A'
           );
         } catch (err: any) {
           if (err?.status === 409) {
