@@ -103,8 +103,8 @@ importers:
         specifier: ^4.0.0-beta.7
         version: 4.0.0-beta.14
       '@midwayjs/i18n':
-        specifier: 4.0.0-beta.14
-        version: 4.0.0-beta.14
+        specifier: 4.0.0-beta.7
+        version: 4.0.0-beta.7
       '@midwayjs/info':
         specifier: ^4.0.0-beta.7
         version: 4.0.0-beta.14
@@ -1385,6 +1385,10 @@ packages:
 
   '@midwayjs/i18n@4.0.0-beta.14':
     resolution: {integrity: sha512-Ym9dxAC5s1QVlI81A/w7MEHfyD/0NgaUbxjOoiEii5V+vB6ZXU/w4V5541IQAB58+RMd/t4SrreZLQuXN+oCmA==}
+    engines: {node: '>=20'}
+
+  '@midwayjs/i18n@4.0.0-beta.7':
+    resolution: {integrity: sha512-BNf8UgKYXTIGpDOG3WrgGY3VzLcPzgVwlQ8SEcoubywIcXelPzk6SQRuiH1aS1LLNRs+MUtgdIxg2VcHbfz+DQ==}
     engines: {node: '>=20'}
 
   '@midwayjs/info@4.0.0-beta.14':
@@ -7566,6 +7570,10 @@ snapshots:
       picomatch: 2.3.1
 
   '@midwayjs/i18n@4.0.0-beta.14':
+    dependencies:
+      picomatch: 2.3.1
+
+  '@midwayjs/i18n@4.0.0-beta.7':
     dependencies:
       picomatch: 2.3.1
 
