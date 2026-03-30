@@ -12,7 +12,7 @@ volumes:
       path: /var/run/docker.sock
 
 steps:
-  # 1. build — BuildKit + cache-from 复用上次构建层1
+  # 1. build — BuildKit + cache-from 复用上次构建层
   - name: build
     image: docker:27-cli
     volumes:
