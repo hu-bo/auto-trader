@@ -1,5 +1,5 @@
 import { Rule } from '@midwayjs/validation';
-import * as Joi from 'joi';
+import Joi from 'joi';
 import { OrderStatus } from '../entity/order.entity.js';
 
 export class OrderIdParamDTO {

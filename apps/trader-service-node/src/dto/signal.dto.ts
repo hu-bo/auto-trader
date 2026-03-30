@@ -1,5 +1,5 @@
 import { Rule } from '@midwayjs/validation';
-import * as Joi from 'joi';
+import Joi from 'joi';
 
 export class SubscribeSignalDTO {
   @Rule(Joi.string().required())
