@@ -30,9 +30,9 @@ steps:
   # 2. build & package (Next.js Standalone)
   - name: build and package
     image: node:20-alpine
-    volumes:
-      - name: pnpm-cache
-        path: /cache
+    # volumes:
+    #   - name: pnpm-cache
+    #     path: /cache
       # - name: app-temp
       #   path: /temp/app
     environment:
