@@ -37,7 +37,7 @@ openssl req -x509 -newkey rsa:4096 -nodes \
   -out certs/grpc/shared.crt \
   -days 3650 \
   -subj "/CN=grpc-shared.local" \
-  -addext "subjectAltName=DNS:grpc-shared.local,DNS:localhost,IP:127.0.0.1,IP:152.32.210.32,IP:223.109.200.118"
+  -addext "subjectAltName=DNS:grpc-shared.local,DNS:localhost,IP:127.0.0.1,IP:127.20.0.1,IP:152.32.210.32,IP:223.109.200.118"
 ```
 
 如果你的服务使用公网 IP 或自定义域名访问，需要把它们也加到 `subjectAltName` 里，例如：
