@@ -118,8 +118,8 @@ importers:
         specifier: 4.0.0-beta.7
         version: 4.0.0-beta.7
       '@midwayjs/validation-joi':
-        specifier: ^4.0.0-beta.7
-        version: 4.0.0-beta.14
+        specifier: 4.0.0-beta.7
+        version: 4.0.0-beta.7
       ai:
         specifier: ^4.0.0
         version: 4.3.19(react@19.2.4)(zod@3.25.76)
@@ -1409,12 +1409,8 @@ packages:
     engines: {node: '>=12'}
     hasBin: true
 
-  '@midwayjs/validation-joi@4.0.0-beta.14':
-    resolution: {integrity: sha512-D0HZF0Rq5v1+fSsXwXcGSFWf3RfnKB8j9Ac0c69992b7dzx6Gy7rjsRhliEL7Ur3+0AWHsB05Z6uiP9bcWr1qg==}
-    engines: {node: '>=20'}
-
-  '@midwayjs/validation@4.0.0-beta.14':
-    resolution: {integrity: sha512-9aFdOtPESNT2hlE7xSxOeDZzlZvQGAIzbJGXXN2av41IwBs+uyesNYUIDE+QJqGyraGWpYbJWqrN4IIRp8nuEA==}
+  '@midwayjs/validation-joi@4.0.0-beta.7':
+    resolution: {integrity: sha512-P55H8Go7sgM7DdnuAXB3K8DvB155v2WzUdROid3oPyGRCM8om0Tn+hNhwgGhsgOlmz2aWYJlaA4I6bw47+XiQg==}
     engines: {node: '>=20'}
 
   '@midwayjs/validation@4.0.0-beta.7':
@@ -7608,14 +7604,10 @@ snapshots:
 
   '@midwayjs/typeorm@3.20.22': {}
 
-  '@midwayjs/validation-joi@4.0.0-beta.14':
+  '@midwayjs/validation-joi@4.0.0-beta.7':
     dependencies:
       '@midwayjs/i18n': 4.0.0-beta.14
-      '@midwayjs/validation': 4.0.0-beta.14
-
-  '@midwayjs/validation@4.0.0-beta.14':
-    dependencies:
-      '@midwayjs/i18n': 4.0.0-beta.14
+      '@midwayjs/validation': 4.0.0-beta.7
 
   '@midwayjs/validation@4.0.0-beta.7':
     dependencies:
