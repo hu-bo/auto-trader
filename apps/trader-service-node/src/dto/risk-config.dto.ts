@@ -1,5 +1,5 @@
 import { Rule } from '@midwayjs/validation';
-import Joi from 'joi';
+import * as Joi from 'joi';
 
 const riskConfigFieldSchema = Joi.object({
   maxPositionSize: Joi.number().positive().allow(null).optional(),

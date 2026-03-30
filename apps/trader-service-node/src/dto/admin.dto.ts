@@ -1,5 +1,5 @@
 import { Rule } from '@midwayjs/validation';
-import Joi from 'joi';
+import * as Joi from 'joi';
 
 export class AdminUserIdParamDTO {
   @Rule(Joi.string().trim().min(1).required())

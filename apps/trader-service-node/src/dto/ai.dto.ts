@@ -1,5 +1,5 @@
 import { Rule } from '@midwayjs/validation';
-import Joi from 'joi';
+import * as Joi from 'joi';
 
 export class AIGenerateBodyDTO {
   @Rule(Joi.string().trim().min(1).max(2000).required())
