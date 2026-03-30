@@ -17,15 +17,15 @@ volumes:
 steps:
 
   # 1. 恢复 pnpm store 缓存1
-  - name: restore-pnpm-cache
-    image: drillster/drone-volume-cache
-    volumes:
-      - name: pnpm-cache
-        path: /cache
-    settings:
-      restore: true
-      mount:
-        - /cache/pnpm-store
+  # - name: restore-pnpm-cache
+  #   image: drillster/drone-volume-cache
+  #   volumes:
+  #     - name: pnpm-cache
+  #       path: /cache
+  #   settings:
+  #     restore: true
+  #     mount:
+  #       - /cache/pnpm-store
 
   # 2. build & package (Next.js Standalone)
   - name: build and package
