@@ -17,6 +17,10 @@
     "./signal": {
       "import": "./dist/node/signal.js",
       "types": "./dist/node/signal.d.ts"
+    },
+    "./strategy_subscription": {
+      "import": "./dist/node/strategy_subscription.js",
+      "types": "./dist/node/strategy_subscription.d.ts"
     }
   },
   "files": [

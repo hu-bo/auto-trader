@@ -1,39 +1,38 @@
-import * as grpc from '@grpc/grpc-js';
-import * as protoLoader from '@grpc/proto-loader';
 import { Config, Provide, Scope, ScopeEnum, httpError } from '@midwayjs/core';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { createChannel, createClient, ClientError, Status } from 'nice-grpc';
+import {
+  SubscriptionServiceDefinition,
+  type SubscriptionServiceClient,
+  type SubscribeRequest,
+  type UnsubscribeRequest,
+  type ListSubscriptionsRequest,
+  type InstanceStatsResponse,
+  type SubscriptionResponse,
+  type ListSubscriptionsResponse,
+} from '@hquant/contracts/strategy_subscription';
 import type { GrpcTlsConfig, StrategyEngineConfig } from '../types/index.js';
 import { resolveGrpcChannelSecurity } from './grpc-tls.js';
 import { createScopedLogger } from '../common/logger.js';
 
-function mapGrpcError(err: grpc.ServiceError): Error {
+function mapGrpcError(err: ClientError): Error {
   const message = err.details || err.message || 'gRPC request failed';
   switch (err.code) {
-    case grpc.status.INVALID_ARGUMENT:
+    case Status.INVALID_ARGUMENT:
       return new httpError.BadRequestError(message);
-    case grpc.status.UNAUTHENTICATED:
+    case Status.UNAUTHENTICATED:
       return new httpError.UnauthorizedError(message);
-    case grpc.status.PERMISSION_DENIED:
+    case Status.PERMISSION_DENIED:
       return new httpError.ForbiddenError(message);
-    case grpc.status.NOT_FOUND:
+    case Status.NOT_FOUND:
       return new httpError.NotFoundError(message);
-    case grpc.status.ALREADY_EXISTS:
+    case Status.ALREADY_EXISTS:
       return new httpError.ConflictError(message);
-    case grpc.status.UNAVAILABLE:
+    case Status.UNAVAILABLE:
       return new httpError.BadGatewayError(message);
     default:
       return new httpError.BadGatewayError(message);
   }
 }
-
-type SubscriptionServiceClient = {
-  Subscribe: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  Unsubscribe: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  GetSubscription: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  ListSubscriptions: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-  GetInstanceStats: (req: any, cb: (err: grpc.ServiceError | null, res: any) => void) => void;
-};
 
 @Provide()
 @Scope(ScopeEnum.Singleton)
@@ -56,52 +55,23 @@ export class StrategySubscriptionGrpcClient {
       throw new httpError.ServiceUnavailableError('STRATEGY_ENGINE_GRPC_URL is required');
     }
 
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
-    const protoPath = join(__dirname, '../../../../packages/contracts/proto/strategy_subscription.proto');
-
-    const packageDefinition = protoLoader.loadSync(protoPath, {
-      keepCase: true,
-      longs: String,
-      enums: String,
-      defaults: true,
-      oneofs: true,
-    });
-
-    const loaded = grpc.loadPackageDefinition(packageDefinition) as any;
-    const ServiceCtor = loaded?.strategy_subscription?.v1?.SubscriptionService;
-    if (!ServiceCtor) {
-      throw new httpError.ServiceUnavailableError('Failed to load strategy_subscription proto');
-    }
-
     const { credentials, options } = resolveGrpcChannelSecurity(this.grpcTls);
-    this.client = new ServiceCtor(url, credentials, options) as SubscriptionServiceClient;
+    const channel = createChannel(url, credentials, options);
+    this.client = createClient(SubscriptionServiceDefinition, channel);
     return this.client;
   }
 
-  private async unaryRaw<T>(fn: (cb: (err: grpc.ServiceError | null, res: T) => void) => void): Promise<T> {
-    return await new Promise<T>((resolve, reject) => {
-      fn((err, res) => {
-        if (err) return reject(err);
-        resolve(res);
-      });
-    });
-  }
-
-  private async unaryWithRetry<T>(
-    fn: (cb: (err: grpc.ServiceError | null, res: T) => void) => void,
-    retries = 2
-  ): Promise<T> {
-    let lastErr: grpc.ServiceError | null = null;
+  private async callWithRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+    let lastErr: ClientError | null = null;
     for (let i = 0; i <= retries; i++) {
       try {
-        return await this.unaryRaw<T>(fn);
+        return await fn();
       } catch (err: any) {
         lastErr = err;
-        if (i < retries && err?.code === grpc.status.UNAVAILABLE) {
+        if (i < retries && err?.code === Status.UNAVAILABLE) {
           this.logger.warn('[StrategyGrpc] UNAVAILABLE, retrying (%d/%d)...', i + 1, retries);
-          await new Promise(r => setTimeout(r, 1000 * (i + 1))); // backoff
-          this.client = undefined; // reset client for reconnect
+          await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+          this.client = undefined;
           continue;
         }
         throw mapGrpcError(err);
@@ -123,48 +93,41 @@ export class StrategySubscriptionGrpcClient {
     parameters: string;
     riskConfig: string;
     live: boolean;
-  }): Promise<any> {
-    const client = this.getClient();
-    const req = {
-      user_id: params.userId,
-      subscription_id: params.subscriptionId,
-      strategy_id: params.strategyId,
-      strategy_name: params.strategyName,
+  }): Promise<SubscriptionResponse> {
+    const req: SubscribeRequest = {
+      userId: params.userId,
+      subscriptionId: params.subscriptionId,
+      strategyId: params.strategyId,
+      strategyName: params.strategyName,
       code: params.code,
       symbol: params.symbol,
       exchange: params.exchange,
-      trade_type: params.tradeType,
+      tradeType: params.tradeType,
       period: params.period,
       parameters: params.parameters,
-      risk_config: params.riskConfig,
+      riskConfig: params.riskConfig,
       live: params.live,
     };
-    return await this.unaryWithRetry(cb => client.Subscribe(req, cb));
+    return this.callWithRetry(() => this.getClient().subscribe(req));
   }
 
   async unsubscribe(params: {
     subscriptionId: string;
     instanceKey: string;
   }): Promise<void> {
-    const client = this.getClient();
-    const req = {
-      subscription_id: params.subscriptionId,
-      instance_key: params.instanceKey,
+    const req: UnsubscribeRequest = {
+      subscriptionId: params.subscriptionId,
+      instanceKey: params.instanceKey,
     };
-    await this.unaryWithRetry(cb => client.Unsubscribe(req, cb));
+    await this.callWithRetry(() => this.getClient().unsubscribe(req));
   }
 
-  async listSubscriptions(params?: {
-    userId?: string;
-  }): Promise<any> {
-    const client = this.getClient();
-    const req: any = {};
-    if (params?.userId) req.user_id = params.userId;
-    return await this.unaryWithRetry(cb => client.ListSubscriptions(req, cb));
+  async listSubscriptions(params?: { userId?: string }): Promise<ListSubscriptionsResponse> {
+    const req: ListSubscriptionsRequest = { userId: params?.userId ?? '', pageSize: 0, pageToken: '' };
+    return this.callWithRetry(() => this.getClient().listSubscriptions(req));
   }
 
-  async getInstanceStats(): Promise<any> {
-    const client = this.getClient();
-    return await this.unaryWithRetry(cb => client.GetInstanceStats({}, cb));
+  async getInstanceStats(): Promise<InstanceStatsResponse> {
+    return this.callWithRetry(() => this.getClient().getInstanceStats({}));
   }
 }
