@@ -71,12 +71,20 @@ enum CmpOp {
     Ne,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BollBand {
+    Mid,
+    Upper,
+    Lower,
+}
+
 #[derive(Clone, Debug)]
 enum ValueExpr {
     Number(f64),
     String(String),
     Series(SeriesRef),
     Indicator(IndicatorRef),
+    BollBand(IndicatorRef, BollBand),
     VecSource(VecExpr),
     Store(String),
     Similarity(SimilarityExpr),
@@ -561,20 +569,36 @@ fn compile_value(pair: pest::iterators::Pair<'_, Rule>, ctx: &mut CompileCtx<'_>
         }
         Rule::string => Ok(ValueExpr::String(parse_string(pair.as_str()))),
         Rule::series_ref => {
-            // `series_ref` isn't atomic in the pest grammar, so when `@<period>` is omitted
-            // the implicit WHITESPACE skipping may get included in the captured span
-            // (e.g. `rsi_1h < 30` can yield `"rsi_1h "`). Trim to make variable/field lookup stable.
-            let s = pair.as_str().trim();
-            let (name, period_opt) = if let Some((a, b)) = s.split_once('@') {
-                (a.trim(), Some(b.trim()))
-            } else {
-                (s, None)
-            };
-            let parsed_period = match period_opt {
+            // Parse inner tokens: ident, optional period_token, optional field_access
+            let mut inner = pair.into_inner();
+            let name_pair = inner.next().ok_or_else(|| StrategyError::ParseError {
+                line,
+                msg: "missing ident in series_ref".to_string(),
+            })?;
+            let name = name_pair.as_str().trim();
+
+            // Collect remaining tokens: could be period_token and/or field_access
+            let mut period_str: Option<&str> = None;
+            let mut field_access: Option<String> = None;
+            for p in inner {
+                match p.as_rule() {
+                    Rule::period_token => period_str = Some(p.as_str()),
+                    Rule::field_access => field_access = Some(p.as_str().to_ascii_lowercase()),
+                    _ => {}
+                }
+            }
+
+            let parsed_period = match period_str {
                 None => None,
                 Some(p) => Some(Period::parse(p).map_err(|e| StrategyError::MultiPeriodNotSupported(e.to_string()))?),
             };
+
             if let Some(field) = Field::parse(name) {
+                if field_access.is_some() {
+                    return Err(StrategyError::InvalidArgs(format!(
+                        "field '{name}' does not support dot-access"
+                    )));
+                }
                 let period = match &mut ctx.mode {
                     CompileMode::Single(_) => {
                         if let Some(p) = parsed_period {
@@ -582,10 +606,7 @@ fn compile_value(pair: pest::iterators::Pair<'_, Rule>, ctx: &mut CompileCtx<'_>
                         }
                         None
                     }
-                    CompileMode::Multi {
-                        base_period,
-                        resolver,
-                    } => {
+                    CompileMode::Multi { base_period, resolver } => {
                         let p = parsed_period.unwrap_or(*base_period);
                         if !resolver.has_period(p) {
                             return Err(StrategyError::InvalidArgs(format!("unknown period: {p}")));
@@ -602,6 +623,18 @@ fn compile_value(pair: pest::iterators::Pair<'_, Rule>, ctx: &mut CompileCtx<'_>
                 )));
             }
             if let Some(v) = ctx.vars.get(name) {
+                // Support dot-access on BOLL variables: boll.upper / boll.mid / boll.lower
+                if let Some(fa) = &field_access {
+                    return match v.clone() {
+                        ValueExpr::BollBand(ind, _) => {
+                            let band = parse_boll_band(fa);
+                            Ok(ValueExpr::BollBand(ind, band))
+                        }
+                        _ => Err(StrategyError::InvalidArgs(format!(
+                            "variable '{name}' does not support dot-access '.{fa}'"
+                        ))),
+                    };
+                }
                 return Ok(v.clone());
             }
             Err(StrategyError::UnknownField(name.to_string()))
@@ -747,6 +780,33 @@ fn compile_call(pair: pest::iterators::Pair<'_, Rule>, ctx: &mut CompileCtx<'_>,
                 },
                 series.period,
             )
+        }
+        "BOLL" => {
+            // BOLL(period, std_dev) -> mid band
+            // BOLL(period, std_dev, "upper"|"mid"|"lower") -> specific band
+            // BOLL(period, std_dev, band=...) -> keyword form
+            if pos.is_empty() {
+                return Err(StrategyError::InvalidArgs("BOLL(period, std_dev) requires at least 2 args".to_string()));
+            }
+            let period = as_usize(&pos[0])
+                .ok_or_else(|| StrategyError::InvalidArgs("BOLL period must be a positive integer".to_string()))?;
+            let k = if let Some(v) = kw.get("std_dev").or_else(|| kw.get("k")) {
+                as_f64(v).ok_or_else(|| StrategyError::InvalidArgs("BOLL std_dev must be a number".to_string()))?
+            } else if pos.len() >= 2 {
+                as_f64(&pos[1]).ok_or_else(|| StrategyError::InvalidArgs("BOLL std_dev must be a number".to_string()))?
+            } else {
+                2.0
+            };
+            let band = if let Some(v) = kw.get("band") {
+                parse_boll_band(as_string(v).unwrap_or("mid"))
+            } else if pos.len() >= 3 {
+                parse_boll_band(as_string(&pos[2]).unwrap_or("mid"))
+            } else {
+                BollBand::Mid
+            };
+            let spec = IndicatorSpec::Boll { period, k_bits: k.to_bits() };
+            let indicator = ctx.add_indicator(None, spec)?;
+            return Ok(ValueExpr::BollBand(indicator, band));
         }
         _ => return Err(StrategyError::UnknownFunction(name)),
     };
@@ -942,6 +1002,14 @@ fn eval_value(expr: &ValueExpr, ctx: &impl EvalContext, store: Option<&VectorSto
             Some(IndicatorValue::F64(v)) => v,
             _ => f64::NAN,
         },
+        ValueExpr::BollBand(ind, band) => match ctx.indicator_last(ind.period, ind.id) {
+            Some(IndicatorValue::Boll(bv)) => match band {
+                BollBand::Mid => bv.mid,
+                BollBand::Upper => bv.upper,
+                BollBand::Lower => bv.lower,
+            },
+            _ => f64::NAN,
+        },
         ValueExpr::VecSource(_) => f64::NAN,
         ValueExpr::Store(_) => f64::NAN,
         ValueExpr::Similarity(expr) => eval_similarity(expr, ctx, store),
@@ -1022,4 +1090,12 @@ fn parse_string(s: &str) -> String {
         return s[1..s.len() - 1].to_string();
     }
     s.to_string()
+}
+
+fn parse_boll_band(s: &str) -> BollBand {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "upper" | "up" => BollBand::Upper,
+        "lower" | "down" => BollBand::Lower,
+        _ => BollBand::Mid,
+    }
 }

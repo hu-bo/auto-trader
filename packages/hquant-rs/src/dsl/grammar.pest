@@ -35,8 +35,9 @@ arg_list = { arg ~ ("," ~ arg)* }
 arg = _{ kw_arg | value }
 kw_arg = { ident ~ "=" ~ value }
 
-series_ref = { ident ~ ( "@" ~ period_token )? }
+series_ref = { ident ~ ( "@" ~ period_token )? ~ ( "." ~ field_access )? }
 period_token = @{ (ASCII_ALPHANUMERIC | "_" )+ }
+field_access = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 
 ident = @{ (ASCII_ALPHA | "_" ) ~ (ASCII_ALPHANUMERIC | "_" )* }
 number = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }

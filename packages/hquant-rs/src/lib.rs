@@ -315,4 +315,18 @@ mod tests {
         assert!(buy_sig.is_some());
         assert_eq!(buy_sig.unwrap().meta.as_deref(), Some("multi-period oversold"));
     }
+
+    #[test]
+    fn dsl_boll_dot_access_syntax() {
+        use crate::dsl::validate_dsl;
+        // Validate the exact syntax from the user's example
+        let strategy = r#"
+LET ema_trend = EMA(close, 60)
+LET boll = BOLL(20, 2.0)
+LET rsi = RSI(14)
+IF close <= boll.lower AND rsi < 30 AND close > ema_trend THEN BUY("BOLL_RSI_EMA_Buy")
+IF close >= boll.upper OR rsi > 70 THEN SELL("BOLL_RSI_EMA_Sell")
+"#;
+        validate_dsl(strategy).expect("BOLL dot-access DSL should be valid");
+    }
 }
